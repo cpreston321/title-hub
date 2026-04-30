@@ -1,0 +1,1663 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Quality Title — Operations Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Cormorant+Garamond:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+
+    /* Warm neutral + plum/gold/orange wheel */
+    --bg: #f6f1eb;
+    --surface: #fffdfa;
+    --surface-2: #f9f5ef;
+    --surface-3: #f2ebe2;
+    --line: #e4d7c9;
+    --line-strong: #d5c3ae;
+    --text: #2e2430;
+    --text-soft: #6c5f6f;
+    --text-faint: #8d8190;
+
+    --plum-900: #40233f;
+    --plum-800: #593157;
+    --plum-700: #734070;
+    --plum-100: #f2e7f1;
+
+    --gold-700: #b78625;
+    --gold-100: #f8eed7;
+
+    --orange-700: #c9652e;
+    --orange-100: #fde9dc;
+
+    --sage-700: #3f7c64;
+    --sage-100: #e6f3ed;
+
+    --sky-700: #3f668f;
+    --sky-100: #e8f0f8;
+
+    --rose-700: #b94f58;
+    --rose-100: #fdecee;
+
+    --shadow-sm: 0 8px 24px rgba(64, 35, 63, 0.06);
+    --shadow-md: 0 16px 40px rgba(64, 35, 63, 0.10);
+    --radius-sm: 12px;
+    --radius-md: 18px;
+    --radius-lg: 24px;
+    --sidebar-w: 270px;
+    --content-max: 1600px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; }
+
+  body {
+    margin: 0;
+    font-family: 'Figtree', system-ui, sans-serif;
+    background:
+      radial-gradient(circle at top right, rgba(201, 101, 46, 0.08), transparent 28%),
+      radial-gradient(circle at top left, rgba(115, 64, 112, 0.08), transparent 24%),
+      linear-gradient(180deg, #fbf8f4 0%, var(--bg) 100%);
+    color: var(--text);
+  }
+
+  button, input { font: inherit; }
+  button { cursor: pointer; }
+
+  .app-shell {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+  }
+
+  .sidebar {
+    background: linear-gradient(180deg, var(--plum-900), #2f1a30 100%);
+    color: rgba(255,255,255,0.92);
+    padding: 22px 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: linear-gradient(145deg, #f4d48f, var(--gold-700));
+    display: grid;
+    place-items: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+    color: var(--plum-900);
+  }
+
+  .brand-copy strong {
+    display: block;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.55rem;
+    line-height: 1;
+    letter-spacing: 0.02em;
+  }
+
+  .brand-copy span {
+    display: block;
+    margin-top: 4px;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.68);
+  }
+
+  .sidebar-section-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: rgba(255,255,255,0.45);
+    padding: 0 12px;
+    margin-bottom: 8px;
+  }
+
+  .nav-group { display: grid; gap: 4px; }
+
+  .nav-item {
+    border: 0;
+    background: transparent;
+    color: rgba(255,255,255,0.76);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 12px;
+    border-radius: 14px;
+    text-align: left;
+    transition: 160ms ease;
+  }
+
+  .nav-item:hover,
+  .nav-item:focus-visible {
+    background: rgba(255,255,255,0.08);
+    color: white;
+    outline: none;
+  }
+
+  .nav-item.active {
+    background: linear-gradient(90deg, rgba(244, 212, 143, 0.18), rgba(244, 212, 143, 0.06));
+    color: #fff;
+    box-shadow: inset 0 0 0 1px rgba(244, 212, 143, 0.22);
+  }
+
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    opacity: 0.95;
+  }
+
+  .nav-badge {
+    margin-left: auto;
+    min-width: 26px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    font-size: 0.75rem;
+    text-align: center;
+  }
+
+  .nav-badge.alert {
+    background: rgba(185, 79, 88, 0.22);
+    color: #ffd8dc;
+  }
+
+  .agent-card {
+    margin-top: auto;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f3d08a, var(--gold-700));
+    color: var(--plum-900);
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+  }
+
+  .agent-card strong { display: block; font-size: 0.95rem; }
+  .agent-card span { font-size: 0.82rem; color: rgba(255,255,255,0.6); }
+
+  .main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mobile-header {
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px 0;
+    gap: 12px;
+  }
+
+  .sidebar-toggle {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--text);
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .page-wrap {
+    width: min(100%, var(--content-max));
+    margin: 0 auto;
+    padding: 22px 24px 28px;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    backdrop-filter: blur(12px);
+    background: rgba(246, 241, 235, 0.88);
+    border-bottom: 1px solid rgba(213, 195, 174, 0.65);
+  }
+
+  .topbar-inner {
+    width: min(100%, var(--content-max));
+    margin: 0 auto;
+    padding: 18px 24px;
+    display: grid;
+    grid-template-columns: 1.3fr minmax(300px, 560px) auto;
+    gap: 18px;
+    align-items: center;
+  }
+
+  .title-block h1 {
+    margin: 0;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: clamp(2rem, 2.4vw, 2.65rem);
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+    color: var(--plum-900);
+  }
+
+  .title-block p {
+    margin: 6px 0 0;
+    color: var(--text-soft);
+    font-size: 0.98rem;
+  }
+
+  .search-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .search-shell {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(255,253,250,0.86);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .search-shell input {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    outline: none;
+    font-size: 0.96rem;
+  }
+
+  .search-shell svg { color: var(--text-faint); flex: 0 0 auto; }
+
+  .topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-self: end;
+  }
+
+  .ghost-btn,
+  .primary-btn,
+  .chip {
+    border-radius: 14px;
+    border: 1px solid transparent;
+    transition: 160ms ease;
+  }
+
+  .ghost-btn {
+    background: rgba(255,253,250,0.86);
+    border-color: var(--line);
+    color: var(--text);
+    padding: 12px 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .primary-btn {
+    background: linear-gradient(135deg, var(--plum-800), var(--plum-700));
+    color: white;
+    padding: 12px 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 14px 28px rgba(89, 49, 87, 0.18);
+  }
+
+  .ghost-btn:hover,
+  .primary-btn:hover,
+  .chip:hover,
+  .sidebar-toggle:hover {
+    transform: translateY(-1px);
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: 1.3fr 0.9fr;
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+
+  .hero-panel,
+  .panel {
+    background: rgba(255,253,250,0.88);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .hero-panel {
+    padding: 22px;
+  }
+
+  .hero-panel h2 {
+    margin: 0 0 10px;
+    font-size: 1.08rem;
+    color: var(--text);
+  }
+
+  .hero-lead {
+    font-size: 1.02rem;
+    line-height: 1.55;
+    color: var(--text-soft);
+    max-width: 60ch;
+  }
+
+  .hero-priority {
+    margin-top: 18px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .priority-tile {
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 14px;
+  }
+
+  .priority-tile strong {
+    display: block;
+    font-size: 1.25rem;
+    margin-bottom: 6px;
+  }
+
+  .priority-tile span {
+    display: block;
+    color: var(--text-soft);
+    font-size: 0.88rem;
+    line-height: 1.45;
+  }
+
+  .priority-tile.issue strong { color: var(--rose-700); }
+  .priority-tile.today strong { color: var(--orange-700); }
+  .priority-tile.verify strong { color: var(--sage-700); }
+
+  .right-summary {
+    display: grid;
+    gap: 12px;
+  }
+
+  .summary-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+  }
+
+  .summary-strip strong {
+    display: block;
+    font-size: 1.5rem;
+    line-height: 1;
+  }
+
+  .summary-strip span {
+    color: var(--text-soft);
+    font-size: 0.88rem;
+  }
+
+  .summary-strip svg { flex: 0 0 auto; }
+
+  .summary-strip.critical strong { color: var(--rose-700); }
+  .summary-strip.pending strong { color: var(--orange-700); }
+  .summary-strip.live strong { color: var(--sage-700); }
+
+  .action-strip {
+    margin: 0 0 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .chip {
+    background: var(--surface);
+    border-color: var(--line);
+    color: var(--text-soft);
+    padding: 10px 14px;
+  }
+
+  .chip.active {
+    background: var(--plum-100);
+    color: var(--plum-800);
+    border-color: rgba(115, 64, 112, 0.2);
+  }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(330px, 0.85fr);
+    gap: 18px;
+    align-items: start;
+  }
+
+  .stack { display: grid; gap: 18px; }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    justify-content: space-between;
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--surface-3);
+  }
+
+  .panel-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .panel-title-wrap h3 {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  .panel-title-wrap p {
+    margin: 4px 0 0;
+    color: var(--text-soft);
+    font-size: 0.86rem;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 999px;
+    padding: 7px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .badge.plum { background: var(--plum-100); color: var(--plum-800); }
+  .badge.sage { background: var(--sage-100); color: var(--sage-700); }
+  .badge.orange { background: var(--orange-100); color: var(--orange-700); }
+  .badge.rose { background: var(--rose-100); color: var(--rose-700); }
+  .badge.gold { background: var(--gold-100); color: var(--gold-700); }
+  .badge.sky { background: var(--sky-100); color: var(--sky-700); }
+
+  .panel-body { padding: 16px 20px 20px; }
+
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 16px;
+  }
+
+  .kpi-card label {
+    display: block;
+    font-size: 0.77rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+  }
+
+  .kpi-card strong {
+    display: block;
+    font-size: 2rem;
+    line-height: 1;
+    margin-bottom: 8px;
+    font-family: 'Cormorant Garamond', serif;
+  }
+
+  .kpi-card span {
+    color: var(--text-soft);
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
+  .kpi-card.primary strong { color: var(--plum-900); }
+  .kpi-card.issue strong { color: var(--rose-700); }
+  .kpi-card.pending strong { color: var(--orange-700); }
+  .kpi-card.live strong { color: var(--sage-700); }
+
+  .title-search-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .search-card {
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    background: var(--surface);
+    padding: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) repeat(4, auto);
+    align-items: center;
+    gap: 12px;
+  }
+
+  .search-card[data-state="issue"] {
+    box-shadow: inset 4px 0 0 var(--rose-700);
+  }
+
+  .search-main {
+    min-width: 0;
+  }
+
+  .search-main strong {
+    display: block;
+    font-size: 1rem;
+    margin-bottom: 4px;
+  }
+
+  .search-main span,
+  .meta-block span,
+  .queue-meta span,
+  .activity-text span,
+  .ledger-text span,
+  .closing-card span,
+  .county-meta span {
+    color: var(--text-soft);
+    font-size: 0.86rem;
+    line-height: 1.45;
+  }
+
+  .meta-block {
+    min-width: 90px;
+  }
+
+  .meta-block label {
+    display: block;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    margin-bottom: 4px;
+  }
+
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .quick-link {
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+
+  .priority-queue,
+  .ledger-list,
+  .county-list,
+  .activity-list,
+  .risk-list,
+  .closing-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .queue-card,
+  .ledger-item,
+  .county-row,
+  .activity-row,
+  .risk-row,
+  .closing-card {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: 18px;
+    padding: 14px 16px;
+  }
+
+  .queue-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .queue-meta label {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+  }
+
+  .queue-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+  .mini-btn {
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    padding: 9px 10px;
+    border-radius: 12px;
+    color: var(--text);
+  }
+
+  .ledger-item,
+  .county-row,
+  .activity-row,
+  .closing-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .ledger-icon,
+  .county-icon,
+  .activity-dot,
+  .closing-date {
+    flex: 0 0 auto;
+  }
+
+  .ledger-icon,
+  .county-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    display: grid;
+    place-items: center;
+  }
+
+  .ledger-icon.ok, .county-icon.ok { background: var(--sage-100); color: var(--sage-700); }
+  .ledger-icon.warn, .county-icon.warn { background: var(--orange-100); color: var(--orange-700); }
+  .ledger-icon.err, .county-icon.err { background: var(--rose-100); color: var(--rose-700); }
+
+  .ledger-text,
+  .county-meta,
+  .activity-text,
+  .closing-info { min-width: 0; flex: 1; }
+
+  .ledger-text strong,
+  .county-meta strong,
+  .activity-text strong,
+  .closing-info strong,
+  .queue-meta strong {
+    display: block;
+    font-size: 0.98rem;
+    margin-bottom: 4px;
+  }
+
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+  .county-health {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 160px;
+  }
+
+  .progress {
+    flex: 1;
+    min-width: 72px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+
+  .progress > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--sage-700), #67a386);
+  }
+
+  .progress.warn > span { background: linear-gradient(90deg, var(--orange-700), #e19b75); }
+  .progress.err > span { background: linear-gradient(90deg, var(--rose-700), #d37c84); }
+
+  .activity-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-top: 4px;
+  }
+
+  .activity-dot.rose { background: var(--rose-700); }
+  .activity-dot.sage { background: var(--sage-700); }
+  .activity-dot.orange { background: var(--orange-700); }
+  .activity-dot.sky { background: var(--sky-700); }
+
+  .closing-date {
+    width: 54px;
+    border-radius: 16px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    text-align: center;
+    padding: 8px 4px;
+  }
+
+  .closing-date strong {
+    display: block;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 1.5rem;
+    line-height: 1;
+    color: var(--plum-900);
+  }
+
+  .closing-date span {
+    display: block;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+  }
+
+  .closing-card.today {
+    box-shadow: inset 4px 0 0 var(--orange-700);
+  }
+
+  .amount,
+  .time-stamp,
+  .county-state {
+    flex: 0 0 auto;
+    color: var(--text-soft);
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+
+  .amount { color: var(--plum-900); }
+  .county-state.live { color: var(--sage-700); }
+  .county-state.delay { color: var(--orange-700); }
+  .county-state.offline { color: var(--rose-700); }
+
+  .risk-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 90px 28px;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .risk-row strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.95rem;
+  }
+
+  .risk-track {
+    height: 10px;
+    border-radius: 999px;
+    background: var(--surface-3);
+    overflow: hidden;
+  }
+
+  .risk-track span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+  }
+
+  .risk-track.critical span { background: linear-gradient(90deg, var(--rose-700), #d27f87); }
+  .risk-track.high span { background: linear-gradient(90deg, var(--orange-700), #ebb18a); }
+  .risk-track.medium span { background: linear-gradient(90deg, var(--gold-700), #e0bf73); }
+  .risk-track.low span { background: linear-gradient(90deg, var(--sage-700), #7db397); }
+
+  .footer-status {
+    margin-top: 18px;
+    padding: 16px 18px;
+    background: rgba(64, 35, 63, 0.94);
+    color: rgba(255,255,255,0.82);
+    border-radius: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 18px;
+    align-items: center;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    font-size: 0.82rem;
+  }
+
+  .status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #7db397;
+  }
+
+  .status-dot.warn { background: #ebb18a; }
+  .status-dot.off { background: #d27f87; }
+
+  .muted-link {
+    color: var(--plum-800);
+    text-decoration: none;
+    font-weight: 600;
+  }
+
+  .hidden-mobile { display: inline-flex; }
+
+  @media (max-width: 1300px) {
+    .topbar-inner {
+      grid-template-columns: 1fr;
+    }
+
+    .topbar-actions {
+      justify-self: start;
+    }
+
+    .dashboard-grid,
+    .hero {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 1120px) {
+    .app-shell {
+      grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+      position: fixed;
+      inset: 0 auto 0 0;
+      width: min(88vw, 320px);
+      transform: translateX(-102%);
+      z-index: 50;
+      transition: transform 180ms ease;
+      box-shadow: var(--shadow-md);
+    }
+
+    body.sidebar-open .sidebar { transform: translateX(0); }
+
+    .mobile-header { display: flex; }
+    .hidden-mobile { display: none; }
+
+    .page-wrap { padding-top: 12px; }
+  }
+
+  @media (max-width: 980px) {
+    .kpi-grid,
+    .hero-priority {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .search-card {
+      grid-template-columns: 1fr;
+      align-items: start;
+    }
+
+    .card-actions {
+      justify-content: flex-start;
+    }
+
+    .queue-card,
+    .ledger-item,
+    .county-row,
+    .activity-row,
+    .closing-card {
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+
+    .county-health,
+    .time-stamp,
+    .county-state,
+    .amount {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .page-wrap,
+    .topbar-inner,
+    .mobile-header {
+      padding-left: 16px;
+      padding-right: 16px;
+    }
+
+    .hero-panel,
+    .panel-body,
+    .panel-header { padding-left: 16px; padding-right: 16px; }
+
+    .kpi-grid,
+    .hero-priority {
+      grid-template-columns: 1fr;
+    }
+
+    .topbar-actions {
+      width: 100%;
+      flex-wrap: wrap;
+    }
+
+    .search-row { width: 100%; }
+
+    .search-shell,
+    .ghost-btn,
+    .primary-btn {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .risk-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M9 2L14 5.5V12.5L9 16L4 12.5V5.5L9 2Z" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M9 5L12 7V11L9 13L6 11V7L9 5Z" fill="currentColor" opacity="0.35"/>
+            <circle cx="9" cy="9" r="1.5" fill="currentColor"/>
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <strong>Quality Title</strong>
+          <span>Indianapolis, IN</span>
+        </div>
+      </div>
+
+      <div>
+        <div class="sidebar-section-label">Main</div>
+        <div class="nav-group">
+          <button class="nav-item active" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><rect x="1" y="1" width="5" height="5" rx="1" fill="currentColor"/><rect x="8" y="1" width="5" height="5" rx="1" fill="currentColor" opacity=".55"/><rect x="1" y="8" width="5" height="5" rx="1" fill="currentColor" opacity=".55"/><rect x="8" y="8" width="5" height="5" rx="1" fill="currentColor" opacity=".55"/></svg>
+            Dashboard
+          </button>
+          <button class="nav-item" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 4v3.5l2 1.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+            Title Searches
+            <span class="nav-badge">14</span>
+          </button>
+          <button class="nav-item" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><rect x="2" y="3" width="10" height="9" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 1v4M9 1v4M2 6h10" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+            Pending Closings
+            <span class="nav-badge">7</span>
+          </button>
+          <button class="nav-item" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><path d="M2 12V4l5-3 5 3v8" stroke="currentColor" stroke-width="1.2"/><rect x="5" y="8" width="4" height="4" rx=".5" stroke="currentColor" stroke-width="1"/></svg>
+            County Connect
+            <span class="nav-badge alert">2</span>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div class="sidebar-section-label">Operations</div>
+        <div class="nav-group">
+          <button class="nav-item" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><path d="M2 4h10v7a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4z" stroke="currentColor" stroke-width="1.2"/><path d="M5 4V3a2 2 0 0 1 4 0v1" stroke="currentColor" stroke-width="1.2"/></svg>
+            Escrow
+          </button>
+          <button class="nav-item" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><path d="M3 2h8a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.1"/><path d="M5 6h4M5 8.5h2.5" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/></svg>
+            Order Management
+          </button>
+          <button class="nav-item" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><path d="M2 2h10v10H2z" stroke="currentColor" stroke-width="1.1"/><path d="M5 7l2 2 4-4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Commitments
+          </button>
+          <button class="nav-item" type="button">
+            <svg class="nav-icon" viewBox="0 0 14 14" fill="none"><path d="M2 10l3-4 3 2 2-4 2 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Analytics
+          </button>
+        </div>
+      </div>
+
+      <div class="agent-card">
+        <div class="avatar">RH</div>
+        <div>
+          <strong>Rachel Holt</strong>
+          <span>Senior Title Agent</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="mobile-header">
+        <button class="sidebar-toggle" id="sidebarToggle" type="button" aria-label="Open navigation">
+          ☰
+        </button>
+        <div class="badge plum">Operations Dashboard</div>
+      </div>
+
+      <header class="topbar">
+        <div class="topbar-inner">
+          <div class="title-block">
+            <h1>Operations Dashboard</h1>
+            <p>Fast scan first. Work the risk. Close the deal. Because hiding deadlines under decorative whitespace is apparently still a thing in 2026.</p>
+          </div>
+
+          <div class="search-row">
+            <label class="search-shell" for="globalSearch">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="M20 20L17 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <input id="globalSearch" type="text" placeholder="Search address, county, buyer, examiner, issue..." />
+            </label>
+          </div>
+
+          <div class="topbar-actions">
+            <button class="ghost-btn hidden-mobile" type="button" id="liveClock" aria-live="polite">Wednesday, April 1, 2026 · 9:44 AM</button>
+            <button class="ghost-btn" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/></svg>
+              Daily queue
+            </button>
+            <button class="primary-btn" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              New order
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div class="page-wrap">
+        <section class="hero">
+          <div class="hero-panel">
+            <div class="badge gold">Today’s focus</div>
+            <h2>Put the problem files first, not the decorative modules</h2>
+            <div class="hero-lead">
+              The dashboard now surfaces the items a title team actually acts on first: critical title issues, closings inside the next 72 hours, county outages, and files waiting on docs. That is how agents, TCs, and title staff think when the clock starts chewing through a deal.
+            </div>
+            <div class="hero-priority">
+              <div class="priority-tile issue">
+                <strong>1 critical</strong>
+                <span>7730 E 86th St needs lien resolution before today’s close.</span>
+              </div>
+              <div class="priority-tile today">
+                <strong>2 due soon</strong>
+                <span>1102 Ohio St and 7730 E 86th St need same-screen attention.</span>
+              </div>
+              <div class="priority-tile verify">
+                <strong>4 verified</strong>
+                <span>Ledger confirms chain activity for the cleanest files this morning.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-panel right-summary">
+            <div class="summary-strip critical">
+              <div>
+                <strong>1</strong>
+                <span>deal at risk of missing close</span>
+              </div>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 3L21 19H3L12 3Z" stroke="currentColor" stroke-width="1.8"/><path d="M12 9V13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/></svg>
+            </div>
+            <div class="summary-strip pending">
+              <div>
+                <strong>7</strong>
+                <span>pending closings in pipeline</span>
+              </div>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M8 3V7M16 3V7M4 10H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="4" y="5" width="16" height="15" rx="3" stroke="currentColor" stroke-width="1.8"/></svg>
+            </div>
+            <div class="summary-strip live">
+              <div>
+                <strong>4 / 6</strong>
+                <span>county connectors healthy right now</span>
+              </div>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 16L10 11L14 15L20 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 9V15H14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+        </section>
+
+        <div class="action-strip" role="tablist" aria-label="Search filters">
+          <button class="chip active" type="button" data-filter="all">All files</button>
+          <button class="chip" type="button" data-filter="issue">Needs action</button>
+          <button class="chip" type="button" data-filter="due">Due in 72 hours</button>
+          <button class="chip" type="button" data-filter="waiting">Awaiting docs</button>
+          <a class="chip muted-link" href="#priorityQueue">Jump to priority queue</a>
+        </div>
+
+        <section class="kpi-grid" aria-label="Key metrics">
+          <article class="kpi-card primary">
+            <label>Active title searches</label>
+            <strong>14</strong>
+            <span>3 opened today. Count stays visible without making people excavate the screen.</span>
+          </article>
+          <article class="kpi-card pending">
+            <label>Pending closings</label>
+            <strong>7</strong>
+            <span>2 scheduled this week. High urgency stays near the top where sane people put it.</span>
+          </article>
+          <article class="kpi-card issue">
+            <label>Files with title risk</label>
+            <strong>4</strong>
+            <span>1 critical lien. 2 easement conflicts. 1 chain gap.</span>
+          </article>
+          <article class="kpi-card live">
+            <label>Verified on ledger</label>
+            <strong>4</strong>
+            <span>100% visible with timestamps and hashes that do not require extra clicks.</span>
+          </article>
+        </section>
+
+        <section class="dashboard-grid">
+          <div class="stack">
+            <article class="panel" id="priorityQueue">
+              <div class="panel-header">
+                <div class="panel-header-left">
+                  <div class="panel-title-wrap">
+                    <h3>Priority queue</h3>
+                    <p>One-click action lane for the files most likely to blow up your day.</p>
+                  </div>
+                </div>
+                <span class="badge rose">Ranked by urgency</span>
+              </div>
+              <div class="panel-body priority-queue">
+                <div class="queue-card">
+                  <div class="queue-meta">
+                    <label>Close today</label>
+                    <strong>7730 E 86th St · Lien issue blocking close</strong>
+                    <span>Marion County · Buyer: Elliot Warren · Escalate payoff + lien release now.</span>
+                  </div>
+                  <div class="queue-actions">
+                    <button class="mini-btn" type="button">Open file</button>
+                    <button class="mini-btn" type="button">Call party</button>
+                    <button class="mini-btn" type="button">Send update</button>
+                  </div>
+                </div>
+                <div class="queue-card">
+                  <div class="queue-meta">
+                    <label>Due tomorrow</label>
+                    <strong>1102 Ohio St · Exam in progress</strong>
+                    <span>Examiner: D. Rivera · Needs final review before Apr 2 deadline.</span>
+                  </div>
+                  <div class="queue-actions">
+                    <button class="mini-btn" type="button">Review exam</button>
+                    <button class="mini-btn" type="button">Assign follow-up</button>
+                  </div>
+                </div>
+                <div class="queue-card">
+                  <div class="queue-meta">
+                    <label>Waiting on docs</label>
+                    <strong>219 River Rd · Seller docs not received</strong>
+                    <span>Hamilton County · Keep this above the fold so nobody acts surprised later.</span>
+                  </div>
+                  <div class="queue-actions">
+                    <button class="mini-btn" type="button">Request docs</button>
+                    <button class="mini-btn" type="button">View checklist</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div class="panel-header-left">
+                  <div class="panel-title-wrap">
+                    <h3>Active title searches</h3>
+                    <p>Address, examiner, county, status, deadline, and action all visible on one screen.</p>
+                  </div>
+                </div>
+                <span class="badge sky">14 open</span>
+              </div>
+              <div class="panel-body">
+                <div class="title-search-list" id="titleSearchList">
+                  <article class="search-card" data-state="search" data-tags="all">
+                    <div class="search-main">
+                      <strong>4821 Meridian St</strong>
+                      <span>Indianapolis, IN 46208 · Buyer: David Park</span>
+                    </div>
+                    <div class="meta-block"><label>Examiner</label><span>K. Marsh</span></div>
+                    <div class="meta-block"><label>County</label><span>Marion</span></div>
+                    <div><span class="badge sky">Searching</span></div>
+                    <div class="meta-block"><label>Deadline</label><span>Apr 4</span></div>
+                    <div class="card-actions">
+                      <button class="quick-link" type="button">Open</button>
+                    </div>
+                  </article>
+
+                  <article class="search-card" data-state="due" data-tags="all due">
+                    <div class="search-main">
+                      <strong>1102 Ohio St</strong>
+                      <span>Indianapolis, IN 46202 · Buyer: Maria Flores</span>
+                    </div>
+                    <div class="meta-block"><label>Examiner</label><span>D. Rivera</span></div>
+                    <div class="meta-block"><label>County</label><span>Marion</span></div>
+                    <div><span class="badge orange">In exam</span></div>
+                    <div class="meta-block"><label>Deadline</label><span>Apr 2</span></div>
+                    <div class="card-actions">
+                      <button class="quick-link" type="button">Open</button>
+                    </div>
+                  </article>
+
+                  <article class="search-card" data-state="clear" data-tags="all">
+                    <div class="search-main">
+                      <strong>883 Westfield Blvd</strong>
+                      <span>Carmel, IN 46032 · Buyer: James &amp; Sara Cho</span>
+                    </div>
+                    <div class="meta-block"><label>Examiner</label><span>T. Nguyen</span></div>
+                    <div class="meta-block"><label>County</label><span>Hamilton</span></div>
+                    <div><span class="badge sage">Clear</span></div>
+                    <div class="meta-block"><label>Deadline</label><span>Apr 7</span></div>
+                    <div class="card-actions">
+                      <button class="quick-link" type="button">Open</button>
+                    </div>
+                  </article>
+
+                  <article class="search-card" data-state="issue" data-tags="all issue due">
+                    <div class="search-main">
+                      <strong>7730 E 86th St</strong>
+                      <span>Indianapolis, IN 46256 · Buyer: Elliot Warren</span>
+                    </div>
+                    <div class="meta-block"><label>Examiner</label><span>K. Marsh</span></div>
+                    <div class="meta-block"><label>County</label><span>Marion</span></div>
+                    <div><span class="badge rose">Lien found</span></div>
+                    <div class="meta-block"><label>Deadline</label><span>Apr 1</span></div>
+                    <div class="card-actions">
+                      <button class="quick-link" type="button">Resolve</button>
+                    </div>
+                  </article>
+
+                  <article class="search-card" data-state="waiting" data-tags="all waiting">
+                    <div class="search-main">
+                      <strong>219 River Rd</strong>
+                      <span>Noblesville, IN 46060 · Buyer: Ahmed Osei</span>
+                    </div>
+                    <div class="meta-block"><label>Examiner</label><span>D. Rivera</span></div>
+                    <div class="meta-block"><label>County</label><span>Hamilton</span></div>
+                    <div><span class="badge gold">Awaiting docs</span></div>
+                    <div class="meta-block"><label>Deadline</label><span>Apr 9</span></div>
+                    <div class="card-actions">
+                      <button class="quick-link" type="button">Request docs</button>
+                    </div>
+                  </article>
+
+                  <article class="search-card" data-state="search" data-tags="all">
+                    <div class="search-main">
+                      <strong>3015 N Delaware St</strong>
+                      <span>Indianapolis, IN 46205 · New order assigned to T. Nguyen</span>
+                    </div>
+                    <div class="meta-block"><label>Examiner</label><span>T. Nguyen</span></div>
+                    <div class="meta-block"><label>County</label><span>Marion</span></div>
+                    <div><span class="badge sky">Searching</span></div>
+                    <div class="meta-block"><label>Deadline</label><span>Apr 6</span></div>
+                    <div class="card-actions">
+                      <button class="quick-link" type="button">Open</button>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div class="panel-header-left">
+                  <div class="panel-title-wrap">
+                    <h3>Upcoming closings</h3>
+                    <p>Calendar cards stay scannable and call out same-day risk without burying buyer context.</p>
+                  </div>
+                </div>
+                <span class="badge orange">7 pending</span>
+              </div>
+              <div class="panel-body closing-list">
+                <div class="closing-card today">
+                  <div class="closing-date"><span>Apr</span><strong>1</strong></div>
+                  <div class="closing-info">
+                    <strong>7730 E 86th St</strong>
+                    <span>Buyer: Elliot Warren · Title issue active</span>
+                  </div>
+                  <div class="amount">$387K</div>
+                </div>
+                <div class="closing-card">
+                  <div class="closing-date"><span>Apr</span><strong>3</strong></div>
+                  <div class="closing-info">
+                    <strong>1102 Ohio St</strong>
+                    <span>Buyer: Maria Flores</span>
+                  </div>
+                  <div class="amount">$224K</div>
+                </div>
+                <div class="closing-card">
+                  <div class="closing-date"><span>Apr</span><strong>5</strong></div>
+                  <div class="closing-info">
+                    <strong>883 Westfield Blvd</strong>
+                    <span>Buyer: James &amp; Sara Cho</span>
+                  </div>
+                  <div class="amount">$511K</div>
+                </div>
+                <div class="closing-card">
+                  <div class="closing-date"><span>Apr</span><strong>8</strong></div>
+                  <div class="closing-info">
+                    <strong>4821 Meridian St</strong>
+                    <span>Buyer: David Park</span>
+                  </div>
+                  <div class="amount">$298K</div>
+                </div>
+              </div>
+            </article>
+          </div>
+
+          <div class="stack">
+            <article class="panel">
+              <div class="panel-header">
+                <div class="panel-header-left">
+                  <div class="panel-title-wrap">
+                    <h3>County connect</h3>
+                    <p>Health status belongs next to the county name, not somewhere users have to infer it.</p>
+                  </div>
+                </div>
+                <span class="badge rose">2 offline</span>
+              </div>
+              <div class="panel-body county-list">
+                <div class="county-row">
+                  <div class="county-icon ok">✓</div>
+                  <div class="county-meta">
+                    <strong>Marion County</strong>
+                    <span>Recorder · Assessor · Courts</span>
+                  </div>
+                  <div class="county-health">
+                    <div class="progress"><span style="width:96%"></span></div>
+                  </div>
+                  <div class="county-state live">Live</div>
+                </div>
+                <div class="county-row">
+                  <div class="county-icon ok">✓</div>
+                  <div class="county-meta">
+                    <strong>Hamilton County</strong>
+                    <span>Recorder · Assessor · Courts</span>
+                  </div>
+                  <div class="county-health">
+                    <div class="progress"><span style="width:91%"></span></div>
+                  </div>
+                  <div class="county-state live">Live</div>
+                </div>
+                <div class="county-row">
+                  <div class="county-icon warn">!</div>
+                  <div class="county-meta">
+                    <strong>Johnson County</strong>
+                    <span>Recorder</span>
+                  </div>
+                  <div class="county-health">
+                    <div class="progress warn"><span style="width:58%"></span></div>
+                  </div>
+                  <div class="county-state delay">Delayed</div>
+                </div>
+                <div class="county-row">
+                  <div class="county-icon err">×</div>
+                  <div class="county-meta">
+                    <strong>Hendricks County</strong>
+                    <span>Recorder · Courts</span>
+                  </div>
+                  <div class="county-health">
+                    <div class="progress err"><span style="width:12%"></span></div>
+                  </div>
+                  <div class="county-state offline">Offline</div>
+                </div>
+                <div class="county-row">
+                  <div class="county-icon err">×</div>
+                  <div class="county-meta">
+                    <strong>Boone County</strong>
+                    <span>Recorder</span>
+                  </div>
+                  <div class="county-health">
+                    <div class="progress err"><span style="width:10%"></span></div>
+                  </div>
+                  <div class="county-state offline">Offline</div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div class="panel-header-left">
+                  <div class="panel-title-wrap">
+                    <h3>Blockchain ledger</h3>
+                    <p>Hashes, verification status, and timestamps stay visible without opening a secondary screen.</p>
+                  </div>
+                </div>
+                <span class="badge sage">Live</span>
+              </div>
+              <div class="panel-body ledger-list">
+                <div class="ledger-item">
+                  <div class="ledger-icon ok">✓</div>
+                  <div class="ledger-text">
+                    <strong>4821 Meridian St</strong>
+                    <span class="mono">0x4f3a…c91e</span>
+                  </div>
+                  <div class="time-stamp">9:41 AM</div>
+                </div>
+                <div class="ledger-item">
+                  <div class="ledger-icon ok">✓</div>
+                  <div class="ledger-text">
+                    <strong>883 Westfield Blvd</strong>
+                    <span class="mono">0x8b2d…e042</span>
+                  </div>
+                  <div class="time-stamp">9:28 AM</div>
+                </div>
+                <div class="ledger-item">
+                  <div class="ledger-icon warn">!</div>
+                  <div class="ledger-text">
+                    <strong>1102 Ohio St</strong>
+                    <span class="mono">0x1c7f…a304 · pending</span>
+                  </div>
+                  <div class="time-stamp">8:55 AM</div>
+                </div>
+                <div class="ledger-item">
+                  <div class="ledger-icon err">×</div>
+                  <div class="ledger-text">
+                    <strong>7730 E 86th St</strong>
+                    <span class="mono">0x9d01…b77c · lien flagged</span>
+                  </div>
+                  <div class="time-stamp">8:12 AM</div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div class="panel-header-left">
+                  <div class="panel-title-wrap">
+                    <h3>Title risk summary</h3>
+                    <p>Compact counts with visible severity bands. Enough signal, less theater.</p>
+                  </div>
+                </div>
+                <span class="badge rose">1 critical</span>
+              </div>
+              <div class="panel-body risk-list">
+                <div class="risk-row">
+                  <div>
+                    <strong>Unresolved liens</strong>
+                    <span>Blocks funding and closing immediately.</span>
+                  </div>
+                  <div class="risk-track critical"><span style="width:100%"></span></div>
+                  <div>1</div>
+                </div>
+                <div class="risk-row">
+                  <div>
+                    <strong>Easement conflicts</strong>
+                    <span>Needs review before final commitment goes out.</span>
+                  </div>
+                  <div class="risk-track high"><span style="width:66%"></span></div>
+                  <div>2</div>
+                </div>
+                <div class="risk-row">
+                  <div>
+                    <strong>Missing chain of title</strong>
+                    <span>Lower volume, still ugly when ignored.</span>
+                  </div>
+                  <div class="risk-track medium"><span style="width:33%"></span></div>
+                  <div>1</div>
+                </div>
+                <div class="risk-row">
+                  <div>
+                    <strong>Awaiting payoff</strong>
+                    <span>Track closely so it does not become tomorrow’s emergency.</span>
+                  </div>
+                  <div class="risk-track low"><span style="width:66%"></span></div>
+                  <div>2</div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel">
+              <div class="panel-header">
+                <div class="panel-header-left">
+                  <div class="panel-title-wrap">
+                    <h3>Activity feed</h3>
+                    <p>Readable event stream with outcome-first wording.</p>
+                  </div>
+                </div>
+                <span class="badge plum">Live updates</span>
+              </div>
+              <div class="panel-body activity-list">
+                <div class="activity-row">
+                  <div class="activity-dot rose"></div>
+                  <div class="activity-text">
+                    <strong>Lien flagged on 7730 E 86th St</strong>
+                    <span>Marion County portal returned a title defect.</span>
+                  </div>
+                  <div class="time-stamp">9:44a</div>
+                </div>
+                <div class="activity-row">
+                  <div class="activity-dot sage"></div>
+                  <div class="activity-text">
+                    <strong>Chain verified for 4821 Meridian St</strong>
+                    <span>Ledger confirmation completed successfully.</span>
+                  </div>
+                  <div class="time-stamp">9:41a</div>
+                </div>
+                <div class="activity-row">
+                  <div class="activity-dot orange"></div>
+                  <div class="activity-text">
+                    <strong>Hendricks County connection dropped</strong>
+                    <span>Queue any new pulls for retry or manual review.</span>
+                  </div>
+                  <div class="time-stamp">9:18a</div>
+                </div>
+                <div class="activity-row">
+                  <div class="activity-dot sky"></div>
+                  <div class="activity-text">
+                    <strong>New order assigned to T. Nguyen</strong>
+                    <span>3015 N Delaware St entered the title search pipeline.</span>
+                  </div>
+                  <div class="time-stamp">8:52a</div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <footer class="footer-status">
+          <div class="status-pill"><span class="status-dot"></span>Blockchain connected</div>
+          <div class="status-pill"><span class="status-dot"></span>Marion County live</div>
+          <div class="status-pill"><span class="status-dot warn"></span>Johnson County delayed</div>
+          <div class="status-pill"><span class="status-dot off"></span>Hendricks County offline</div>
+          <div class="status-pill"><span class="status-dot off"></span>Boone County offline</div>
+          <div class="status-pill" style="margin-left:auto">Last sync: 9:44 AM · Block #1,847,203</div>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+<script>
+  (function () {
+    const body = document.body;
+    const sidebarToggle = document.getElementById('sidebarToggle');
+    const searchInput = document.getElementById('globalSearch');
+    const filterButtons = Array.from(document.querySelectorAll('[data-filter]'));
+    const cards = Array.from(document.querySelectorAll('.search-card'));
+    const liveClock = document.getElementById('liveClock');
+
+    function toggleSidebar() {
+      body.classList.toggle('sidebar-open');
+    }
+
+    if (sidebarToggle) {
+      sidebarToggle.addEventListener('click', toggleSidebar);
+    }
+
+    document.addEventListener('click', function (event) {
+      if (window.innerWidth > 1120) return;
+      const sidebar = document.querySelector('.sidebar');
+      if (!body.classList.contains('sidebar-open')) return;
+      if (sidebar.contains(event.target) || sidebarToggle.contains(event.target)) return;
+      body.classList.remove('sidebar-open');
+    });
+
+    function applyFilters() {
+      const activeFilter = document.querySelector('.chip.active[data-filter]')?.dataset.filter || 'all';
+      const query = (searchInput?.value || '').trim().toLowerCase();
+
+      cards.forEach((card) => {
+        const matchesFilter = activeFilter === 'all' || (card.dataset.tags || '').split(' ').includes(activeFilter);
+        const matchesQuery = !query || card.textContent.toLowerCase().includes(query);
+        card.hidden = !(matchesFilter && matchesQuery);
+      });
+    }
+
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', function () {
+        filterButtons.forEach((item) => item.classList.remove('active'));
+        button.classList.add('active');
+        applyFilters();
+      });
+    });
+
+    if (searchInput) {
+      searchInput.addEventListener('input', applyFilters);
+    }
+
+    function updateClock() {
+      if (!liveClock) return;
+      const now = new Date();
+      try {
+        liveClock.textContent = new Intl.DateTimeFormat('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit'
+        }).format(now);
+      } catch (error) {
+        liveClock.textContent = now.toLocaleString();
+      }
+    }
+
+    updateClock();
+    window.setInterval(updateClock, 60000);
+    applyFilters();
+  })();
+</script>
+</body>
+</html>
