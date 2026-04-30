@@ -1,121 +1,147 @@
 import { ConvexError, v } from "convex/values"
-import { mutation, query } from "./_generated/server"
-import { authComponent } from "./auth"
-import { requireTenant } from "./lib/tenant"
+import {
+  internalMutation,
+  mutation,
+  query,
+} from "./_generated/server"
+import { components, internal } from "./_generated/api"
+import type { Id } from "./_generated/dataModel"
+import { requireRole, requireTenant } from "./lib/tenant"
+import { recordAudit } from "./lib/audit"
 
-const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
+// ─────────────────────────────────────────────────────────────────────
+// Better Auth trigger handlers (called from `triggers.organization.onCreate`
+// and `triggers.member.onCreate` in convex/auth.ts).
+// ─────────────────────────────────────────────────────────────────────
 
-function audit(metadata: Record<string, unknown> = {}) {
-  return { metadata, occurredAt: Date.now() }
-}
-
-export const create = mutation({
+export const provisionFromBetterAuthOrg = internalMutation({
   args: {
+    betterAuthOrgId: v.string(),
     slug: v.string(),
     legalName: v.string(),
   },
-  handler: async (ctx, { slug, legalName }) => {
-    if (!SLUG_RE.test(slug)) throw new ConvexError("INVALID_SLUG")
-    if (legalName.trim().length < 2) throw new ConvexError("INVALID_LEGAL_NAME")
-
-    const authUser = await authComponent.getAuthUser(ctx)
-
+  handler: async (ctx, { betterAuthOrgId, slug, legalName }) => {
     const existing = await ctx.db
       .query("tenants")
-      .withIndex("by_slug", (q) => q.eq("slug", slug))
+      .withIndex("by_better_auth_org", (q) =>
+        q.eq("betterAuthOrgId", betterAuthOrgId),
+      )
       .unique()
-    if (existing) throw new ConvexError("SLUG_TAKEN")
+    if (existing) return { tenantId: existing._id, alreadyProvisioned: true }
 
-    const now = Date.now()
     const tenantId = await ctx.db.insert("tenants", {
       slug,
       legalName,
       status: "trial",
       plan: "trial",
-      createdAt: now,
+      betterAuthOrgId,
+      createdAt: Date.now(),
     })
-
-    const memberId = await ctx.db.insert("tenantMembers", {
-      tenantId,
-      betterAuthUserId: authUser._id,
-      email: authUser.email,
-      role: "owner",
-      canViewNpi: true,
-      status: "active",
-    })
-
-    const prefs = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_betterAuthUser", (q) =>
-        q.eq("betterAuthUserId", authUser._id),
-      )
-      .unique()
-    if (prefs) {
-      await ctx.db.patch(prefs._id, { activeTenantId: tenantId })
-    } else {
-      await ctx.db.insert("userPreferences", {
-        betterAuthUserId: authUser._id,
-        activeTenantId: tenantId,
-      })
-    }
 
     await ctx.db.insert("auditEvents", {
       tenantId,
-      actorMemberId: memberId,
-      actorType: "user",
+      actorType: "system",
       action: "tenant.created",
       resourceType: "tenant",
       resourceId: tenantId,
-      ...audit({ slug, legalName }),
+      metadata: { slug, legalName, betterAuthOrgId },
+      occurredAt: Date.now(),
     })
 
-    return { tenantId, memberId }
+    // Provision per-tenant CMK so NPI can be issued immediately.
+    await ctx.runMutation(internal.secrets.provisionForTenant, { tenantId })
+
+    return { tenantId, alreadyProvisioned: false }
   },
 })
 
-export const setActive = mutation({
-  args: { tenantId: v.id("tenants") },
-  handler: async (ctx, { tenantId }) => {
-    const authUser = await authComponent.getAuthUser(ctx)
+function mapBetterAuthRole(role: string): "owner" | "admin" | "processor" {
+  if (role === "owner") return "owner"
+  if (role === "admin") return "admin"
+  return "processor"
+}
 
-    const member = await ctx.db
+export const provisionMemberFromBetterAuth = internalMutation({
+  args: {
+    betterAuthOrgId: v.string(),
+    betterAuthUserId: v.string(),
+    betterAuthRole: v.string(),
+  },
+  handler: async (
+    ctx,
+    { betterAuthOrgId, betterAuthUserId, betterAuthRole },
+  ) => {
+    const tenant = await ctx.db
+      .query("tenants")
+      .withIndex("by_better_auth_org", (q) =>
+        q.eq("betterAuthOrgId", betterAuthOrgId),
+      )
+      .unique()
+    if (!tenant) {
+      console.warn(
+        `[authTriggers] member onCreate fired before tenant existed: org=${betterAuthOrgId}`,
+      )
+      return { memberId: null, alreadyProvisioned: false }
+    }
+
+    const existing = await ctx.db
       .query("tenantMembers")
       .withIndex("by_betterAuthUser_tenant", (q) =>
-        q.eq("betterAuthUserId", authUser._id).eq("tenantId", tenantId),
+        q
+          .eq("betterAuthUserId", betterAuthUserId)
+          .eq("tenantId", tenant._id),
       )
       .unique()
-    if (!member || member.status !== "active") {
-      throw new ConvexError("NOT_A_MEMBER")
-    }
+    if (existing) return { memberId: existing._id, alreadyProvisioned: true }
 
-    const prefs = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_betterAuthUser", (q) =>
-        q.eq("betterAuthUserId", authUser._id),
-      )
-      .unique()
-    if (prefs) {
-      await ctx.db.patch(prefs._id, { activeTenantId: tenantId })
-    } else {
-      await ctx.db.insert("userPreferences", {
-        betterAuthUserId: authUser._id,
-        activeTenantId: tenantId,
-      })
-    }
-    return { ok: true }
+    // Best-effort fetch of the Better Auth user to denormalize email.
+    const authUser = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+      model: "user",
+      where: [{ field: "_id", value: betterAuthUserId }],
+    })) as { email?: string } | null
+    const email = authUser?.email ?? `${betterAuthUserId}@unknown.local`
+
+    const role = mapBetterAuthRole(betterAuthRole)
+
+    const memberId = await ctx.db.insert("tenantMembers", {
+      tenantId: tenant._id,
+      betterAuthUserId,
+      email,
+      role,
+      canViewNpi: role === "owner" || role === "admin",
+      status: "active",
+    })
+
+    await ctx.db.insert("auditEvents", {
+      tenantId: tenant._id,
+      actorMemberId: memberId,
+      actorType: "system",
+      action: "member.added",
+      resourceType: "tenant",
+      resourceId: tenant._id,
+      metadata: { betterAuthUserId, role, email },
+      occurredAt: Date.now(),
+    })
+
+    return { memberId, alreadyProvisioned: false }
   },
 })
+
+// ─────────────────────────────────────────────────────────────────────
+// Public queries / mutations
+// ─────────────────────────────────────────────────────────────────────
 
 export const listMine = query({
   args: {},
   handler: async (ctx) => {
-    const authUser = await authComponent.safeGetAuthUser(ctx)
-    if (!authUser) return { memberships: [], activeTenantId: null }
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return { memberships: [], activeTenantId: null }
+    const betterAuthUserId = identity.subject
 
     const memberships = await ctx.db
       .query("tenantMembers")
       .withIndex("by_betterAuthUser", (q) =>
-        q.eq("betterAuthUserId", authUser._id),
+        q.eq("betterAuthUserId", betterAuthUserId),
       )
       .take(50)
 
@@ -129,21 +155,31 @@ export const listMine = query({
               legalName: t.legalName,
               status: t.status,
               role: m.role,
+              betterAuthOrgId: t.betterAuthOrgId,
             }
           : null
       }),
     )
 
-    const prefs = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_betterAuthUser", (q) =>
-        q.eq("betterAuthUserId", authUser._id),
-      )
-      .unique()
+    const session = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+      model: "session",
+      where: [{ field: "userId", value: betterAuthUserId }],
+    })) as { activeOrganizationId?: string | null } | null
+
+    let activeTenantId: Id<"tenants"> | null = null
+    if (session?.activeOrganizationId) {
+      const t = await ctx.db
+        .query("tenants")
+        .withIndex("by_better_auth_org", (q) =>
+          q.eq("betterAuthOrgId", session.activeOrganizationId!),
+        )
+        .unique()
+      activeTenantId = t?._id ?? null
+    }
 
     return {
       memberships: tenants.filter((t): t is NonNullable<typeof t> => !!t),
-      activeTenantId: prefs?.activeTenantId ?? null,
+      activeTenantId,
     }
   },
 })
@@ -162,6 +198,103 @@ export const current = query({
       plan: tenant.plan,
       role: tc.role,
       canViewNpi: tc.canViewNpi,
+      betterAuthOrgId: tenant.betterAuthOrgId,
     }
+  },
+})
+
+// Members panel (admin-only). Lists app-side memberships for the active tenant.
+export const listMembers = query({
+  args: {},
+  handler: async (ctx) => {
+    const tc = await requireTenant(ctx)
+    const members = await ctx.db
+      .query("tenantMembers")
+      .withIndex("by_tenant_email", (q) => q.eq("tenantId", tc.tenantId))
+      .take(200)
+    return members.map((m) => ({
+      _id: m._id,
+      email: m.email,
+      role: m.role,
+      canViewNpi: m.canViewNpi,
+      status: m.status,
+      betterAuthUserId: m.betterAuthUserId,
+    }))
+  },
+})
+
+export const setMemberRole = mutation({
+  args: {
+    memberId: v.id("tenantMembers"),
+    role: v.union(
+      v.literal("owner"),
+      v.literal("admin"),
+      v.literal("processor"),
+      v.literal("closer"),
+      v.literal("reviewer"),
+      v.literal("readonly"),
+    ),
+  },
+  handler: async (ctx, { memberId, role }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, "owner", "admin")
+    const member = await ctx.db.get(memberId)
+    if (!member || member.tenantId !== tc.tenantId) {
+      throw new ConvexError("MEMBER_NOT_FOUND")
+    }
+    await ctx.db.patch(memberId, { role })
+    await recordAudit(ctx, tc, "member.role_changed", "member", memberId, {
+      from: member.role,
+      to: role,
+    })
+    return { ok: true }
+  },
+})
+
+export const setMemberNpiAccess = mutation({
+  args: { memberId: v.id("tenantMembers"), canViewNpi: v.boolean() },
+  handler: async (ctx, { memberId, canViewNpi }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, "owner", "admin")
+    const member = await ctx.db.get(memberId)
+    if (!member || member.tenantId !== tc.tenantId) {
+      throw new ConvexError("MEMBER_NOT_FOUND")
+    }
+    await ctx.db.patch(memberId, { canViewNpi })
+    await recordAudit(ctx, tc, "member.npi_access_changed", "member", memberId, {
+      from: member.canViewNpi,
+      to: canViewNpi,
+    })
+    return { ok: true }
+  },
+})
+
+// Pending invitations from Better Auth (for the admin members panel).
+export const listPendingInvitations = query({
+  args: {},
+  handler: async (ctx) => {
+    const tc = await requireTenant(ctx)
+
+    const page = (await ctx.runQuery(
+      components.betterAuth.adapter.findMany,
+      {
+        model: "invitation",
+        where: [
+          { field: "organizationId", value: tc.betterAuthOrgId },
+        ],
+        paginationOpts: { numItems: 100, cursor: null },
+      },
+    )) as {
+      page: Array<{
+        _id: string
+        email: string | null
+        role: string | null
+        status: string | null
+        expiresAt: number | null
+        createdAt: number | null
+      }>
+    }
+
+    return page.page.filter((i) => i.status === "pending")
   },
 })

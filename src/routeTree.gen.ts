@@ -12,10 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TenantsRouteImport } from './routes/tenants'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SignUpRouteImport } from './routes/sign-up'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as FilesFileIdRouteImport } from './routes/files/$fileId'
+import { Route as AdminRulesRouteImport } from './routes/admin/rules'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const TenantsRoute = TenantsRouteImport.update({
@@ -33,11 +34,6 @@ const SignUpRoute = SignUpRouteImport.update({
   path: '/sign-up',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -48,9 +44,19 @@ const FilesIndexRoute = FilesIndexRouteImport.update({
   path: '/files/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FilesFileIdRoute = FilesFileIdRouteImport.update({
   id: '/files/$fileId',
   path: '/files/$fileId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRulesRoute = AdminRulesRouteImport.update({
+  id: '/admin/rules',
+  path: '/admin/rules',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -61,32 +67,35 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
+  '/admin/': typeof AdminIndexRoute
   '/files/': typeof FilesIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
+  '/admin': typeof AdminIndexRoute
   '/files': typeof FilesIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
+  '/admin/': typeof AdminIndexRoute
   '/files/': typeof FilesIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -94,42 +103,46 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/admin'
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/rules'
     | '/files/$fileId'
+    | '/admin/'
     | '/files/'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/admin'
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/rules'
     | '/files/$fileId'
+    | '/admin'
     | '/files'
     | '/api/auth/$'
   id:
     | '__root__'
     | '/'
-    | '/admin'
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/rules'
     | '/files/$fileId'
+    | '/admin/'
     | '/files/'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
   SignUpRoute: typeof SignUpRoute
   SigninRoute: typeof SigninRoute
   TenantsRoute: typeof TenantsRoute
+  AdminRulesRoute: typeof AdminRulesRoute
   FilesFileIdRoute: typeof FilesFileIdRoute
+  AdminIndexRoute: typeof AdminIndexRoute
   FilesIndexRoute: typeof FilesIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
@@ -157,13 +170,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SignUpRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -178,11 +184,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FilesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/': {
+      id: '/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/files/$fileId': {
       id: '/files/$fileId'
       path: '/files/$fileId'
       fullPath: '/files/$fileId'
       preLoaderRoute: typeof FilesFileIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/rules': {
+      id: '/admin/rules'
+      path: '/admin/rules'
+      fullPath: '/admin/rules'
+      preLoaderRoute: typeof AdminRulesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -197,14 +217,24 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
   SignUpRoute: SignUpRoute,
   SigninRoute: SigninRoute,
   TenantsRoute: TenantsRoute,
+  AdminRulesRoute: AdminRulesRoute,
   FilesFileIdRoute: FilesFileIdRoute,
+  AdminIndexRoute: AdminIndexRoute,
   FilesIndexRoute: FilesIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}

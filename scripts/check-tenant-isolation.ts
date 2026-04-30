@@ -13,10 +13,12 @@ import schema from "../convex/schema"
 // (e.g. states, counties, countyRecordingRules, underwriters) here.
 const GLOBAL_TABLES = new Set<string>([
   "tenants",
-  "userPreferences",
   "states",
   "counties",
   "underwriters",
+  "underwriterEndorsementCodes",
+  "transactionTypes",
+  "countyRecordingRules",
 ])
 
 type IndexInfo = { indexDescriptor: string; fields: string[] }

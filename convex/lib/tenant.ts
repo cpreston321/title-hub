@@ -1,7 +1,13 @@
 import { ConvexError } from "convex/values"
 import type { QueryCtx, MutationCtx } from "../_generated/server"
 import type { Id } from "../_generated/dataModel"
-import { authComponent } from "../auth"
+import { components } from "../_generated/api"
+
+// Resolved auth/tenant context for an authenticated request. Built from:
+//   1. ctx.auth.getUserIdentity()  — verified subject (Better Auth user._id)
+//   2. component session row       — carries activeOrganizationId
+//   3. our app-side tenants row    — joined by betterAuthOrgId
+//   4. our app-side tenantMembers  — role + canViewNpi for the current user
 
 export type Role =
   | "owner"
@@ -15,6 +21,7 @@ export type TenantContext = {
   memberId: Id<"tenantMembers">
   tenantId: Id<"tenants">
   betterAuthUserId: string
+  betterAuthOrgId: string
   role: Role
   canViewNpi: boolean
 }
@@ -22,42 +29,53 @@ export type TenantContext = {
 export async function requireTenant(
   ctx: QueryCtx | MutationCtx,
 ): Promise<TenantContext> {
-  const authUser = await authComponent.getAuthUser(ctx)
-  const betterAuthUserId = authUser._id
+  const identity = await ctx.auth.getUserIdentity()
+  if (!identity) throw new ConvexError("UNAUTHENTICATED")
+  const betterAuthUserId = identity.subject
 
-  const prefs = await ctx.db
-    .query("userPreferences")
-    .withIndex("by_betterAuthUser", (q) =>
-      q.eq("betterAuthUserId", betterAuthUserId),
-    )
-    .unique()
+  // Most-recent active session for this user.
+  const session = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+    model: "session",
+    where: [
+      { field: "userId", value: betterAuthUserId },
+      {
+        field: "expiresAt",
+        operator: "gt",
+        value: new Date().getTime(),
+      },
+    ],
+  })) as { activeOrganizationId?: string | null } | null
 
-  if (!prefs?.activeTenantId) {
+  if (!session?.activeOrganizationId) {
     throw new ConvexError("NO_ACTIVE_TENANT")
   }
+  const betterAuthOrgId = session.activeOrganizationId
 
-  const member = await ctx.db
-    .query("tenantMembers")
-    .withIndex("by_betterAuthUser_tenant", (q) =>
-      q
-        .eq("betterAuthUserId", betterAuthUserId)
-        .eq("tenantId", prefs.activeTenantId!),
+  const tenant = await ctx.db
+    .query("tenants")
+    .withIndex("by_better_auth_org", (q) =>
+      q.eq("betterAuthOrgId", betterAuthOrgId),
     )
     .unique()
-
-  if (!member) throw new ConvexError("NOT_A_MEMBER")
-  if (member.status !== "active") throw new ConvexError("MEMBER_INACTIVE")
-
-  const tenant = await ctx.db.get(member.tenantId)
   if (!tenant) throw new ConvexError("TENANT_NOT_FOUND")
   if (tenant.status !== "active" && tenant.status !== "trial") {
     throw new ConvexError("TENANT_INACTIVE")
   }
 
+  const member = await ctx.db
+    .query("tenantMembers")
+    .withIndex("by_betterAuthUser_tenant", (q) =>
+      q.eq("betterAuthUserId", betterAuthUserId).eq("tenantId", tenant._id),
+    )
+    .unique()
+  if (!member) throw new ConvexError("NOT_A_MEMBER")
+  if (member.status !== "active") throw new ConvexError("MEMBER_INACTIVE")
+
   return {
     memberId: member._id,
     tenantId: member.tenantId,
     betterAuthUserId,
+    betterAuthOrgId,
     role: member.role,
     canViewNpi: member.canViewNpi,
   }

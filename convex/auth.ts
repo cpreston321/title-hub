@@ -1,11 +1,13 @@
-import { betterAuth } from "better-auth/minimal"
+import { betterAuth, type BetterAuthOptions } from "better-auth/minimal"
 import { magicLink } from "better-auth/plugins/magic-link"
+import { organization } from "better-auth/plugins/organization"
 import { createClient, type GenericCtx } from "@convex-dev/better-auth"
 import { convex } from "@convex-dev/better-auth/plugins"
 import authConfig from "./auth.config"
 import { components, internal } from "./_generated/api"
 import { query } from "./_generated/server"
 import type { DataModel } from "./_generated/dataModel"
+import authSchema from "./betterAuth/schema"
 import {
   magicLinkEmail,
   passwordResetEmail,
@@ -13,8 +15,6 @@ import {
 } from "./email"
 
 const siteUrl = process.env.SITE_URL!
-
-export const authComponent = createClient<DataModel>(components.betterAuth)
 
 const env = (key: string) => {
   const v = process.env[key]
@@ -55,14 +55,59 @@ function scheduleEmail(ctx: GenericCtx<DataModel>, args: EmailArgs) {
   ) => Promise<unknown>)(0, internal.email.send, args)
 }
 
-export const createAuth = (ctx: GenericCtx<DataModel>) => {
-  return betterAuth({
+// Provisioning is done in `convex/authTriggers.ts` which dispatches by model.
+// The cast on `authFunctions` breaks a TypeScript inference cycle: createClient
+// needs the FunctionReference shapes to infer the component's type, but those
+// shapes transitively reference back through _generated/api.
+const triggerRefs = internal.authTriggers as unknown as {
+  onCreate: import("convex/server").FunctionReference<
+    "mutation",
+    "internal",
+    { doc: unknown; model: string }
+  >
+  onUpdate: import("convex/server").FunctionReference<
+    "mutation",
+    "internal",
+    { newDoc: unknown; oldDoc: unknown; model: string }
+  >
+  onDelete: import("convex/server").FunctionReference<
+    "mutation",
+    "internal",
+    { doc: unknown; model: string }
+  >
+}
+
+export const authComponent = createClient<DataModel, typeof authSchema>(
+  components.betterAuth,
+  {
+    local: { schema: authSchema },
+    // Presence here gates whether the component fires our authFunctions
+    // callback for that model. Actual provisioning runs in
+    // convex/authTriggers.ts which dispatches by model name.
+    triggers: {
+      organization: { onCreate: async () => {} },
+      member: { onCreate: async () => {} },
+    },
+    authFunctions: triggerRefs,
+  },
+)
+
+export const createAuthOptions = (
+  ctx: GenericCtx<DataModel>,
+): BetterAuthOptions => {
+  return {
     baseURL: siteUrl,
     database: authComponent.adapter(ctx),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
-      sendResetPassword: async ({ user, url }: { user: { email: string }; url: string }) => {
+      sendResetPassword: async ({
+        user,
+        url,
+      }: {
+        user: { email: string }
+        url: string
+      }) => {
         await scheduleEmail(ctx, {
           to: user.email,
           ...passwordResetEmail(url),
@@ -86,6 +131,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     },
     socialProviders: socialProviders(),
     plugins: [
+      organization(),
       magicLink({
         sendMagicLink: async ({ email, url }) => {
           await scheduleEmail(ctx, {
@@ -96,7 +142,11 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       }),
       convex({ authConfig }),
     ],
-  })
+  }
+}
+
+export const createAuth = (ctx: GenericCtx<DataModel>) => {
+  return betterAuth(createAuthOptions(ctx))
 }
 
 export const getCurrentUser = query({

@@ -1,32 +1,36 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test"
-import betterAuthTest from "@convex-dev/better-auth/test"
 import { describe, expect, test } from "vitest"
 import { api } from "./_generated/api"
 import schema from "./schema"
-import { makeBetterAuthUser } from "./lib/test-helpers"
+import {
+  createOrganizationAsUser,
+  makeBetterAuthUser,
+  registerLocalBetterAuth,
+} from "./lib/testHelpers"
 
 const modules = import.meta.glob("./**/*.ts")
+const betterAuthModules = import.meta.glob("./betterAuth/**/*.ts")
 
 async function setup() {
   const t = convexTest(schema, modules)
-  betterAuthTest.register(t)
+  registerLocalBetterAuth(t, betterAuthModules)
   await t.mutation(api.seed.indiana, {})
 
   const alice = await makeBetterAuthUser(t, "alice@a.example", "Alice")
   const bob = await makeBetterAuthUser(t, "bob@b.example", "Bob")
 
-  await alice.asUser.mutation(api.tenants.create, {
+  await createOrganizationAsUser(t, alice.userId, alice.sessionId, {
     slug: "agency-a",
-    legalName: "Agency A LLC",
+    name: "Agency A LLC",
   })
-  await bob.asUser.mutation(api.tenants.create, {
+  await createOrganizationAsUser(t, bob.userId, bob.sessionId, {
     slug: "agency-b",
-    legalName: "Agency B LLC",
+    name: "Agency B LLC",
   })
 
   const counties = await t.run((ctx) =>
-    ctx.db.query("counties").take(20),
+    ctx.db.query("counties").take(200),
   )
   const marion = counties.find((c) => c.fipsCode === "18097")!
 
@@ -118,7 +122,7 @@ describe("Sprint 1 file isolation", () => {
     const aliceEvents = await alice.asUser.query(api.audit.listForFile, {
       fileId: created.fileId,
     })
-    const actions = aliceEvents.map((e) => e.action).sort()
+    const actions = aliceEvents.map((e: { action: string }) => e.action).sort()
     expect(actions).toContain("file.created")
     expect(actions).toContain("file.party_added")
     expect(actions).toContain("document.uploaded")
@@ -130,10 +134,17 @@ describe("Sprint 1 file isolation", () => {
     })
     expect(bobView).toHaveLength(0)
 
-    // And Bob's tenant-wide audit feed only contains his own tenant.created event.
+    // And Bob's tenant-wide audit feed only contains his own tenant lifecycle
+    // events (tenant.created + member.added). It must NOT include any of
+    // Alice's file/party/document events.
     const bobEvents = await bob.asUser.query(api.audit.listForTenant, {})
-    expect(bobEvents).toHaveLength(1)
-    expect(bobEvents[0].action).toBe("tenant.created")
+    const bobActions = bobEvents.map((e: { action: string }) => e.action)
+    expect(bobActions).toEqual(
+      expect.arrayContaining(["tenant.created", "member.added"]),
+    )
+    expect(bobActions).not.toContain("file.created")
+    expect(bobActions).not.toContain("file.party_added")
+    expect(bobActions).not.toContain("document.uploaded")
   })
 
   test("a closer role cannot create a file (FORBIDDEN)", async () => {
