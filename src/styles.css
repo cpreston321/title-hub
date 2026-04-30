@@ -48,39 +48,52 @@
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/*
+ * Title Hub palette — warm cream + plum + gold, derived from data/preview.html.
+ * Semantic tokens map onto shadcn names so all installed shadcn components
+ * (Card, Badge, Sidebar, etc.) inherit the look without per-component overrides.
+ */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
+    --background: #f6f1eb;
+    --foreground: #2e2430;
+    --card: #fffdfa;
+    --card-foreground: #2e2430;
+    --popover: #fffdfa;
+    --popover-foreground: #2e2430;
+    --primary: #593157;          /* plum-800 */
+    --primary-foreground: #fffdfa;
+    --secondary: #f2ebe2;         /* surface-3 */
+    --secondary-foreground: #40233f;
+    --muted: #f9f5ef;             /* surface-2 */
+    --muted-foreground: #6c5f6f;  /* text-soft */
+    --accent: #f2e7f1;            /* plum-100 */
+    --accent-foreground: #40233f; /* plum-900 */
+    --destructive: #b94f58;       /* rose-700 */
+    --border: #e4d7c9;
+    --input: #e4d7c9;
+    --ring: #734070;              /* plum-700 */
+    --chart-1: #593157;
+    --chart-2: #b78625;
+    --chart-3: #c9652e;
+    --chart-4: #3f7c64;
+    --chart-5: #3f668f;
+    --radius: 0.875rem;
+    /* Sidebar: deep plum gradient lives in the component; tokens here keep
+       contrast on whatever surface the sidebar settles into. */
+    --sidebar: #40233f;
+    --sidebar-foreground: #f6e8d9;
+    --sidebar-primary: #b78625;   /* gold-700 */
+    --sidebar-primary-foreground: #40233f;
+    --sidebar-accent: rgba(255, 255, 255, 0.08);
+    --sidebar-accent-foreground: #fffdfa;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+    --sidebar-ring: #f4d48f;
+
+    /* Severity tokens used by reconciliation findings. */
+    --severity-block: #b94f58;
+    --severity-warn: #c9652e;
+    --severity-info: #3f668f;
+    --severity-ok: #3f7c64;
 }
 
 .dark {

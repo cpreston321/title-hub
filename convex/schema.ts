@@ -50,6 +50,8 @@ export const propertyAddress = v.object({
 
 export default defineSchema({
   // ───── Tenancy ────────────────────────────────────────────────
+  // 1:1 with Better Auth `organization` rows in the betterAuth component.
+  // betterAuthOrgId is the join key resolved from session.activeOrganizationId.
   tenants: defineTable({
     slug: v.string(),
     legalName: v.string(),
@@ -57,9 +59,16 @@ export default defineSchema({
     plan: v.string(),
     primaryState: v.optional(v.string()),
     npiKmsKeyArn: v.optional(v.string()),
+    betterAuthOrgId: v.string(),
     createdAt: v.number(),
-  }).index("by_slug", ["slug"]),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_better_auth_org", ["betterAuthOrgId"]),
 
+  // App-side membership: role + canViewNpi flags. Better Auth's `member` table
+  // is the source of truth for org membership; tenantMembers carries the
+  // app-specific role enum and NPI gating that BA's "owner|admin|member"
+  // doesn't express.
   tenantMembers: defineTable({
     tenantId: v.id("tenants"),
     betterAuthUserId: v.string(),
@@ -72,11 +81,6 @@ export default defineSchema({
     .index("by_tenant_email", ["tenantId", "email"])
     .index("by_betterAuthUser", ["betterAuthUserId"])
     .index("by_betterAuthUser_tenant", ["betterAuthUserId", "tenantId"]),
-
-  userPreferences: defineTable({
-    betterAuthUserId: v.string(),
-    activeTenantId: v.optional(v.id("tenants")),
-  }).index("by_betterAuthUser", ["betterAuthUserId"]),
 
   apiKeys: defineTable({
     tenantId: v.id("tenants"),
@@ -125,6 +129,55 @@ export default defineSchema({
     code: v.string(),
     name: v.string(),
   }).index("by_code", ["code"]),
+
+  underwriterEndorsementCodes: defineTable({
+    underwriterId: v.id("underwriters"),
+    stateCode: v.string(),
+    endorsementCode: v.string(),
+    description: v.string(),
+    premiumRule: v.any(),
+  }).index("by_underwriter_state", ["underwriterId", "stateCode"]),
+
+  transactionTypes: defineTable({
+    code: v.string(),
+    name: v.string(),
+    requiredDocs: v.array(v.string()),
+  }).index("by_code", ["code"]),
+
+  countyRecordingRules: defineTable({
+    countyId: v.id("counties"),
+    docType: v.string(),
+    rules: v.object({
+      pageSize: v.optional(v.string()),
+      margins: v.optional(
+        v.object({
+          top: v.number(),
+          bottom: v.number(),
+          left: v.number(),
+          right: v.number(),
+        }),
+      ),
+      requiredExhibits: v.array(v.string()),
+      feeSchedule: v.any(),
+      signaturePageRequirements: v.any(),
+      notaryRequirements: v.any(),
+    }),
+    effectiveFrom: v.number(),
+    effectiveTo: v.optional(v.number()),
+    version: v.number(),
+    authoredByMemberId: v.optional(v.id("tenantMembers")),
+    createdAt: v.number(),
+  })
+    .index("by_county_doctype_effective", [
+      "countyId",
+      "docType",
+      "effectiveFrom",
+    ])
+    .index("by_county_doctype_version", [
+      "countyId",
+      "docType",
+      "version",
+    ]),
 
   // ───── Sprint 1: files / parties / documents ──────────────────
   files: defineTable({
@@ -190,4 +243,116 @@ export default defineSchema({
   })
     .index("by_tenant_file", ["tenantId", "fileId"])
     .index("by_tenant_uploadedAt", ["tenantId", "uploadedAt"]),
+
+  // ───── Sprint 4: extraction + reconciliation ──────────────────
+  documentExtractions: defineTable({
+    tenantId: v.id("tenants"),
+    fileId: v.id("files"),
+    documentId: v.id("documents"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+    ),
+    payload: v.optional(v.any()),
+    errorMessage: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    source: v.union(v.literal("claude"), v.literal("mock")),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_tenant_file", ["tenantId", "fileId"])
+    .index("by_tenant_document", ["tenantId", "documentId"]),
+
+  reconciliationFindings: defineTable({
+    tenantId: v.id("tenants"),
+    fileId: v.id("files"),
+    findingType: v.string(),
+    severity: v.union(
+      v.literal("info"),
+      v.literal("warn"),
+      v.literal("block"),
+    ),
+    message: v.string(),
+    involvedDocumentIds: v.array(v.id("documents")),
+    involvedFields: v.array(v.string()),
+    rawDetail: v.any(),
+    status: v.union(
+      v.literal("open"),
+      v.literal("acknowledged"),
+      v.literal("resolved"),
+      v.literal("dismissed"),
+    ),
+    resolvedByMemberId: v.optional(v.id("tenantMembers")),
+    resolvedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_tenant_file", ["tenantId", "fileId"])
+    .index("by_tenant_file_status", ["tenantId", "fileId", "status"])
+    .index("by_tenant_status", ["tenantId", "status"]),
+
+  webhookEndpoints: defineTable({
+    tenantId: v.id("tenants"),
+    url: v.string(),
+    secret: v.string(),
+    events: v.array(v.string()),
+    enabled: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_tenant", ["tenantId"]),
+
+  webhookDeliveries: defineTable({
+    tenantId: v.id("tenants"),
+    endpointId: v.id("webhookEndpoints"),
+    event: v.string(),
+    payload: v.any(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+    ),
+    attemptCount: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_tenant_status", ["tenantId", "status"])
+    .index("by_tenant_endpoint", ["tenantId", "endpointId"]),
+
+  // ───── Sprint 2: NPI tokenization ─────────────────────────────
+  npiSecrets: defineTable({
+    tenantId: v.id("tenants"),
+    token: v.string(),                  // npi_tok_...
+    ciphertext: v.bytes(),
+    iv: v.bytes(),
+    keyRef: v.string(),                 // KMS ARN, or "mock:<keyId>" for dev
+    fieldKind: v.union(
+      v.literal("ssn"),
+      v.literal("ein"),
+      v.literal("account"),
+      v.literal("dob"),
+    ),
+    erased: v.optional(v.boolean()),
+    createdAt: v.number(),
+  })
+    .index("by_tenant_token", ["tenantId", "token"])
+    .index("by_tenant_createdAt", ["tenantId", "createdAt"]),
+
+  tenantCryptoKeys: defineTable({
+    tenantId: v.id("tenants"),
+    keyRef: v.string(),                 // matches npiSecrets.keyRef
+    provider: v.union(
+      v.literal("mock"),
+      v.literal("aws-kms"),
+    ),
+    rawKey: v.optional(v.bytes()),      // mock-only; for aws-kms this is null
+    status: v.union(
+      v.literal("active"),
+      v.literal("destroyed"),
+    ),
+    createdAt: v.number(),
+    destroyedAt: v.optional(v.number()),
+  })
+    .index("by_tenant_active", ["tenantId", "status"])
+    .index("by_tenant_keyRef", ["tenantId", "keyRef"]),
 })

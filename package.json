@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 3000",
+    "dev": "convex dev --start 'vite dev --port 3000 --host'",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -14,6 +14,7 @@
     "check": "bun run typecheck && bun run check:isolation && bun run test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.91.1",
     "@convex-dev/better-auth": "^0.12.1",
     "@convex-dev/react-query": "^0.1.0",
     "@fontsource-variable/inter": "^5.2.8",

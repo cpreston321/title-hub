@@ -2,7 +2,17 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router"
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { AppShell } from "@/components/app-shell"
 import { api } from "../../../convex/_generated/api"
 import type { Id } from "../../../convex/_generated/dataModel"
 
@@ -33,19 +43,28 @@ function FilesListPage() {
     const msg = current.error.message
     if (/NO_ACTIVE_TENANT|NOT_A_MEMBER|TENANT_NOT_FOUND/.test(msg)) {
       return (
-        <div className="flex min-h-svh flex-col items-center justify-center gap-3 p-6">
-          <p>You don&apos;t have an active organization yet.</p>
-          <Link to="/tenants" className="underline">
-            Choose or create one
-          </Link>
-        </div>
+        <AppShell isAuthenticated title="Files">
+          <Card className="mx-auto max-w-xl">
+            <CardHeader>
+              <CardTitle>No active organization</CardTitle>
+              <CardDescription>
+                You need to choose or create one before opening files.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild>
+                <Link to="/tenants">Go to organizations</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </AppShell>
       )
     }
-    return <div className="p-6 text-sm text-red-600">Error: {msg}</div>
-  }
-
-  if (current.isLoading || list.isLoading) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+    return (
+      <AppShell isAuthenticated title="Files">
+        <p className="text-destructive text-sm">Error: {msg}</p>
+      </AppShell>
+    )
   }
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -80,96 +99,124 @@ function FilesListPage() {
   const countyOptions = counties.data ?? []
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 p-6">
-      <header className="flex items-baseline justify-between">
-        <div>
-          <div className="text-muted-foreground text-xs uppercase tracking-wide">
-            {current.data?.legalName} · {current.data?.role}
-          </div>
-          <h1 className="text-xl font-semibold">Files</h1>
-        </div>
-        <div className="flex gap-2">
+    <AppShell
+      isAuthenticated
+      title="Files"
+      subtitle={
+        current.data
+          ? `${current.data.legalName} · ${current.data.role}`
+          : undefined
+      }
+      actions={
+        <>
           {countyOptions.length === 0 && (
-            <Button variant="outline" onClick={seedIfEmpty}>
+            <Button variant="outline" size="sm" onClick={seedIfEmpty}>
               Seed Indiana counties
             </Button>
           )}
-          <Button onClick={() => setShowForm(!showForm)}>
+          <Button onClick={() => setShowForm((s) => !s)}>
             {showForm ? "Cancel" : "New file"}
           </Button>
-        </div>
-      </header>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {showForm && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Create a file</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={onSubmit} className="flex flex-col gap-3">
+                <Input
+                  placeholder="File number (e.g. QT-2026-0001)"
+                  value={fileNumber}
+                  onChange={(e) => setFileNumber(e.target.value)}
+                  required
+                />
+                <select
+                  className="border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs"
+                  value={countyId}
+                  onChange={(e) => setCountyId(e.target.value as Id<"counties">)}
+                  required
+                >
+                  <option value="">Select county...</option>
+                  {countyOptions.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.name} County, {c.stateCode}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs"
+                  value={transactionType}
+                  onChange={(e) => setTransactionType(e.target.value)}
+                >
+                  <option value="purchase">Purchase</option>
+                  <option value="refi">Refinance</option>
+                  <option value="commercial">Commercial</option>
+                  <option value="reo">REO</option>
+                </select>
+                {error && (
+                  <p className="text-destructive text-sm">{error}</p>
+                )}
+                <Button type="submit" disabled={pending}>
+                  {pending ? "Creating..." : "Create file"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        )}
 
-      {showForm && (
-        <form
-          onSubmit={onSubmit}
-          className="flex flex-col gap-2 rounded-md border p-4"
-        >
-          <input
-            className="rounded border px-3 py-2 text-sm"
-            placeholder="File number (e.g. QT-2026-0001)"
-            value={fileNumber}
-            onChange={(e) => setFileNumber(e.target.value)}
-            required
-          />
-          <select
-            className="rounded border px-3 py-2 text-sm"
-            value={countyId}
-            onChange={(e) => setCountyId(e.target.value as Id<"counties">)}
-            required
-          >
-            <option value="">Select county...</option>
-            {countyOptions.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.name} County, {c.stateCode}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded border px-3 py-2 text-sm"
-            value={transactionType}
-            onChange={(e) => setTransactionType(e.target.value)}
-          >
-            <option value="purchase">Purchase</option>
-            <option value="refi">Refinance</option>
-            <option value="commercial">Commercial</option>
-            <option value="reo">REO</option>
-          </select>
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          <Button type="submit" disabled={pending}>
-            {pending ? "Creating..." : "Create file"}
-          </Button>
-        </form>
-      )}
-
-      {files.length === 0 ? (
-        <div className="rounded-md border p-6 text-sm text-muted-foreground">
-          No files yet.
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {files.map((f) => (
-            <li key={f._id} className="rounded-md border p-3">
-              <Link
-                to="/files/$fileId"
-                params={{ fileId: f._id }}
-                className="flex items-center justify-between gap-3"
-              >
-                <div>
-                  <div className="font-medium">{f.fileNumber}</div>
-                  <div className="text-muted-foreground text-xs">
-                    {f.transactionType} · {f.stateCode} ·{" "}
-                    {new Date(f.openedAt).toLocaleDateString()}
+        {list.isLoading ? (
+          <p className="text-muted-foreground text-sm">Loading...</p>
+        ) : files.length === 0 ? (
+          <Card>
+            <CardContent className="text-muted-foreground py-12 text-center text-sm">
+              No files yet. Click <strong>New file</strong> to create one.
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Open files</CardTitle>
+              <CardDescription>
+                Click a row to open the file detail.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {files.map((f) => (
+                <Link
+                  key={f._id}
+                  to="/files/$fileId"
+                  params={{ fileId: f._id }}
+                  className="hover:bg-muted/60 flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2 text-sm transition"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{f.fileNumber}</div>
+                    <div className="text-muted-foreground text-xs">
+                      {f.transactionType} · {f.stateCode} · opened{" "}
+                      {new Date(f.openedAt).toLocaleDateString()}
+                    </div>
                   </div>
-                </div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  {f.status}
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+                  <Badge
+                    variant={
+                      f.status === "opened" || f.status === "in_exam"
+                        ? "secondary"
+                        : f.status === "cancelled"
+                          ? "destructive"
+                          : "default"
+                    }
+                    className="text-[10px] uppercase tracking-wide"
+                  >
+                    {f.status}
+                  </Badge>
+                </Link>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </AppShell>
   )
 }
