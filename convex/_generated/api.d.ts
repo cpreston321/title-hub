@@ -24,6 +24,7 @@ import type * as lib_vesting from "../lib/vesting.js";
 import type * as parties from "../parties.js";
 import type * as reconciliation from "../reconciliation.js";
 import type * as rules from "../rules.js";
+import type * as search from "../search.js";
 import type * as secrets from "../secrets.js";
 import type * as seed from "../seed.js";
 import type * as tenants from "../tenants.js";
@@ -53,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   parties: typeof parties;
   reconciliation: typeof reconciliation;
   rules: typeof rules;
+  search: typeof search;
   secrets: typeof secrets;
   seed: typeof seed;
   tenants: typeof tenants;

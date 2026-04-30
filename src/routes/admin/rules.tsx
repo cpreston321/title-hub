@@ -10,7 +10,17 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { AppShell } from "@/components/app-shell"
+import { CountyCombobox } from "@/components/county-combobox"
 import { api } from "../../../convex/_generated/api"
 import type { Id } from "../../../convex/_generated/dataModel"
 
@@ -31,6 +41,9 @@ const DOC_TYPES = [
   "deed_of_trust",
 ] as const
 type DocType = (typeof DOC_TYPES)[number]
+
+const formatDocType = (s: string) =>
+  s.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
 
 function RulesAdminPage() {
   const current = useQuery(convexQuery(api.tenants.current, {}))
@@ -113,18 +126,12 @@ function RulesAdminPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <select
+            <CountyCombobox
+              counties={countyList}
               value={countyId}
-              onChange={(e) => setCountyId(e.target.value as Id<"counties">)}
-              className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-            >
-              <option value="">Select a county...</option>
-              {countyList.map((c) => (
-                <option key={c._id} value={c._id}>
-                  {c.name} County, {c.stateCode}
-                </option>
-              ))}
-            </select>
+              onChange={setCountyId}
+              placeholder="Select a county..."
+            />
           </CardContent>
         </Card>
 
@@ -169,17 +176,21 @@ function CountyRulesPanel({
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <Select
             value={docType}
-            onChange={(e) => setDocType(e.target.value as DocType)}
-            className="border-input bg-background h-8 rounded-md border px-2 text-xs"
+            onValueChange={(v) => setDocType(v as DocType)}
           >
-            {DOC_TYPES.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger size="sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DOC_TYPES.map((d) => (
+                <SelectItem key={d} value={d}>
+                  {formatDocType(d)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {authoringMemberRole === "owner" && (
             <Button onClick={() => setShowForm(!showForm)}>
               {showForm ? "Cancel" : "Propose new version"}
@@ -325,24 +336,28 @@ function PublishRuleForm({
       className="grid gap-2 rounded-md border p-3 text-sm"
     >
       <div className="grid grid-cols-2 gap-2">
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs">Page size</span>
-          <input
-            className="rounded border px-2 py-1 text-sm"
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="rule-page-size" className="text-muted-foreground text-xs">
+            Page size
+          </Label>
+          <Input
+            id="rule-page-size"
             value={pageSize}
             onChange={(e) => setPageSize(e.target.value)}
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-muted-foreground text-xs">Effective date</span>
-          <input
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="rule-effective-date" className="text-muted-foreground text-xs">
+            Effective date
+          </Label>
+          <Input
+            id="rule-effective-date"
             type="date"
-            className="rounded border px-2 py-1 text-sm"
             value={effectiveDate}
             onChange={(e) => setEffectiveDate(e.target.value)}
             required
           />
-        </label>
+        </div>
       </div>
 
       <fieldset className="grid grid-cols-4 gap-2 rounded border p-2">
@@ -361,16 +376,16 @@ function PublishRuleForm({
         />
       </fieldset>
 
-      <label className="flex flex-col gap-1">
-        <span className="text-muted-foreground text-xs">
+      <div className="flex flex-col gap-1">
+        <Label htmlFor="rule-exhibits" className="text-muted-foreground text-xs">
           Required exhibits (comma separated)
-        </span>
-        <input
-          className="rounded border px-2 py-1 text-sm"
+        </Label>
+        <Input
+          id="rule-exhibits"
           value={exhibits}
           onChange={(e) => setExhibits(e.target.value)}
         />
-      </label>
+      </div>
 
       <fieldset className="grid grid-cols-3 gap-2 rounded border p-2">
         <legend className="text-muted-foreground text-xs">
@@ -411,17 +426,20 @@ function NumberCell({
   value: number
   onChange: (n: number) => void
 }) {
+  const id = `numcell-${label.replace(/\s+/g, "-")}`
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-muted-foreground text-xs">{label}</span>
-      <input
+    <div className="flex flex-col gap-1">
+      <Label htmlFor={id} className="text-muted-foreground text-xs">
+        {label}
+      </Label>
+      <Input
+        id={id}
         type="number"
         step="0.5"
         min={0}
-        className="rounded border px-2 py-1 text-sm"
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
       />
-    </label>
+    </div>
   )
 }

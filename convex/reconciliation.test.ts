@@ -387,6 +387,171 @@ describe("Sprint 4 reconciliation engine", () => {
     expect(joint!.severity).toBe("warn")
   })
 
+  test("resolveWith records chosen document + value and survives re-reconcile", async () => {
+    const { t, alice, fileId } = await setup()
+    const paDocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    const c1DocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      C1_PAYLOAD,
+    )
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const priceFinding = findings.find(
+      (f: { findingType: string }) => f.findingType === "price_amended",
+    )!
+    expect(priceFinding).toBeDefined()
+    expect(priceFinding.involvedDocumentIds).toEqual(
+      expect.arrayContaining([paDocId, c1DocId]),
+    )
+
+    await alice.asUser.mutation(api.reconciliation.resolveWith, {
+      findingId: priceFinding._id,
+      documentId: c1DocId,
+      value: 233600,
+    })
+
+    const afterResolve = await alice.asUser.query(
+      api.reconciliation.listForFile,
+      { fileId },
+    )
+    const resolved = afterResolve.find(
+      (f: { _id: string }) => f._id === priceFinding._id,
+    )!
+    expect(resolved.status).toBe("resolved")
+    expect(resolved.resolvedDocumentId).toBe(c1DocId)
+    expect(resolved.resolvedValue).toBe(233600)
+    expect(resolved.resolvedByMemberId).toBeDefined()
+    expect(resolved.resolvedAt).toBeDefined()
+
+    // Re-reconcile: open findings get wiped, the resolved decision survives.
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const afterRerun = await alice.asUser.query(
+      api.reconciliation.listForFile,
+      { fileId },
+    )
+    const stillResolved = afterRerun.find(
+      (f: { _id: string }) => f._id === priceFinding._id,
+    )!
+    expect(stillResolved.status).toBe("resolved")
+    expect(stillResolved.resolvedDocumentId).toBe(c1DocId)
+    expect(stillResolved.resolvedValue).toBe(233600)
+  })
+
+  test("resolveWith rejects a document that wasn't involved in the finding", async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      C1_PAYLOAD,
+    )
+
+    // Upload a third unrelated document not cited by the price-amended finding.
+    const otherDocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "other",
+      "Random doc",
+      {
+        documentKind: "other",
+        parties: [],
+        property: null,
+        financial: null,
+        dates: null,
+        titleCompany: null,
+        contingencies: [],
+        amendments: [],
+        notes: [],
+      },
+    )
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const priceFinding = findings.find(
+      (f: { findingType: string }) => f.findingType === "price_amended",
+    )!
+
+    await expect(
+      alice.asUser.mutation(api.reconciliation.resolveWith, {
+        findingId: priceFinding._id,
+        documentId: otherDocId,
+        value: 0,
+      }),
+    ).rejects.toThrow(/DOCUMENT_NOT_INVOLVED/)
+  })
+
+  test("resolveWith requires editor role", async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    const c1DocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      C1_PAYLOAD,
+    )
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const priceFinding = findings.find(
+      (f: { findingType: string }) => f.findingType === "price_amended",
+    )!
+
+    await t.run(async (ctx) => {
+      const m = await ctx.db
+        .query("tenantMembers")
+        .withIndex("by_betterAuthUser", (q) =>
+          q.eq("betterAuthUserId", alice.userId),
+        )
+        .unique()
+      if (m) await ctx.db.patch(m._id, { role: "closer" })
+    })
+
+    await expect(
+      alice.asUser.mutation(api.reconciliation.resolveWith, {
+        findingId: priceFinding._id,
+        documentId: c1DocId,
+        value: 233600,
+      }),
+    ).rejects.toThrow(/FORBIDDEN/)
+  })
+
   test("non-editor cannot run reconciliation (FORBIDDEN)", async () => {
     const { t, alice, fileId } = await setup()
     await t.run(async (ctx) => {

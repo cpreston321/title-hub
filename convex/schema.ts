@@ -197,6 +197,9 @@ export default defineSchema({
     status: fileStatus,
     propertyApn: v.optional(v.string()),
     propertyAddress: v.optional(propertyAddress),
+    // Denormalized full-text blob: fileNumber + transactionType + APN + address + county.
+    // Populated by `files.create` and the `search.backfillFileSearchText` mutation.
+    searchText: v.optional(v.string()),
     openedAt: v.number(),
     targetCloseDate: v.optional(v.number()),
     closedAt: v.optional(v.number()),
@@ -204,7 +207,11 @@ export default defineSchema({
     .index("by_tenant_filenumber", ["tenantId", "fileNumber"])
     .index("by_tenant_status", ["tenantId", "status"])
     .index("by_tenant_county", ["tenantId", "countyId"])
-    .index("by_tenant_openedAt", ["tenantId", "openedAt"]),
+    .index("by_tenant_openedAt", ["tenantId", "openedAt"])
+    .searchIndex("search_text", {
+      searchField: "searchText",
+      filterFields: ["tenantId"],
+    }),
 
   parties: defineTable({
     tenantId: v.id("tenants"),
@@ -214,7 +221,12 @@ export default defineSchema({
     formationState: v.optional(v.string()),
     entitySubtype: v.optional(v.string()),
     einOrSsnToken: v.optional(v.string()),
-  }).index("by_tenant_legalname", ["tenantId", "legalName"]),
+  })
+    .index("by_tenant_legalname", ["tenantId", "legalName"])
+    .searchIndex("search_legalname", {
+      searchField: "legalName",
+      filterFields: ["tenantId"],
+    }),
 
   fileParties: defineTable({
     tenantId: v.id("tenants"),
@@ -286,11 +298,21 @@ export default defineSchema({
     ),
     resolvedByMemberId: v.optional(v.id("tenantMembers")),
     resolvedAt: v.optional(v.number()),
+    // When a processor closes a mismatch by picking which document is
+    // authoritative, we record the chosen document and the value taken from it.
+    // resolvedValue is a free-form snapshot (price, name string, etc.) — the
+    // exact shape varies by findingType.
+    resolvedDocumentId: v.optional(v.id("documents")),
+    resolvedValue: v.optional(v.any()),
     createdAt: v.number(),
   })
     .index("by_tenant_file", ["tenantId", "fileId"])
     .index("by_tenant_file_status", ["tenantId", "fileId", "status"])
-    .index("by_tenant_status", ["tenantId", "status"]),
+    .index("by_tenant_status", ["tenantId", "status"])
+    .searchIndex("search_message", {
+      searchField: "message",
+      filterFields: ["tenantId"],
+    }),
 
   webhookEndpoints: defineTable({
     tenantId: v.id("tenants"),

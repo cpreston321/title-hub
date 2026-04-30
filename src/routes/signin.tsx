@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { authClient } from "@/lib/auth-client"
 
 type SignInSearch = { mode?: "sign-in" | "sign-up" }
@@ -94,24 +95,21 @@ function SignInPage() {
         </h1>
 
         {mode === "sign-up" && (
-          <input
-            className="rounded border px-3 py-2 text-sm"
+          <Input
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
           />
         )}
-        <input
-          className="rounded border px-3 py-2 text-sm"
+        <Input
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <input
-          className="rounded border px-3 py-2 text-sm"
+        <Input
           type="password"
           placeholder="Password"
           value={password}
@@ -165,9 +163,11 @@ function SignInPage() {
           Continue with Microsoft
         </Button>
 
-        <button
+        <Button
           type="button"
-          className="text-xs text-muted-foreground underline"
+          variant="link"
+          size="sm"
+          className="text-muted-foreground"
           onClick={() =>
             setMode(mode === "sign-in" ? "sign-up" : "sign-in")
           }
@@ -175,7 +175,7 @@ function SignInPage() {
           {mode === "sign-in"
             ? "Need an account? Sign up"
             : "Already have an account? Sign in"}
-        </button>
+        </Button>
 
         <Link to="/" className="text-xs text-muted-foreground">
           Back home

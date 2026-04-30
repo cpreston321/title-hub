@@ -10,7 +10,16 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { AppShell } from "@/components/app-shell"
 import { authClient } from "@/lib/auth-client"
 import { api } from "../../../convex/_generated/api"
@@ -159,12 +168,12 @@ function MembersPanel() {
                   <div className="text-muted-foreground text-xs">{m.status}</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <select
+                  <Select
                     value={m.role}
-                    onChange={(e) =>
+                    onValueChange={(v) =>
                       onRoleChange(
                         m._id as Id<"tenantMembers">,
-                        e.target.value as
+                        v as
                           | "owner"
                           | "admin"
                           | "processor"
@@ -173,28 +182,35 @@ function MembersPanel() {
                           | "readonly",
                       )
                     }
-                    className="border-input bg-background h-8 rounded-md border px-2 text-xs"
                   >
-                    <option value="owner">Owner</option>
-                    <option value="admin">Admin</option>
-                    <option value="processor">Processor</option>
-                    <option value="closer">Closer</option>
-                    <option value="reviewer">Reviewer</option>
-                    <option value="readonly">Read-only</option>
-                  </select>
-                  <label className="text-muted-foreground flex items-center gap-1 text-xs">
-                    <input
-                      type="checkbox"
+                    <SelectTrigger size="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="owner">Owner</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="processor">Processor</SelectItem>
+                      <SelectItem value="closer">Closer</SelectItem>
+                      <SelectItem value="reviewer">Reviewer</SelectItem>
+                      <SelectItem value="readonly">Read-only</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Label
+                    htmlFor={`npi-${m._id}`}
+                    className="text-muted-foreground gap-1.5 text-xs font-normal"
+                  >
+                    <Checkbox
+                      id={`npi-${m._id}`}
                       checked={m.canViewNpi}
-                      onChange={(e) =>
+                      onCheckedChange={(checked) =>
                         onNpiChange(
                           m._id as Id<"tenantMembers">,
-                          e.target.checked,
+                          checked === true,
                         )
                       }
                     />
                     NPI
-                  </label>
+                  </Label>
                 </div>
               </li>
             ))}
@@ -254,17 +270,21 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
             onChange={(e) => setEmail(e.target.value)}
             className="max-w-xs"
           />
-          <select
+          <Select
             value={role}
-            onChange={(e) =>
-              setRole(e.target.value as "owner" | "admin" | "member")
+            onValueChange={(v) =>
+              setRole(v as "owner" | "admin" | "member")
             }
-            className="border-input bg-background h-9 rounded-md border px-3 text-sm"
           >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-            <option value="owner">Owner</option>
-          </select>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="member">Member</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
+              <SelectItem value="owner">Owner</SelectItem>
+            </SelectContent>
+          </Select>
           <Button type="submit" disabled={pending}>
             {pending ? "Sending..." : "Invite"}
           </Button>

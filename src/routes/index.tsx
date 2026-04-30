@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useRouter } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { convexQuery } from "@convex-dev/react-query"
 import {
@@ -17,8 +17,7 @@ import { api } from "../../convex/_generated/api"
 export const Route = createFileRoute("/")({ component: App })
 
 function App() {
-  const router = useRouter()
-  const { isAuthenticated } = router.options.context as {
+  const { isAuthenticated } = Route.useRouteContext() as {
     isAuthenticated?: boolean
   }
 

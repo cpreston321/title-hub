@@ -8,6 +8,37 @@ import { fileStatus, partyType, propertyAddress } from "./schema"
 
 const editorRoles = ["owner", "admin", "processor"] as const
 
+export function buildFileSearchText(
+  file: {
+    fileNumber: string
+    transactionType: string
+    propertyApn?: string
+    propertyAddress?: {
+      line1: string
+      line2?: string
+      city: string
+      state: string
+      zip: string
+    }
+  },
+  countyName?: string | null,
+): string {
+  const addr = file.propertyAddress
+  return [
+    file.fileNumber,
+    file.transactionType,
+    file.propertyApn,
+    addr?.line1,
+    addr?.line2,
+    addr?.city,
+    addr?.state,
+    addr?.zip,
+    countyName,
+  ]
+    .filter((s): s is string => typeof s === "string" && s.length > 0)
+    .join(" ")
+}
+
 async function loadFile(
   ctx: QueryCtx,
   fileId: Id<"files">,
@@ -45,6 +76,16 @@ export const create = mutation({
       .unique()
     if (dup) throw new ConvexError("FILE_NUMBER_TAKEN")
 
+    const searchText = buildFileSearchText(
+      {
+        fileNumber: args.fileNumber,
+        transactionType: args.transactionType,
+        propertyApn: args.propertyApn,
+        propertyAddress: args.propertyAddress,
+      },
+      county.name,
+    )
+
     const fileId = await ctx.db.insert("files", {
       tenantId: tc.tenantId,
       fileNumber: args.fileNumber,
@@ -54,6 +95,7 @@ export const create = mutation({
       status: "opened",
       propertyAddress: args.propertyAddress,
       propertyApn: args.propertyApn,
+      searchText,
       openedAt: Date.now(),
       targetCloseDate: args.targetCloseDate,
     })
@@ -151,6 +193,65 @@ export const setStatus = mutation({
     await recordAudit(ctx, tc, "file.status_changed", "file", fileId, {
       from: file.status,
       to: status,
+    })
+    return { ok: true }
+  },
+})
+
+export const update = mutation({
+  args: {
+    fileId: v.id("files"),
+    transactionType: v.optional(v.string()),
+    propertyApn: v.optional(v.string()),
+    propertyAddress: v.optional(propertyAddress),
+    targetCloseDate: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+    const file = await loadFile(ctx, args.fileId, tc.tenantId)
+
+    const patch: {
+      transactionType?: string
+      propertyApn?: string
+      propertyAddress?: typeof args.propertyAddress
+      targetCloseDate?: number
+      searchText?: string
+    } = {}
+    if (args.transactionType !== undefined)
+      patch.transactionType = args.transactionType
+    if (args.propertyApn !== undefined) patch.propertyApn = args.propertyApn
+    if (args.propertyAddress !== undefined)
+      patch.propertyAddress = args.propertyAddress
+    if (args.targetCloseDate !== undefined)
+      patch.targetCloseDate = args.targetCloseDate
+
+    const searchableChanged =
+      patch.transactionType !== undefined ||
+      patch.propertyApn !== undefined ||
+      patch.propertyAddress !== undefined
+    if (searchableChanged) {
+      const county = await ctx.db.get(file.countyId)
+      patch.searchText = buildFileSearchText(
+        {
+          fileNumber: file.fileNumber,
+          transactionType: patch.transactionType ?? file.transactionType,
+          propertyApn:
+            patch.propertyApn !== undefined
+              ? patch.propertyApn
+              : file.propertyApn,
+          propertyAddress:
+            patch.propertyAddress !== undefined
+              ? patch.propertyAddress
+              : file.propertyAddress,
+        },
+        county?.name ?? null,
+      )
+    }
+
+    await ctx.db.patch(args.fileId, patch)
+    await recordAudit(ctx, tc, "file.updated", "file", args.fileId, {
+      fields: Object.keys(patch).filter((k) => k !== "searchText"),
     })
     return { ok: true }
   },

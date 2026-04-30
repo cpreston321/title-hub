@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router"
+import { Link, useLocation, useNavigate } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { convexQuery } from "@convex-dev/react-query"
 import {
@@ -10,6 +10,10 @@ import {
   ScanLine,
   Wallet,
   ChartLine,
+  ChevronsUpDown,
+  Building,
+  Settings as SettingsIcon,
+  LogOut,
 } from "lucide-react"
 
 import {
@@ -27,6 +31,14 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { authClient } from "@/lib/auth-client"
 import { api } from "../../convex/_generated/api"
 
 type AppSidebarProps = {
@@ -35,6 +47,7 @@ type AppSidebarProps = {
 
 export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
   const location = useLocation()
+  const navigate = useNavigate()
   const current = useQuery({
     ...convexQuery(api.tenants.current, {}),
     enabled: isAuthenticated,
@@ -43,21 +56,26 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
 
   const tenant = current.data ?? null
 
+  const onSignOut = async () => {
+    await authClient.signOut()
+    navigate({ to: "/signin" })
+  }
+
   return (
     <Sidebar
       collapsible="icon"
       className="border-r-0 [&>div[data-sidebar=sidebar]]:bg-gradient-to-b [&>div[data-sidebar=sidebar]]:from-[#40233f] [&>div[data-sidebar=sidebar]]:to-[#2f1a30]"
     >
       <SidebarHeader>
-        <div className="flex items-center gap-3 px-2 pb-3 pt-1">
-          <div className="grid size-10 place-items-center rounded-2xl bg-gradient-to-br from-[#f4d48f] to-[#b78625] text-[#40233f] shadow-inner">
+        <div className="flex items-center gap-3 px-2 pt-1 pb-3">
+          <div className="grid size-10 place-items-center rounded-xl bg-gradient-to-br from-[#f4d48f] to-[#b78625] text-[#40233f] shadow-inner">
             <ShieldMark />
           </div>
           <div className="leading-tight">
             <div className="font-serif text-lg tracking-wide text-white">
               {tenant?.legalName ?? "Title Hub"}
             </div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-white/60">
+            <div className="text-[10px] tracking-[0.18em] text-white/60 uppercase">
               {tenant?.slug ? `${tenant.slug} · ${tenant.role}` : "Operations"}
             </div>
           </div>
@@ -86,10 +104,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 to="/admin"
                 label="Admin"
                 icon={<Shield className="size-4" />}
-                active={
-                  location.pathname === "/admin" ||
-                  location.pathname.startsWith("/admin/")
-                }
+                active={location.pathname === "/admin"}
               />
               <NavLink
                 to="/admin/rules"
@@ -130,21 +145,57 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter>
-        <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-          <Avatar className="bg-gradient-to-br from-[#f3d08a] to-[#b78625] text-[#40233f]">
-            <AvatarFallback className="bg-transparent text-[#40233f] font-semibold">
-              {tenant ? initials(tenant.legalName) : "TH"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 leading-tight">
-            <div className="truncate text-sm font-medium text-white">
-              {tenant?.legalName ?? "Sign in"}
-            </div>
-            <div className="truncate text-xs text-white/60">
-              {tenant?.role ?? "no active org"}
-            </div>
-          </div>
-        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton
+                  size="lg"
+                  className="gap-3 text-white/80 hover:bg-white/10 hover:text-white data-[state=open]:bg-white/15 data-[state=open]:text-white"
+                >
+                  <Avatar className="bg-gradient-to-br from-[#f3d08a] to-[#b78625]">
+                    <AvatarFallback className="bg-transparent font-semibold text-[#40233f]">
+                      {tenant ? initials(tenant.legalName) : "TH"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1 text-left leading-tight">
+                    <div className="truncate text-sm font-medium text-white">
+                      {tenant?.legalName ?? "Sign in"}
+                    </div>
+                    <div className="truncate text-xs text-white/60">
+                      {tenant?.role ?? "no active org"}
+                    </div>
+                  </div>
+                  <ChevronsUpDown className="ml-auto size-4 shrink-0 text-white/60" />
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                side="top"
+                align="start"
+                sideOffset={8}
+                className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
+              >
+                <DropdownMenuItem asChild>
+                  <Link to="/settings">
+                    <SettingsIcon className="size-4" />
+                    Account settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/tenants">
+                    <Building className="size-4" />
+                    Switch organization
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onSignOut}>
+                  <LogOut className="size-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   )

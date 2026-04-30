@@ -1,4 +1,5 @@
-import { mutation, query } from "./_generated/server"
+import { ConvexError } from "convex/values"
+import { internalMutation, mutation, query } from "./_generated/server"
 
 // All 92 Indiana counties (FIPS state 18). Timezone defaults to Eastern; the
 // 12 Indiana counties on Central time are flagged below. Source: US Census FIPS.
@@ -235,5 +236,63 @@ export const listUnderwriters = query({
   args: {},
   handler: async (ctx) => {
     return await ctx.db.query("underwriters").take(50)
+  },
+})
+
+// One-shot dev seed: promote the earliest tenantMember of the only tenant to
+// `owner`. Fails loudly if there are zero or multiple tenants so it can't be
+// misapplied later. Idempotent — re-running on an already-owner returns
+// `alreadyOwner: true` without writing.
+export const promoteFirstOwner = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const tenants = await ctx.db.query("tenants").take(2)
+    if (tenants.length === 0) throw new ConvexError("NO_TENANTS")
+    if (tenants.length > 1) throw new ConvexError("MULTIPLE_TENANTS")
+    const tenant = tenants[0]
+
+    const members = await ctx.db
+      .query("tenantMembers")
+      .withIndex("by_tenant_email", (q) => q.eq("tenantId", tenant._id))
+      .take(200)
+    if (members.length === 0) throw new ConvexError("NO_MEMBERS")
+    const firstMember = members.reduce((earliest, m) =>
+      m._creationTime < earliest._creationTime ? m : earliest,
+    )
+
+    if (firstMember.role === "owner" && firstMember.canViewNpi) {
+      return {
+        tenantId: tenant._id,
+        memberId: firstMember._id,
+        email: firstMember.email,
+        alreadyOwner: true,
+      }
+    }
+
+    const previousRole = firstMember.role
+    await ctx.db.patch(firstMember._id, { role: "owner", canViewNpi: true })
+
+    await ctx.db.insert("auditEvents", {
+      tenantId: tenant._id,
+      actorMemberId: firstMember._id,
+      actorType: "system",
+      action: "member.role_changed",
+      resourceType: "member",
+      resourceId: firstMember._id,
+      metadata: {
+        from: previousRole,
+        to: "owner",
+        reason: "seed.promoteFirstOwner",
+      },
+      occurredAt: Date.now(),
+    })
+
+    return {
+      tenantId: tenant._id,
+      memberId: firstMember._id,
+      email: firstMember.email,
+      previousRole,
+      alreadyOwner: false,
+    }
   },
 })

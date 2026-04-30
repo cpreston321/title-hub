@@ -704,3 +704,70 @@ export const setStatus = mutation({
     return { ok: true }
   },
 })
+
+// Resolve a mismatch by picking which involved document is authoritative.
+// The picked document and the value taken from it are persisted on the
+// finding so the decision survives re-reconciliation runs (which only wipe
+// open findings).
+export const resolveWith = mutation({
+  args: {
+    findingId: v.id("reconciliationFindings"),
+    documentId: v.id("documents"),
+    value: v.optional(v.any()),
+  },
+  handler: async (ctx, { findingId, documentId, value }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+    const finding = await ctx.db.get(findingId)
+    if (!finding || finding.tenantId !== tc.tenantId) {
+      throw new ConvexError("FINDING_NOT_FOUND")
+    }
+    // The chosen document must be one of the documents the finding cited.
+    if (!finding.involvedDocumentIds.includes(documentId)) {
+      throw new ConvexError("DOCUMENT_NOT_INVOLVED")
+    }
+    const doc = await ctx.db.get(documentId)
+    if (!doc || doc.tenantId !== tc.tenantId) {
+      throw new ConvexError("DOCUMENT_NOT_FOUND")
+    }
+
+    const now = Date.now()
+    await ctx.db.patch(findingId, {
+      status: "resolved",
+      resolvedByMemberId: tc.memberId,
+      resolvedAt: now,
+      resolvedDocumentId: documentId,
+      resolvedValue: value,
+    })
+
+    await recordAudit(
+      ctx,
+      tc,
+      "finding.resolved_with",
+      "file",
+      finding.fileId,
+      {
+        findingId,
+        findingType: finding.findingType,
+        chosenDocumentId: documentId,
+        chosenDocType: doc.docType,
+        chosenValue: value,
+        from: finding.status,
+      },
+    )
+
+    await ctx.runMutation(internal.webhooks.enqueue, {
+      tenantId: tc.tenantId,
+      event: "finding.resolved",
+      payload: {
+        findingId,
+        fileId: finding.fileId,
+        findingType: finding.findingType,
+        chosenDocumentId: documentId,
+        chosenValue: value,
+      },
+    })
+
+    return { ok: true }
+  },
+})

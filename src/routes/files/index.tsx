@@ -1,5 +1,10 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router"
-import { useState } from "react"
+import {
+  createFileRoute,
+  Link,
+  redirect,
+  useNavigate,
+} from "@tanstack/react-router"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
 import {
@@ -12,9 +17,19 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { AppShell } from "@/components/app-shell"
+import { CountyCombobox } from "@/components/county-combobox"
 import { api } from "../../../convex/_generated/api"
 import type { Id } from "../../../convex/_generated/dataModel"
+
+type FilesSearch = { new?: boolean }
 
 export const Route = createFileRoute("/files/")({
   beforeLoad: ({ context }) => {
@@ -22,17 +37,32 @@ export const Route = createFileRoute("/files/")({
       throw redirect({ to: "/signin" })
     }
   },
+  validateSearch: (raw): FilesSearch => {
+    const v = (raw as Record<string, unknown>).new
+    const isNew =
+      v === true || v === "true" || v === 1 || v === "1"
+    return { new: isNew || undefined }
+  },
   component: FilesListPage,
 })
 
 function FilesListPage() {
+  const search = Route.useSearch() as FilesSearch
+  const navigate = useNavigate()
   const current = useQuery(convexQuery(api.tenants.current, {}))
   const list = useQuery(convexQuery(api.files.list, {}))
   const counties = useQuery(convexQuery(api.seed.listIndianaCounties, {}))
   const create = useConvexMutation(api.files.create)
   const seedIndiana = useConvexMutation(api.seed.indiana)
 
-  const [showForm, setShowForm] = useState(false)
+  const [showForm, setShowForm] = useState(search.new === true)
+
+  useEffect(() => {
+    if (search.new === true) {
+      setShowForm(true)
+      navigate({ to: "/files", search: {}, replace: true })
+    }
+  }, [search.new, navigate])
   const [fileNumber, setFileNumber] = useState("")
   const [countyId, setCountyId] = useState<Id<"counties"> | "">("")
   const [transactionType, setTransactionType] = useState("purchase")
@@ -134,29 +164,25 @@ function FilesListPage() {
                   onChange={(e) => setFileNumber(e.target.value)}
                   required
                 />
-                <select
-                  className="border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs"
+                <CountyCombobox
+                  counties={countyOptions}
                   value={countyId}
-                  onChange={(e) => setCountyId(e.target.value as Id<"counties">)}
-                  required
-                >
-                  <option value="">Select county...</option>
-                  {countyOptions.map((c) => (
-                    <option key={c._id} value={c._id}>
-                      {c.name} County, {c.stateCode}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="border-input bg-background h-9 rounded-md border px-3 py-1 text-sm shadow-xs"
+                  onChange={setCountyId}
+                />
+                <Select
                   value={transactionType}
-                  onChange={(e) => setTransactionType(e.target.value)}
+                  onValueChange={setTransactionType}
                 >
-                  <option value="purchase">Purchase</option>
-                  <option value="refi">Refinance</option>
-                  <option value="commercial">Commercial</option>
-                  <option value="reo">REO</option>
-                </select>
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="purchase">Purchase</SelectItem>
+                    <SelectItem value="refi">Refinance</SelectItem>
+                    <SelectItem value="commercial">Commercial</SelectItem>
+                    <SelectItem value="reo">REO</SelectItem>
+                  </SelectContent>
+                </Select>
                 {error && (
                   <p className="text-destructive text-sm">{error}</p>
                 )}

@@ -9,7 +9,7 @@ import { internal } from "./_generated/api"
 // Prompt + parser
 // ─────────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = "v1"
+const SCHEMA_VERSION = "v2"
 
 const SYSTEM_PROMPT = `You extract structured fields from US real-estate transaction documents: purchase agreements, counter offers, title commitments, title search reports, closing disclosures, deeds, and seller's disclosures.
 
@@ -50,7 +50,10 @@ Schema:
   } | null,
   "contingencies": string[],          // freeform tags: "appraisal", "inspection", "sale_of_buyer_property", "financing"
   "amendments": string[],             // for counter offers: each modification as a one-line summary
-  "notes": string[]                   // important things you noticed that don't fit elsewhere
+  "notes": string[],                  // important things you noticed that don't fit elsewhere
+  "_confidence"?: {                   // optional 0..1 confidence per field path; omit when fully confident
+    [fieldPath: string]: number       // e.g. "financial.purchasePrice", "titleCompany.name", "parties[0].legalName", "dates.closingDate"
+  }
 }
 
 Conventions:
@@ -60,7 +63,8 @@ Conventions:
 - If a counter offer modifies a price, capture the NEW price in financial.purchasePrice and describe the change as one bullet in amendments.
 - People with a signing capacity ("Rene S Kotter, AIF") → legalName: "Rene S Kotter", capacity: "AIF".
 - If the title company is named in any document (purchase agreement OR counter offer), capture it under titleCompany.
-- Do not invent values. If you cannot read a field with confidence, omit it.`
+- Do not invent values. If you cannot read a field with confidence, omit it.
+- _confidence: only emit entries for fields where you are NOT fully confident (< 0.95). Use 0.5–0.7 when the field is partially obscured, ambiguous, or relies on inference. Use 0.7–0.9 when readable but with minor uncertainty (e.g. handwritten amendments). Omit any field path you read with full confidence — a missing entry means 1.0.`
 
 export type ExtractionPayload = {
   documentKind: string
@@ -101,6 +105,9 @@ export type ExtractionPayload = {
   contingencies: string[]
   amendments: string[]
   notes: string[]
+  // Optional 0..1 confidence map keyed by field path.
+  // Missing entry ⇒ treated as 1.0.
+  _confidence?: Record<string, number>
 }
 
 export function parseExtractionJson(raw: string): ExtractionPayload {
@@ -191,6 +198,10 @@ const MOCK_BY_DOCTYPE: Record<string, ExtractionPayload> = {
       "Seller agrees to a $5,500 contractor check at closing payable to RiteRug Flooring.",
       "Surveyor location report at seller's expense.",
     ],
+    _confidence: {
+      "financial.earnestMoney.refundable": 0.7,
+      "parties[1].capacity": 0.8,
+    },
   },
   counter_offer: {
     documentKind: "counter_offer",
@@ -230,6 +241,12 @@ const MOCK_BY_DOCTYPE: Record<string, ExtractionPayload> = {
     notes: [
       "BIR #1 response window: 48 hours after written proof of lender loan conditions.",
     ],
+    _confidence: {
+      "financial.purchasePrice": 0.9,
+      "financial.earnestMoney.refundable": 0.65,
+      "titleCompany.name": 0.85,
+      "dates.financingApprovalDays": 0.75,
+    },
   },
 }
 
