@@ -98,6 +98,7 @@ export const createAuthOptions = (
   return {
     baseURL: siteUrl,
     database: authComponent.adapter(ctx),
+    trustedOrigins: [siteUrl, 'https://title-hub.cpreston.dev'],
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
