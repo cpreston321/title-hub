@@ -5,7 +5,7 @@ WORKDIR /app
 # Install dependencies
 FROM base AS install
 COPY package.json bun.lock ./
-COPY patches ./patches
+# COPY patches ./patches
 RUN bun install --frozen-lockfile
 
 # Build application (use Node for Vite build — Bun lacks dns.promises.getDefaultResultOrder)
