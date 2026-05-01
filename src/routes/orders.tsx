@@ -122,14 +122,16 @@ function OrdersPage() {
   const [busyId, setBusyId] = useState<Id<'files'> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  if (current.data === null) {
+    throw redirect({ to: '/' })
+  }
+
   if (current.error) {
-    const msg = current.error.message
-    if (/NO_ACTIVE_TENANT|NOT_A_MEMBER|TENANT_NOT_FOUND/.test(msg)) {
-      throw redirect({ to: '/' })
-    }
     return (
       <AppShell isAuthenticated title="Order management">
-        <p className="text-sm text-destructive">Error: {msg}</p>
+        <p className="text-sm text-destructive">
+          Error: {current.error.message}
+        </p>
       </AppShell>
     )
   }

@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { query } from './_generated/server'
 import { components } from './_generated/api'
-import { requireTenant } from './lib/tenant'
+import { optionalTenant, requireTenant } from './lib/tenant'
 import type { Doc, Id } from './_generated/dataModel'
 
 type ActorInfo =
@@ -39,7 +39,11 @@ export const listForFile = query({
 export const listForTenant = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    const tc = await requireTenant(ctx)
+    // Subscribed by the admin audit-log viewer, which is reachable before
+    // tenant-resolution settles on first login. Use optionalTenant so the
+    // initial render doesn't log a NO_ACTIVE_TENANT.
+    const tc = await optionalTenant(ctx)
+    if (!tc) return []
     const cap = Math.min(limit ?? 100, 500)
 
     const events = await ctx.db

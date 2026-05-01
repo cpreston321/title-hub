@@ -1161,7 +1161,12 @@ function ResourceCard({
 
 function Dashboard() {
   const current = useQuery(convexQuery(api.tenants.current, {}));
-  const files = useQuery(convexQuery(api.files.list, {}));
+  // Wait for the active-tenant gate before subscribing to files, so we don't
+  // fire `files.list` during the brief NO_ACTIVE_TENANT window on first login.
+  const files = useQuery({
+    ...convexQuery(api.files.list, {}),
+    enabled: !!current.data,
+  });
 
   // Until the active-tenant check resolves we don't know whether to render the
   // dashboard or the org picker. Render a neutral shell so the user doesn't
@@ -1174,22 +1179,27 @@ function Dashboard() {
     );
   }
 
+  // tenants.current returns null for the transient not-signed-in / no-active-
+  // tenant / not-a-member states. Show the org picker; auto-activate kicks in
+  // for users with exactly one membership.
+  if (current.data === null) {
+    return (
+      <AppShell isAuthenticated noHeader title="Welcome">
+        <NoActiveTenantPanel
+          onActivated={async () => {
+            await current.refetch();
+          }}
+        />
+      </AppShell>
+    );
+  }
+
   if (current.error) {
-    const msg = current.error.message;
-    if (/NO_ACTIVE_TENANT|NOT_A_MEMBER|TENANT_NOT_FOUND/.test(msg)) {
-      return (
-        <AppShell isAuthenticated noHeader title="Welcome">
-          <NoActiveTenantPanel
-            onActivated={async () => {
-              await current.refetch();
-            }}
-          />
-        </AppShell>
-      );
-    }
     return (
       <AppShell isAuthenticated title="Dashboard">
-        <div className="text-sm text-destructive">Error: {msg}</div>
+        <div className="text-sm text-destructive">
+          Error: {current.error.message}
+        </div>
       </AppShell>
     );
   }
@@ -1197,6 +1207,18 @@ function Dashboard() {
   const subtitle = current.data
     ? `${current.data.legalName} · ${current.data.role}`
     : "Loading...";
+
+  // Hold the dashboard until `files` has actually resolved. Without this, the
+  // onboarding panel flashes during the first paint because `files.data` is
+  // undefined → length 0 → "new tenant" is briefly true even when the user
+  // has files.
+  if (files.isPending) {
+    return (
+      <AppShell isAuthenticated noHeader title="Loading">
+        <Loading block size="lg" label="Pressing the seal" />
+      </AppShell>
+    );
+  }
 
   // New users (active tenant, no files yet) see an onboarding checklist
   // instead of the empty register. Once they open their first file, or

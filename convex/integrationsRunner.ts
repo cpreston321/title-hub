@@ -2,7 +2,9 @@ import { v } from 'convex/values'
 import { internalAction } from './_generated/server'
 import { internal } from './_generated/api'
 import { getAdapter, isMockEnv } from './integrations/registry'
+import { MOCK_DOCUMENT_FIXTURES } from './integrations/mock'
 import type { FileSnapshot } from './integrations/types'
+import type { Id } from './_generated/dataModel'
 
 // Bounded per-run upsert budget. Keeps a single sync run inside Convex's
 // per-action limits even when the adapter returns thousands of changed
@@ -93,8 +95,42 @@ export const runSync = internalAction({
               integrationKind: loaded.kind,
               snapshot,
             }
-          )) as { fileId: string; inserted: boolean }
+          )) as { fileId: Id<'files'>; inserted: boolean }
           if (upsert.inserted) filesUpserted++
+
+          // Mock enrichment: on a fresh mock file, attach placeholder
+          // documents + succeeded extractions + run reconciliation so the
+          // Order Management UI has real readiness signals to render.
+          // `_seedMockDocuments` is idempotent — it bails if the file
+          // already has documents, so this is safe on resync too.
+          if (loaded.kind === 'mock') {
+            const fixtures = MOCK_DOCUMENT_FIXTURES[snapshot.externalId]
+            if (fixtures && fixtures.length > 0) {
+              const docs = await Promise.all(
+                fixtures.map(async (fix) => {
+                  const blob = new Blob(
+                    [`Mock fixture: ${fix.title}\n${fix.docType}`],
+                    { type: 'application/pdf' }
+                  )
+                  const storageId = await ctx.storage.store(blob)
+                  return {
+                    storageId,
+                    docType: fix.docType,
+                    title: fix.title,
+                    payload: fix.extractionPayload,
+                  }
+                })
+              )
+              await ctx.runMutation(
+                internal.integrations._seedMockDocuments,
+                {
+                  tenantId: loaded.tenantId,
+                  fileId: upsert.fileId,
+                  docs,
+                }
+              )
+            }
+          }
         } catch (err) {
           errorCount++
           if (!errorSample) {

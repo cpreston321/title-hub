@@ -1,6 +1,11 @@
 import { httpRouter } from 'convex/server'
 import { internal } from './_generated/api'
 import { httpAction } from './_generated/server'
+import {
+  loadBootstrapConfig,
+  renderPowerShellScript,
+  renderShellScript,
+} from './agentBootstrap'
 import { authComponent, createAuth } from './auth'
 import type { Id } from './_generated/dataModel'
 
@@ -236,6 +241,153 @@ http.route({
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     )
   }),
+})
+
+// ─── Agent install-token redemption ─────────────────────────────────────
+//
+// Called once per agent install. Body: `{ "token": "<64-hex>" }`. Trades a
+// short-lived install token (issued by an admin in the web UI via
+// `integrations.generateAgentInstallToken`) for the long-lived inbound
+// secret + integration id. No HMAC — the token itself is the credential,
+// and it's single-use + 15-min TTL.
+http.route({
+  path: '/integrations/agent/redeem',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    let body: { token?: unknown }
+    try {
+      body = (await req.json()) as { token?: unknown }
+    } catch {
+      return new Response('invalid json', { status: 400 })
+    }
+    const token = typeof body.token === 'string' ? body.token : ''
+    if (!token) {
+      return new Response('missing token', { status: 400 })
+    }
+
+    // Best-effort source-IP capture for the audit row. CDNs / proxies put
+    // the original IP in x-forwarded-for; trust the first entry there.
+    const fromIp =
+      req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+      req.headers.get('x-real-ip') ||
+      undefined
+
+    try {
+      const result = (await ctx.runMutation(
+        internal.integrations._redeemAgentInstallToken,
+        { token, fromIp }
+      )) as { integrationId: Id<'integrations'>; inboundSecret: string }
+      // The agent already knows the base URL (it just made this request);
+      // we don't need to echo it back.
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      // Map ConvexError messages onto sensible HTTP statuses so the agent
+      // can give a precise hint without parsing prose.
+      const status = /MALFORMED|missing/i.test(msg)
+        ? 400
+        : /NOT_FOUND|EXPIRED|ALREADY_USED|DISABLED|NOT_PUSH_MODE/i.test(msg)
+          ? 401
+          : 500
+      return new Response(JSON.stringify({ error: msg }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }),
+})
+
+// ─── Agent bootstrap script ─────────────────────────────────────────────
+//
+// `iwr https://...convex.site/agent/install.ps1?t=<TOKEN> | iex`
+// `curl -fsSL https://...convex.site/agent/install.sh?t=<TOKEN> | bash`
+//
+// Returns a platform-specific install script that downloads the agent
+// release archive (configured via AGENT_RELEASE_BASE_URL +
+// AGENT_RELEASE_VERSION), verifies its SHA-256, extracts, and runs
+// `agent install` to redeem the token. The token here is identified
+// via query string so the URL itself is the credential — short-lived
+// (15 min) and single-use, exactly like the bare `agent install` flow.
+function bootstrapHandler(kind: 'ps1' | 'sh') {
+  return httpAction(async (ctx, req) => {
+    const url = new URL(req.url)
+    const token = url.searchParams.get('t') ?? url.searchParams.get('token') ?? ''
+    if (!token) {
+      return new Response(
+        '# missing token: include ?t=<install-token> in the bootstrap URL',
+        { status: 400, headers: { 'Content-Type': 'text/plain' } }
+      )
+    }
+
+    // Pre-validate without consuming so a stale URL fails fast — the
+    // user's terminal prints a clear hint instead of downloading 30 MB
+    // of binary that then fails at the redeem step.
+    try {
+      await ctx.runQuery(internal.integrations._validateAgentInstallToken, {
+        token,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const hint = /EXPIRED/.test(msg)
+        ? 'The install token has expired (15-min TTL). Generate a new one in the admin UI.'
+        : /ALREADY_USED/.test(msg)
+          ? 'This install token has already been used. Generate a fresh one if you need to reinstall.'
+          : /NOT_FOUND/.test(msg)
+            ? 'The server does not recognize this install token. Re-copy the bootstrap URL from the admin UI.'
+            : /MALFORMED/.test(msg)
+              ? 'The token in the URL is not a 64-char hex string.'
+              : msg
+      const comment = kind === 'ps1' ? '#' : '#'
+      return new Response(
+        `${comment} bootstrap rejected: ${msg}\n${comment} ${hint}\n`,
+        { status: 401, headers: { 'Content-Type': 'text/plain' } }
+      )
+    }
+
+    let cfg
+    try {
+      cfg = loadBootstrapConfig(`${url.protocol}//${url.host}`)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return new Response(`# bootstrap not configured: ${msg}\n`, {
+        status: 503,
+        headers: { 'Content-Type': 'text/plain' },
+      })
+    }
+
+    const body =
+      kind === 'ps1'
+        ? renderPowerShellScript(cfg, token)
+        : renderShellScript(cfg, token)
+    const contentType =
+      kind === 'ps1'
+        ? 'application/x-powershell; charset=utf-8'
+        : 'text/x-shellscript; charset=utf-8'
+    return new Response(body, {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        // Short cache window so a regenerated token doesn't get stuck
+        // behind a CDN. The token TTL is 15 min anyway.
+        'Cache-Control': 'no-store',
+      },
+    })
+  })
+}
+
+http.route({
+  path: '/agent/install.ps1',
+  method: 'GET',
+  handler: bootstrapHandler('ps1'),
+})
+
+http.route({
+  path: '/agent/install.sh',
+  method: 'GET',
+  handler: bootstrapHandler('sh'),
 })
 
 export default http

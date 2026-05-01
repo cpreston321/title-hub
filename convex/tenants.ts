@@ -1,8 +1,13 @@
 import { ConvexError, v } from 'convex/values'
-import { internalMutation, mutation, query } from './_generated/server'
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from './_generated/server'
 import { components, internal } from './_generated/api'
 import type { Id } from './_generated/dataModel'
-import { requireRole, requireTenant } from './lib/tenant'
+import { optionalTenant, requireRole, requireTenant } from './lib/tenant'
 import { recordAudit } from './lib/audit'
 
 // ─────────────────────────────────────────────────────────────────────
@@ -173,10 +178,15 @@ export const listMine = query({
       })
     )
 
-    const session = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-      model: 'session',
-      where: [{ field: 'userId', value: betterAuthUserId }],
-    })) as { activeOrganizationId?: string | null } | null
+    // Use the JWT's sessionId, not just userId — see requireTenant for the
+    // full rationale. Multi-session users were seeing the wrong active org.
+    const sessionId = identity.sessionId as string | undefined
+    const session = sessionId
+      ? ((await ctx.runQuery(components.betterAuth.adapter.findOne, {
+          model: 'session',
+          where: [{ field: '_id', value: sessionId }],
+        })) as { activeOrganizationId?: string | null } | null)
+      : null
 
     let activeTenantId: Id<'tenants'> | null = null
     if (session?.activeOrganizationId) {
@@ -199,9 +209,15 @@ export const listMine = query({
 export const current = query({
   args: {},
   handler: async (ctx) => {
-    const tc = await requireTenant(ctx)
+    // Returns null instead of throwing for the transient "not signed in /
+    // no active org / not a member yet" states the dashboard subscribes
+    // through on first paint. Real authorization failures are still caught
+    // at the per-resource layer via `requireTenant`. Frontend treats null as
+    // "show the org picker / redirect."
+    const tc = await optionalTenant(ctx)
+    if (!tc) return null
     const tenant = await ctx.db.get(tc.tenantId)
-    if (!tenant) throw new ConvexError('TENANT_NOT_FOUND')
+    if (!tenant) return null
     return {
       tenantId: tenant._id,
       slug: tenant.slug,
@@ -310,5 +326,75 @@ export const listPendingInvitations = query({
     }
 
     return page.page.filter((i) => i.status === 'pending')
+  },
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// Better Auth `databaseHooks.session` helpers
+//
+// On sign-in, Better Auth calls `session.create.before` — we look up the
+// user's most-recently-touched membership and preset its org as the
+// session's activeOrganizationId, so returning users land directly on
+// their last tenant instead of bouncing through the picker / auto-activate.
+//
+// On `setActive`, Better Auth calls `session.update.after` — we bump
+// `lastLoginAt` on the matching tenantMember, so the next sign-in resolves
+// to the same org.
+// ─────────────────────────────────────────────────────────────────────
+
+export const lastActiveOrgForUser = internalQuery({
+  args: { betterAuthUserId: v.string() },
+  handler: async (ctx, { betterAuthUserId }) => {
+    const memberships = await ctx.db
+      .query('tenantMembers')
+      .withIndex('by_betterAuthUser', (q) =>
+        q.eq('betterAuthUserId', betterAuthUserId)
+      )
+      .collect()
+
+    const candidates = memberships.filter((m) => m.status === 'active')
+    if (candidates.length === 0) return null
+
+    candidates.sort((a, b) => {
+      const aT = a.lastLoginAt ?? a._creationTime
+      const bT = b.lastLoginAt ?? b._creationTime
+      return bT - aT
+    })
+
+    // Walk in recency order — skip memberships whose tenant is no longer
+    // active so we never return a stale/suspended org.
+    for (const m of candidates) {
+      const tenant = await ctx.db.get(m.tenantId)
+      if (!tenant) continue
+      if (tenant.status !== 'active' && tenant.status !== 'trial') continue
+      return tenant.betterAuthOrgId
+    }
+    return null
+  },
+})
+
+export const touchLastActiveOrg = internalMutation({
+  args: {
+    betterAuthUserId: v.string(),
+    betterAuthOrgId: v.string(),
+  },
+  handler: async (ctx, { betterAuthUserId, betterAuthOrgId }) => {
+    const tenant = await ctx.db
+      .query('tenants')
+      .withIndex('by_better_auth_org', (q) =>
+        q.eq('betterAuthOrgId', betterAuthOrgId)
+      )
+      .unique()
+    if (!tenant) return
+
+    const member = await ctx.db
+      .query('tenantMembers')
+      .withIndex('by_betterAuthUser_tenant', (q) =>
+        q.eq('betterAuthUserId', betterAuthUserId).eq('tenantId', tenant._id)
+      )
+      .unique()
+    if (!member) return
+
+    await ctx.db.patch(member._id, { lastLoginAt: Date.now() })
   },
 })

@@ -24,6 +24,7 @@ describe('Better Auth organization-backed tenancy', () => {
     })
 
     const current = await alice.asUser.query(api.tenants.current, {})
+    if (!current) throw new Error('expected tenant context')
     expect(current.role).toBe('owner')
     expect(current.legalName).toBe('Agency A LLC')
     expect(current.canViewNpi).toBe(true)
@@ -57,13 +58,17 @@ describe('Better Auth organization-backed tenancy', () => {
       name: 'Agency A LLC',
     })
 
-    // Bob has no active organization → NO_ACTIVE_TENANT
-    await expect(bob.asUser.query(api.tenants.current, {})).rejects.toThrow(
+    // Bob has no active organization → tenants.current returns null (the
+    // frontend reads null as "show the org picker"). Per-resource queries
+    // that require a tenant context still throw via requireTenant.
+    expect(await bob.asUser.query(api.tenants.current, {})).toBeNull()
+    await expect(bob.asUser.query(api.tenants.listMembers, {})).rejects.toThrow(
       /NO_ACTIVE_TENANT/
     )
 
     // Now make Bob's session point at Alice's org (without adding him as a
-    // member). requireTenant must reject as NOT_A_MEMBER.
+    // member). tenants.current returns null; per-resource calls still reject
+    // as NOT_A_MEMBER.
     const aliceMine = await alice.asUser.query(api.tenants.listMine, {})
     const aliceOrgId = aliceMine.memberships[0].betterAuthOrgId!
     await t.run(async (ctx) =>
@@ -79,15 +84,16 @@ describe('Better Auth organization-backed tenancy', () => {
         }
       )
     )
-    await expect(bob.asUser.query(api.tenants.current, {})).rejects.toThrow(
+    expect(await bob.asUser.query(api.tenants.current, {})).toBeNull()
+    await expect(bob.asUser.query(api.tenants.listMembers, {})).rejects.toThrow(
       /NOT_A_MEMBER/
     )
   })
 
-  test('an unauthenticated caller is rejected by tenants.current', async () => {
+  test('an unauthenticated caller resolves to null on tenants.current', async () => {
     const t = convexTest(schema, modules)
     registerLocalBetterAuth(t, betterAuthModules)
-    await expect(t.query(api.tenants.current, {})).rejects.toThrow()
+    expect(await t.query(api.tenants.current, {})).toBeNull()
   })
 
   test('org-backed sign-up flow: user → org → file create works end-to-end', async () => {
@@ -107,6 +113,7 @@ describe('Better Auth organization-backed tenancy', () => {
 
     // 3. requireTenant resolves and Carol is owner
     const me = await carol.asUser.query(api.tenants.current, {})
+    if (!me) throw new Error('expected tenant context for carol')
     expect(me.role).toBe('owner')
     expect(me.legalName).toBe('Agency C LLC')
     expect(me.canViewNpi).toBe(true)

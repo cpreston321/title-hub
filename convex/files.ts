@@ -3,7 +3,7 @@ import { mutation, query } from './_generated/server'
 import type { MutationCtx, QueryCtx } from './_generated/server'
 import type { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
-import { requireRole, requireTenant } from './lib/tenant'
+import { optionalTenant, requireRole, requireTenant } from './lib/tenant'
 import { recordAudit } from './lib/audit'
 import { fileStatus, partyType, propertyAddress } from './schema'
 
@@ -189,7 +189,11 @@ export const list = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, { status, limit }) => {
-    const tc = await requireTenant(ctx)
+    // Used by the dashboard + Files register, both of which subscribe before
+    // tenant-resolution finishes on first login. Return [] during the
+    // transient phase so the Convex log isn't flooded.
+    const tc = await optionalTenant(ctx)
+    if (!tc) return []
     const cap = Math.min(limit ?? 100, 200)
 
     const rows = status

@@ -424,6 +424,12 @@ export const _upsertFileFromSnapshot = internalMutation({
           state: string
           zip: string
         }
+        parties?: Array<{
+          role: string
+          legalName: string
+          partyType: 'person' | 'entity' | 'trust' | 'estate'
+          capacity?: string
+        }>
       }
     }
   ) => {
@@ -482,6 +488,8 @@ export const _upsertFileFromSnapshot = internalMutation({
       .filter((s): s is string => typeof s === 'string' && s.length > 0)
       .join(' ')
 
+    let fileId: Id<'files'>
+    let inserted: boolean
     if (existing) {
       await ctx.db.patch(existing._id, {
         externalRefs: { ...existing.externalRefs, ...externalRefs },
@@ -492,23 +500,164 @@ export const _upsertFileFromSnapshot = internalMutation({
         countyId,
         searchText,
       })
-      return { fileId: existing._id, inserted: false }
+      fileId = existing._id
+      inserted = false
+    } else {
+      fileId = await ctx.db.insert('files', {
+        tenantId,
+        fileNumber: snapshot.fileNumber,
+        externalRefs,
+        stateCode,
+        countyId,
+        transactionType,
+        status: 'opened',
+        propertyApn: snapshot.propertyApn,
+        propertyAddress: snapshot.propertyAddress,
+        searchText,
+        openedAt: Date.now(),
+      })
+      inserted = true
     }
 
-    const fileId = await ctx.db.insert('files', {
+    // Reconcile parties from the snapshot. Additive only — we never delete
+    // a party or fileParties link that exists locally but is missing from
+    // the snapshot, since the agency may have added parties manually after
+    // the source-system intake. Re-using existing `parties` rows by
+    // (tenant, legalName, partyType) keeps the global party registry from
+    // accumulating duplicates across resyncs.
+    if (Array.isArray(snapshot.parties) && snapshot.parties.length > 0) {
+      const existingLinks = await ctx.db
+        .query('fileParties')
+        .withIndex('by_tenant_file', (q) =>
+          q.eq('tenantId', tenantId).eq('fileId', fileId)
+        )
+        .collect()
+      const seen = new Set(
+        existingLinks.map((fp) => `${fp.partyId}|${fp.role}`)
+      )
+
+      for (const sp of snapshot.parties) {
+        const legalName = sp.legalName?.trim()
+        if (!legalName || !sp.role || !sp.partyType) continue
+
+        const matchingByName = await ctx.db
+          .query('parties')
+          .withIndex('by_tenant_legalname', (q) =>
+            q.eq('tenantId', tenantId).eq('legalName', legalName)
+          )
+          .collect()
+        const reuseable = matchingByName.find(
+          (p) => p.partyType === sp.partyType
+        )
+
+        const partyId =
+          reuseable?._id ??
+          (await ctx.db.insert('parties', {
+            tenantId,
+            partyType: sp.partyType,
+            legalName,
+          }))
+
+        const linkKey = `${partyId}|${sp.role}`
+        if (seen.has(linkKey)) continue
+
+        await ctx.db.insert('fileParties', {
+          tenantId,
+          fileId,
+          partyId,
+          role: sp.role,
+          capacity: sp.capacity,
+        })
+        seen.add(linkKey)
+      }
+    }
+
+    return { fileId, inserted }
+  },
+})
+
+// Mock-only enrichment: insert document rows + succeeded extractions for a
+// freshly-synced mock file, then run reconciliation. The runner uploads
+// placeholder blobs to storage in the action context (we can't from here)
+// and passes the storageIds in. Idempotent — bails if the file already has
+// any documents, so re-syncs don't create duplicates or wipe manually-added
+// documents.
+export const _seedMockDocuments = internalMutation({
+  args: {
+    tenantId: v.id('tenants'),
+    fileId: v.id('files'),
+    docs: v.array(
+      v.object({
+        storageId: v.id('_storage'),
+        docType: v.string(),
+        title: v.string(),
+        payload: v.any(),
+      })
+    ),
+  },
+  handler: async (ctx, { tenantId, fileId, docs }) => {
+    if (docs.length === 0) return { inserted: 0 }
+
+    const file = await ctx.db.get(fileId)
+    if (!file || file.tenantId !== tenantId) return { inserted: 0 }
+
+    const existingDocs = await ctx.db
+      .query('documents')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenantId).eq('fileId', fileId)
+      )
+      .take(1)
+    if (existingDocs.length > 0) return { inserted: 0 }
+
+    // Attribution: documents.uploadedByMemberId is required. Pick the
+    // tenant's owner (or any active member) so the row is well-formed.
+    const members = await ctx.db
+      .query('tenantMembers')
+      .withIndex('by_tenant_email', (q) => q.eq('tenantId', tenantId))
+      .collect()
+    const member =
+      members.find((m) => m.role === 'owner' && m.status === 'active') ??
+      members.find((m) => m.status === 'active')
+    if (!member) return { inserted: 0 }
+
+    const now = Date.now()
+    let inserted = 0
+    for (const d of docs) {
+      const meta = await ctx.db.system.get(d.storageId)
+      const documentId = await ctx.db.insert('documents', {
+        tenantId,
+        fileId,
+        docType: d.docType,
+        title: d.title,
+        storageId: d.storageId,
+        contentType: meta?.contentType,
+        sizeBytes: meta?.size,
+        checksum: meta?.sha256,
+        uploadedByMemberId: member._id,
+        uploadedAt: now,
+      })
+      await ctx.db.insert('documentExtractions', {
+        tenantId,
+        fileId,
+        documentId,
+        status: 'succeeded',
+        payload: d.payload,
+        modelId: 'mock-fixture',
+        source: 'mock',
+        startedAt: now,
+        completedAt: now,
+      })
+      inserted++
+    }
+
+    // Drive reconciliation off the seeded extractions so the Order
+    // Management UI shows real finding severities.
+    await ctx.runMutation(internal.reconciliation.runForFileAuto, {
       tenantId,
-      fileNumber: snapshot.fileNumber,
-      externalRefs,
-      stateCode,
-      countyId,
-      transactionType,
-      status: 'opened',
-      propertyApn: snapshot.propertyApn,
-      propertyAddress: snapshot.propertyAddress,
-      searchText,
-      openedAt: Date.now(),
+      fileId,
     })
-    return { fileId, inserted: true }
+
+    return { inserted }
   },
 })
 
@@ -731,6 +880,250 @@ export const agentInstallInfo = mutation({
       // The agent needs the deployment URL too, but it's pulled from
       // env on the client side (the admin pastes the install token, the
       // installer reads CONVEX_SITE_URL from its bundled config).
+    }
+  },
+})
+
+// ─── Agent install tokens ────────────────────────────────────────────────
+//
+// Short-lived, single-use credentials. Admin clicks "Generate install
+// command" in the web UI, gets a token they can hand to the agency's IT
+// admin (via the same channels they use for any other secret — DM, ticket,
+// printout). The agent redeems it once, gets the integration id + inbound
+// secret, and never sees the plaintext token again.
+//
+// Properties:
+//   • TTL is 15 minutes — short enough that a forgotten command in shell
+//     history is low-value to an attacker.
+//   • Single-use — `consumedAt` is set at first redemption.
+//   • 256 bits of entropy — `crypto.getRandomValues(32)` hex-encoded.
+//   • Plaintext never stored — only `tokenHash` (hex SHA-256) lives on disk.
+
+const INSTALL_TOKEN_TTL_MS = 15 * 60_000
+
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(input)
+  )
+  return Array.from(new Uint8Array(buf), (b) =>
+    b.toString(16).padStart(2, '0')
+  ).join('')
+}
+
+function newAgentToken(): string {
+  // 32 bytes → 64 hex chars. Same shape as inboundSecret so the agent can
+  // pre-validate (length + hex) before sending it on the wire.
+  const buf = new Uint8Array(32)
+  crypto.getRandomValues(buf)
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+export const generateAgentInstallToken = mutation({
+  args: { integrationId: v.id('integrations') },
+  handler: async (ctx, { integrationId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, 'owner', 'admin')
+
+    const row = await ctx.db.get(integrationId)
+    if (!row || row.tenantId !== tc.tenantId) {
+      throw new ConvexError('INTEGRATION_NOT_FOUND')
+    }
+    if (!PUSH_MODE_KINDS.has(row.kind)) {
+      throw new ConvexError('INTEGRATION_NOT_PUSH_MODE')
+    }
+
+    const token = newAgentToken()
+    const tokenHash = await sha256Hex(token)
+    const now = Date.now()
+    const expiresAt = now + INSTALL_TOKEN_TTL_MS
+
+    const tokenId = await ctx.db.insert('agentInstallTokens', {
+      tenantId: tc.tenantId,
+      integrationId,
+      tokenHash,
+      prefix: token.slice(0, 8),
+      expiresAt,
+      createdByMemberId: tc.memberId,
+      createdAt: now,
+    })
+
+    await recordAudit(
+      ctx,
+      tc,
+      'integration.agent_install_token_generated',
+      'integration',
+      integrationId,
+      { tokenId, expiresAt, prefix: token.slice(0, 8) }
+    )
+
+    return {
+      // PLAINTEXT — shown once. The admin UI surfaces this exactly once
+      // and then forgets it; refreshing the page drops it.
+      token,
+      tokenId,
+      expiresAt,
+      prefix: token.slice(0, 8),
+    }
+  },
+})
+
+export const revokeAgentInstallToken = mutation({
+  args: { tokenId: v.id('agentInstallTokens') },
+  handler: async (ctx, { tokenId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, 'owner', 'admin')
+    const row = await ctx.db.get(tokenId)
+    if (!row || row.tenantId !== tc.tenantId) {
+      throw new ConvexError('INSTALL_TOKEN_NOT_FOUND')
+    }
+    if (row.consumedAt) {
+      // Already consumed — revocation is a no-op, but audit it so the
+      // admin sees their click was registered.
+      await recordAudit(
+        ctx,
+        tc,
+        'integration.agent_install_token_revoke_noop',
+        'integration',
+        row.integrationId,
+        { tokenId }
+      )
+      return { ok: true, alreadyConsumed: true }
+    }
+    // Expire the token by hard-deleting; we keep the audit trail in
+    // auditEvents, but a deleted row can't be redeemed.
+    await ctx.db.delete(tokenId)
+    await recordAudit(
+      ctx,
+      tc,
+      'integration.agent_install_token_revoked',
+      'integration',
+      row.integrationId,
+      { tokenId, prefix: row.prefix }
+    )
+    return { ok: true, alreadyConsumed: false }
+  },
+})
+
+export const listAgentInstallTokens = query({
+  args: { integrationId: v.id('integrations') },
+  handler: async (ctx, { integrationId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, 'owner', 'admin')
+    const rows = await ctx.db
+      .query('agentInstallTokens')
+      .withIndex('by_tenant_integration', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('integrationId', integrationId)
+      )
+      .order('desc')
+      .take(20)
+    // Never leak `tokenHash` to the client; only metadata.
+    return rows.map((r) => ({
+      _id: r._id,
+      prefix: r.prefix,
+      expiresAt: r.expiresAt,
+      consumedAt: r.consumedAt ?? null,
+      createdAt: r.createdAt,
+      // Convenience flag — easier than re-deriving on the client every render.
+      status:
+        r.consumedAt != null
+          ? ('consumed' as const)
+          : r.expiresAt < Date.now()
+            ? ('expired' as const)
+            : ('active' as const),
+    }))
+  },
+})
+
+// Internal: validate a plaintext token WITHOUT consuming it. Used by the
+// `/agent/install.{ps1,sh}` bootstrap endpoint, which generates a script
+// containing the token; the actual redemption happens later when the
+// downloaded agent calls `/integrations/agent/redeem`. Returning ok-status
+// here lets the bootstrap fail fast if the admin pasted a stale URL.
+export const _validateAgentInstallToken = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      throw new ConvexError('INSTALL_TOKEN_MALFORMED')
+    }
+    const tokenHash = await sha256Hex(token)
+    const row = await ctx.db
+      .query('agentInstallTokens')
+      .withIndex('by_token_hash', (q) => q.eq('tokenHash', tokenHash))
+      .unique()
+    if (!row) throw new ConvexError('INSTALL_TOKEN_NOT_FOUND')
+    if (row.consumedAt != null) {
+      throw new ConvexError('INSTALL_TOKEN_ALREADY_USED')
+    }
+    if (row.expiresAt < Date.now()) {
+      throw new ConvexError('INSTALL_TOKEN_EXPIRED')
+    }
+    return { ok: true as const, expiresAt: row.expiresAt }
+  },
+})
+
+// Internal: redeem a plaintext token. Called by the public HTTP endpoint
+// in convex/http.ts. Lives here so the table access stays colocated with
+// the rest of the integrations module.
+export const _redeemAgentInstallToken = internalMutation({
+  args: { token: v.string(), fromIp: v.optional(v.string()) },
+  handler: async (
+    ctx,
+    { token, fromIp }
+  ): Promise<{
+    integrationId: Id<'integrations'>
+    inboundSecret: string
+  }> => {
+    if (!token || !/^[a-f0-9]{64}$/.test(token)) {
+      throw new ConvexError('INSTALL_TOKEN_MALFORMED')
+    }
+    const tokenHash = await sha256Hex(token)
+    const tokenRow = await ctx.db
+      .query('agentInstallTokens')
+      .withIndex('by_token_hash', (q) => q.eq('tokenHash', tokenHash))
+      .unique()
+    if (!tokenRow) throw new ConvexError('INSTALL_TOKEN_NOT_FOUND')
+    if (tokenRow.consumedAt != null) {
+      throw new ConvexError('INSTALL_TOKEN_ALREADY_USED')
+    }
+    if (tokenRow.expiresAt < Date.now()) {
+      throw new ConvexError('INSTALL_TOKEN_EXPIRED')
+    }
+
+    const integration = await ctx.db.get(tokenRow.integrationId)
+    if (!integration || integration.tenantId !== tokenRow.tenantId) {
+      throw new ConvexError('INTEGRATION_NOT_FOUND')
+    }
+    if (!PUSH_MODE_KINDS.has(integration.kind)) {
+      throw new ConvexError('INTEGRATION_NOT_PUSH_MODE')
+    }
+    if (integration.status === 'disabled') {
+      throw new ConvexError('INTEGRATION_DISABLED')
+    }
+
+    // Mark consumed atomically, BEFORE returning the secret. If anything
+    // throws after this point, the token still can't be reused.
+    await ctx.db.patch(tokenRow._id, {
+      consumedAt: Date.now(),
+      consumedFromIp: fromIp,
+    })
+    await ctx.db.insert('auditEvents', {
+      tenantId: tokenRow.tenantId,
+      actorType: 'system',
+      action: 'integration.agent_install_token_redeemed',
+      resourceType: 'integration',
+      resourceId: tokenRow.integrationId,
+      metadata: {
+        tokenId: tokenRow._id,
+        prefix: tokenRow.prefix,
+        fromIp: fromIp ?? null,
+      },
+      occurredAt: Date.now(),
+    })
+
+    return {
+      integrationId: integration._id,
+      inboundSecret: integration.inboundSecret,
     }
   },
 })

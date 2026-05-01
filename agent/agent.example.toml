@@ -1,0 +1,40 @@
+# Title Hub agent configuration. Copy to agent.toml and fill in values.
+# All three values come from the integration's "Show install token" panel
+# in the admin UI; base_url is your Convex deployment's HTTP Actions URL.
+
+# e.g. "https://your-deployment.convex.site"
+base_url = ""
+
+# Convex Id of the integration row this agent is bound to.
+integration_id = ""
+
+# 64-char hex secret. Treat as sensitive — file mode 600 / NTFS ACL.
+inbound_secret = ""
+
+# Optional: agent identity reported on heartbeats.
+agent_version = "0.1.0"
+# `hostname` is auto-detected if not set.
+# hostname = "DESKTOP-AGENCY-01"
+
+# ─── ProForm SQL Server poller (optional) ────────────────────────────
+#
+# Uncomment to wire `agent run` to a real ProForm DB. When omitted, the
+# run loop only sends heartbeats — useful for first-deploy verification.
+#
+# [proform]
+# # Either a full ADO.NET connection string or host/port/db split below.
+# # If `ado_connection_string` is set, the rest is ignored.
+# # ado_connection_string = "Server=tcp:DBHOST,1433;Database=ProForm;User Id=titlehub_agent;Password=...;TrustServerCertificate=True"
+# host = "DBHOST"
+# port = 1433
+# database = "ProForm"
+# username = "titlehub_agent"
+# password = ""
+# # Trust self-signed certs (LAN SQL Servers usually don't have a CA-signed cert).
+# trust_cert = true
+# # Seconds between SQL polls. The query is bounded — keep this short
+# # (10–30s) and the agent stays close to real-time.
+# poll_interval_secs = 15
+# # How many rows to read per tick. Server caps batches at 100; the agent
+# # paginates if there are more changes than this.
+# batch_size = 50

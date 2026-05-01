@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Link, useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { useState } from "react";
@@ -34,6 +34,7 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -53,6 +54,7 @@ type AppSidebarProps = {
 export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const current = useQuery({
     ...convexQuery(api.tenants.current, {}),
@@ -96,8 +98,15 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
 
   const onSignOut = async () => {
+    // Navigate first so the dashboard tree unmounts in a single transition.
+    // If we ran signOut → clear → invalidate before navigating, the user
+    // would briefly see the marketing home (auth flips to false in place) and
+    // a flash of empty/loading panels as the cache clears. By moving the
+    // navigation up front, the only thing the user sees is `/signin`.
+    await navigate({ to: "/signin" });
     await authClient.signOut();
-    navigate({ to: "/signin" });
+    queryClient.clear();
+    await router.invalidate();
   };
 
   const onSwitchTo = async (betterAuthOrgId: string) => {
@@ -138,16 +147,21 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 <ShieldMark />
               </div>
               <div className="min-w-0 flex-1 leading-tight">
-                <div className="truncate font-serif text-base tracking-wide text-white">
-                  {tenant?.legalName ?? "Title Hub"}
-                </div>
-                <div className="truncate text-xs text-white/60">
-                  {tenant
-                    ? tenant.role
-                    : hasActiveOrg
-                      ? "Loading..."
-                      : "No active org"}
-                </div>
+                {current.isPending ? (
+                  <div className="flex flex-col gap-1.5 py-0.5">
+                    <Skeleton className="h-3.5 w-32 rounded-md bg-white/15" />
+                    <Skeleton className="h-2.5 w-16 rounded-md bg-white/10" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="truncate font-serif text-base tracking-wide text-white">
+                      {tenant?.legalName ?? "Title Hub"}
+                    </div>
+                    <div className="truncate text-xs text-white/60">
+                      {tenant ? tenant.role : "No active org"}
+                    </div>
+                  </>
+                )}
               </div>
               <ChevronsUpDown className="size-3.5 shrink-0 text-white/60 group-hover/orgswitch:text-white/85" />
             </button>
@@ -162,9 +176,19 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
               Your organizations
             </DropdownMenuLabel>
             {memberships.isLoading ? (
-              <div className="px-2 py-3 text-xs text-muted-foreground">
-                <Loader2 className="mr-1.5 inline size-3 animate-spin" />
-                Loading...
+              <div className="flex flex-col gap-1 px-1 py-1">
+                {[0, 1].map((i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 rounded-md px-2 py-1.5"
+                  >
+                    <Skeleton className="size-7 shrink-0 rounded-md" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-0.5">
+                      <Skeleton className="h-3 w-28 rounded-md" />
+                      <Skeleton className="h-2.5 w-16 rounded-md" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : orgs.length === 0 ? (
               <div className="px-2 py-2 text-xs text-muted-foreground">
@@ -304,18 +328,31 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                   size="lg"
                   className="gap-3 text-white/80 hover:bg-white/10 hover:text-white data-[state=open]:bg-white/15 data-[state=open]:text-white"
                 >
-                  <Avatar className="bg-gradient-to-br from-[#f3d08a] to-[#b78625]">
-                    <AvatarFallback className="bg-transparent font-semibold text-[#40233f]">
-                      {accountInitials}
-                    </AvatarFallback>
-                  </Avatar>
+                  {meQ.isPending ? (
+                    <Skeleton className="size-8 shrink-0 rounded-full bg-white/15" />
+                  ) : (
+                    <Avatar className="bg-gradient-to-br from-[#f3d08a] to-[#b78625]">
+                      <AvatarFallback className="bg-transparent font-semibold text-[#40233f]">
+                        {accountInitials}
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
                   <div className="min-w-0 flex-1 text-left leading-tight">
-                    <div className="truncate text-sm font-medium text-white">
-                      {accountLabel}
-                    </div>
-                    <div className="truncate text-xs text-white/60">
-                      {accountSub}
-                    </div>
+                    {meQ.isPending ? (
+                      <div className="flex flex-col gap-1.5 py-0.5">
+                        <Skeleton className="h-3 w-28 rounded-md bg-white/15" />
+                        <Skeleton className="h-2.5 w-20 rounded-md bg-white/10" />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="truncate text-sm font-medium text-white">
+                          {accountLabel}
+                        </div>
+                        <div className="truncate text-xs text-white/60">
+                          {accountSub}
+                        </div>
+                      </>
+                    )}
                   </div>
                   <ChevronsUpDown className="ml-auto size-4 shrink-0 text-white/60" />
                 </SidebarMenuButton>

@@ -124,15 +124,17 @@ function FilesListPage() {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
+  if (current.data === null) {
+    // No active tenant — send the user to the dashboard's org picker.
+    throw redirect({ to: '/' })
+  }
+
   if (current.error) {
-    const msg = current.error.message
-    if (/NO_ACTIVE_TENANT|NOT_A_MEMBER|TENANT_NOT_FOUND/.test(msg)) {
-      // Send the user to the dashboard which has a proper picker/creator.
-      throw redirect({ to: '/' })
-    }
     return (
       <AppShell isAuthenticated title="Files">
-        <p className="text-sm text-destructive">Error: {msg}</p>
+        <p className="text-sm text-destructive">
+          Error: {current.error.message}
+        </p>
       </AppShell>
     )
   }

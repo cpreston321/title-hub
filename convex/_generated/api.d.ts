@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as agentBootstrap from "../agentBootstrap.js";
 import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as authTriggers from "../authTriggers.js";
@@ -48,6 +49,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentBootstrap: typeof agentBootstrap;
   audit: typeof audit;
   auth: typeof auth;
   authTriggers: typeof authTriggers;

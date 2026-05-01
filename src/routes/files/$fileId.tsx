@@ -1,7 +1,7 @@
-import { createFileRoute, Link, redirect } from '@tanstack/react-router'
-import { createContext, useContext, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
+import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createContext, useContext, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import {
   Drawer,
   DrawerClose,
@@ -9,7 +9,7 @@ import {
   DrawerDescription,
   DrawerHeader,
   DrawerTitle,
-} from '@/components/ui/drawer'
+} from "@/components/ui/drawer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,12 +17,11 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 import {
   ArrowRight,
   Check,
   ChevronDown,
-  ChevronLeft,
   CircleAlert,
   CircleHelp,
   ExternalLink,
@@ -40,63 +39,63 @@ import {
   Upload,
   Users,
   X,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { AppShell } from '@/components/app-shell'
-import { Loading } from '@/components/loading'
-import { api } from '../../../convex/_generated/api'
-import type { Doc, Id } from '../../../convex/_generated/dataModel'
+} from "@/components/ui/select";
+import { AppShell } from "@/components/app-shell";
+import { Loading } from "@/components/loading";
+import { api } from "../../../convex/_generated/api";
+import type { Doc, Id } from "../../../convex/_generated/dataModel";
 
-export const Route = createFileRoute('/files/$fileId')({
+export const Route = createFileRoute("/files/$fileId")({
   head: () => ({
     meta: [
-      { title: 'File · Title Hub' },
+      { title: "File · Title Hub" },
       {
-        name: 'description',
+        name: "description",
         content:
-          'File of record: property, parties, documents, cross-document checks, and audit trail.',
+          "File of record: property, parties, documents, cross-document checks, and audit trail.",
       },
-      { name: 'robots', content: 'noindex, nofollow' },
+      { name: "robots", content: "noindex, nofollow" },
     ],
   }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
-      throw redirect({ to: '/signin' })
+      throw redirect({ to: "/signin" });
     }
   },
   component: FileDetailPage,
-})
+});
 
 const STATUS_LABEL: Record<string, string> = {
-  opened: 'Opened',
-  in_exam: 'In exam',
-  cleared: 'Cleared',
-  closing: 'Closing',
-  funded: 'Funded',
-  recorded: 'Recorded',
-  policied: 'Policy issued',
-  cancelled: 'Cancelled',
-}
+  opened: "Opened",
+  in_exam: "In exam",
+  cleared: "Cleared",
+  closing: "Closing",
+  funded: "Funded",
+  recorded: "Recorded",
+  policied: "Policy issued",
+  cancelled: "Cancelled",
+};
 
 function FileDetailPage() {
-  const { fileId } = Route.useParams()
-  const id = fileId as Id<'files'>
-  const detail = useQuery(convexQuery(api.files.get, { fileId: id }))
-  const audit = useQuery(convexQuery(api.audit.listForFile, { fileId: id }))
+  const { fileId } = Route.useParams();
+  const id = fileId as Id<"files">;
+  const detail = useQuery(convexQuery(api.files.get, { fileId: id }));
+  const audit = useQuery(convexQuery(api.audit.listForFile, { fileId: id }));
   const extractions = useQuery(
-    convexQuery(api.extractions.listForFile, { fileId: id })
-  )
+    convexQuery(api.extractions.listForFile, { fileId: id }),
+  );
   const findings = useQuery(
-    convexQuery(api.reconciliation.listForFile, { fileId: id })
-  )
+    convexQuery(api.reconciliation.listForFile, { fileId: id }),
+  );
 
   if (detail.error) {
     return (
@@ -105,7 +104,7 @@ function FileDetailPage() {
           Error: {detail.error.message}
         </p>
       </AppShell>
-    )
+    );
   }
 
   if (detail.isLoading || !detail.data) {
@@ -113,61 +112,63 @@ function FileDetailPage() {
       <AppShell isAuthenticated title="File">
         <Loading block size="lg" label="Pulling the file" />
       </AppShell>
-    )
+    );
   }
 
-  const { file, county, parties, documents } = detail.data
-  const events = audit.data ?? []
+  const { file, county, parties, documents } = detail.data;
+  const events = audit.data ?? [];
 
-  const confidenceByDoc = new Map<string, Record<string, number>>()
+  const confidenceByDoc = new Map<string, Record<string, number>>();
   for (const e of extractions.data ?? []) {
-    const payload = e.payload as { _confidence?: Record<string, number> } | null
+    const payload = e.payload as {
+      _confidence?: Record<string, number>;
+    } | null;
     if (payload && payload._confidence) {
-      confidenceByDoc.set(e.documentId, payload._confidence)
+      confidenceByDoc.set(e.documentId, payload._confidence);
     }
   }
 
   const extractionByDoc = new Map<
     string,
     { status: string; errorMessage?: string }
-  >()
+  >();
   for (const e of extractions.data ?? []) {
     extractionByDoc.set(e.documentId, {
       status: e.status,
       errorMessage: e.errorMessage,
-    })
+    });
   }
 
-  const allFindings = (findings.data ?? []) as ReadonlyArray<Finding>
-  const openFindings = allFindings.filter((f) => f.status === 'open')
+  const allFindings = (findings.data ?? []) as ReadonlyArray<Finding>;
+  const openFindings = allFindings.filter((f) => f.status === "open");
   const blockingCount = openFindings.filter(
-    (f) => f.severity === 'block'
-  ).length
+    (f) => f.severity === "block",
+  ).length;
 
   // Workflow readiness
-  const hasProperty = !!file.propertyAddress?.line1
-  const partiesCount = parties.length
-  const partiesReady = partiesCount >= 2
+  const hasProperty = !!file.propertyAddress?.line1;
+  const partiesCount = parties.length;
+  const partiesReady = partiesCount >= 2;
   const docsExtracted = documents.filter(
-    (d) => extractionByDoc.get(d._id)?.status === 'succeeded'
-  ).length
+    (d) => extractionByDoc.get(d._id)?.status === "succeeded",
+  ).length;
   // One successfully extracted document is enough to make reconcile useful —
   // the engine can already flag missing required document types and validate
   // that doc against the file. Two or more unlocks the cross-document
   // comparisons (price, parties, dates, etc.).
-  const docsReady = documents.length >= 1 && docsExtracted >= 1
-  const reconcileReady = hasProperty && partiesReady && docsReady
-  const reconciled = allFindings.length > 0
-  const allClear = reconciled && blockingCount === 0
+  const docsReady = documents.length >= 1 && docsExtracted >= 1;
+  const reconcileReady = hasProperty && partiesReady && docsReady;
+  const reconciled = allFindings.length > 0;
+  const allClear = reconciled && blockingCount === 0;
   // Anything currently churning at the file level — drives the hero's
   // "thinking..." indicator.
   const inFlightExtractions = documents.filter((d) => {
-    const s = extractionByDoc.get(d._id)?.status
-    return s === 'pending' || s === 'running'
-  }).length
-  const fileBusy = inFlightExtractions > 0
+    const s = extractionByDoc.get(d._id)?.status;
+    return s === "pending" || s === "running";
+  }).length;
+  const fileBusy = inFlightExtractions > 0;
 
-  const subtitle = `${file.transactionType} · ${county?.name} County, ${file.stateCode}`
+  const subtitle = `${file.transactionType.charAt(0).toUpperCase() + file.transactionType.slice(1)} · ${county?.name} County, ${file.stateCode}`;
 
   return (
     <FileDetailContent
@@ -194,36 +195,36 @@ function FileDetailPage() {
       fileBusy={fileBusy}
       subtitle={subtitle}
     />
-  )
+  );
 }
 
 type FileDetailContentProps = {
-  id: Id<'files'>
-  file: Doc<'files'>
-  county: Doc<'counties'> | null
+  id: Id<"files">;
+  file: Doc<"files">;
+  county: Doc<"counties"> | null;
   parties: Array<{
-    fileParty: Doc<'fileParties'>
-    party: Doc<'parties'>
-  }>
-  documents: Array<Doc<'documents'>>
-  events: ReadonlyArray<AuditEvent>
-  extractions: ReadonlyArray<ExtractionLite>
-  confidenceByDoc: Map<string, Record<string, number>>
-  allFindings: ReadonlyArray<Finding>
-  openFindings: ReadonlyArray<Finding>
-  hasProperty: boolean
-  partiesCount: number
-  partiesReady: boolean
-  docsExtracted: number
-  docsReady: boolean
-  reconcileReady: boolean
-  reconciled: boolean
-  allClear: boolean
-  blockingCount: number
-  inFlightExtractions: number
-  fileBusy: boolean
-  subtitle: string
-}
+    fileParty: Doc<"fileParties">;
+    party: Doc<"parties">;
+  }>;
+  documents: Array<Doc<"documents">>;
+  events: ReadonlyArray<AuditEvent>;
+  extractions: ReadonlyArray<ExtractionLite>;
+  confidenceByDoc: Map<string, Record<string, number>>;
+  allFindings: ReadonlyArray<Finding>;
+  openFindings: ReadonlyArray<Finding>;
+  hasProperty: boolean;
+  partiesCount: number;
+  partiesReady: boolean;
+  docsExtracted: number;
+  docsReady: boolean;
+  reconcileReady: boolean;
+  reconciled: boolean;
+  allClear: boolean;
+  blockingCount: number;
+  inFlightExtractions: number;
+  fileBusy: boolean;
+  subtitle: string;
+};
 
 function FileDetailContent({
   id,
@@ -249,31 +250,25 @@ function FileDetailContent({
   fileBusy,
   subtitle,
 }: FileDetailContentProps) {
-  const [previewDocId, setPreviewDocId] = useState<Id<'documents'> | null>(null)
+  const [previewDocId, setPreviewDocId] = useState<Id<"documents"> | null>(
+    null,
+  );
 
   return (
     <DocumentPreviewContext.Provider value={setPreviewDocId}>
       <AppShell
         isAuthenticated
         breadcrumb={[
-          { label: 'Files', to: '/files' },
+          { label: "Files", to: "/files" },
           { label: file.fileNumber },
         ]}
         subtitle={subtitle}
         actions={<HeaderStatus fileId={id} status={file.status} />}
       >
         <div className="flex flex-col gap-6 pb-12">
-          <Link
-            to="/files"
-            className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground transition hover:text-[#40233f]"
-          >
-            <ChevronLeft className="size-3.5" />
-            Back to files
-          </Link>
-
           <FileHero
             file={file}
-            countyName={county?.name ?? '—'}
+            countyName={county?.name ?? "—"}
             partiesCount={partiesCount}
             openFindings={openFindings.length}
             allClear={allClear}
@@ -325,114 +320,114 @@ function FileDetailContent({
         documentId={previewDocId}
         documents={documents}
         onOpenChange={(open) => {
-          if (!open) setPreviewDocId(null)
+          if (!open) setPreviewDocId(null);
         }}
       />
     </DocumentPreviewContext.Provider>
-  )
+  );
 }
 
 type StatusValue =
-  | 'opened'
-  | 'in_exam'
-  | 'cleared'
-  | 'closing'
-  | 'funded'
-  | 'recorded'
-  | 'policied'
-  | 'cancelled'
+  | "opened"
+  | "in_exam"
+  | "cleared"
+  | "closing"
+  | "funded"
+  | "recorded"
+  | "policied"
+  | "cancelled";
 
 const STATUS_FLOW: ReadonlyArray<StatusValue> = [
-  'opened',
-  'in_exam',
-  'cleared',
-  'closing',
-  'funded',
-  'recorded',
-  'policied',
-]
+  "opened",
+  "in_exam",
+  "cleared",
+  "closing",
+  "funded",
+  "recorded",
+  "policied",
+];
 
 const STATUS_HINT: Record<StatusValue, string> = {
-  opened: 'New file, awaiting documents',
-  in_exam: 'Extraction and reconciliation in progress',
-  cleared: 'Cross-document checks pass',
-  closing: 'Closing scheduled or underway',
-  funded: 'Funds disbursed',
-  recorded: 'Documents on record at the county',
-  policied: 'Policy issued — terminal',
-  cancelled: 'Cancelled — no policy will issue',
-}
+  opened: "New file, awaiting documents",
+  in_exam: "Extraction and reconciliation in progress",
+  cleared: "Cross-document checks pass",
+  closing: "Closing scheduled or underway",
+  funded: "Funds disbursed",
+  recorded: "Documents on record at the county",
+  policied: "Policy issued — terminal",
+  cancelled: "Cancelled — no policy will issue",
+};
 
 function statusTone(status: string) {
-  if (status === 'policied')
+  if (status === "policied")
     return {
-      ring: 'ring-[#3f7c64]/40',
-      text: 'text-[#2f5d4b]',
-      bg: 'bg-[#e6f3ed]',
-      dot: 'bg-[#3f7c64]',
-    }
-  if (status === 'closing' || status === 'funded' || status === 'recorded')
+      ring: "ring-[#3f7c64]/40",
+      text: "text-[#2f5d4b]",
+      bg: "bg-[#e6f3ed]",
+      dot: "bg-[#3f7c64]",
+    };
+  if (status === "closing" || status === "funded" || status === "recorded")
     return {
-      ring: 'ring-[#b78625]/45',
-      text: 'text-[#7a5818]',
-      bg: 'bg-[#f8eed7]',
-      dot: 'bg-[#b78625]',
-    }
-  if (status === 'cleared')
+      ring: "ring-[#b78625]/45",
+      text: "text-[#7a5818]",
+      bg: "bg-[#f8eed7]",
+      dot: "bg-[#b78625]",
+    };
+  if (status === "cleared")
     return {
-      ring: 'ring-[#3f668f]/40',
-      text: 'text-[#2c4a6b]',
-      bg: 'bg-[#e8f0f8]',
-      dot: 'bg-[#3f668f]',
-    }
-  if (status === 'in_exam' || status === 'opened')
+      ring: "ring-[#3f668f]/40",
+      text: "text-[#2c4a6b]",
+      bg: "bg-[#e8f0f8]",
+      dot: "bg-[#3f668f]",
+    };
+  if (status === "in_exam" || status === "opened")
     return {
-      ring: 'ring-[#593157]/35',
-      text: 'text-[#40233f]',
-      bg: 'bg-[#f2e7f1]',
-      dot: 'bg-[#593157]',
-    }
-  if (status === 'cancelled')
+      ring: "ring-[#593157]/35",
+      text: "text-[#40233f]",
+      bg: "bg-[#f2e7f1]",
+      dot: "bg-[#593157]",
+    };
+  if (status === "cancelled")
     return {
-      ring: 'ring-[#b94f58]/45',
-      text: 'text-[#8a3942]',
-      bg: 'bg-[#fdecee]',
-      dot: 'bg-[#b94f58]',
-    }
+      ring: "ring-[#b94f58]/45",
+      text: "text-[#8a3942]",
+      bg: "bg-[#fdecee]",
+      dot: "bg-[#b94f58]",
+    };
   return {
-    ring: 'ring-border',
-    text: 'text-muted-foreground',
-    bg: 'bg-muted',
-    dot: 'bg-muted-foreground',
-  }
+    ring: "ring-border",
+    text: "text-muted-foreground",
+    bg: "bg-muted",
+    dot: "bg-muted-foreground",
+  };
 }
 
 function HeaderStatus({
   fileId,
   status,
 }: {
-  fileId: Id<'files'>
-  status: string
+  fileId: Id<"files">;
+  status: string;
 }) {
-  const setStatus = useConvexMutation(api.files.setStatus)
-  const [pending, setPending] = useState<StatusValue | null>(null)
-  const tone = statusTone(status)
+  const setStatus = useConvexMutation(api.files.setStatus);
+  const [pending, setPending] = useState<StatusValue | null>(null);
+  const tone = statusTone(status);
 
   const onPick = async (next: StatusValue) => {
-    if (next === status) return
-    setPending(next)
+    if (next === status) return;
+    setPending(next);
     try {
-      await setStatus({ fileId, status: next })
+      await setStatus({ fileId, status: next });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = err instanceof Error ? err.message : String(err);
       // The audit trail will not have changed; show the failure inline.
       window.alert(
-        `Could not change status: ${msg.replace(/^.*ConvexError:\s*/, '')}`
-      )
+        `Could not change status: ${msg.replace(/^.*ConvexError:\s*/, "")}`,
+      );
     } finally {
-      setPending(null)
+      setPending(null);
     }
-  }
+  };
 
   return (
     <DropdownMenu>
@@ -453,14 +448,14 @@ function HeaderStatus({
           Lifecycle
         </DropdownMenuLabel>
         {STATUS_FLOW.map((s) => {
-          const t = statusTone(s)
-          const isCurrent = s === status
+          const t = statusTone(s);
+          const isCurrent = s === status;
           return (
             <DropdownMenuItem
               key={s}
               onSelect={(e) => {
-                e.preventDefault()
-                onPick(s)
+                e.preventDefault();
+                onPick(s);
               }}
               disabled={isCurrent || pending !== null}
               className="items-start"
@@ -488,16 +483,16 @@ function HeaderStatus({
                 <Check className="mt-0.5 ml-1 size-3.5 text-[#3f7c64]" />
               )}
             </DropdownMenuItem>
-          )
+          );
         })}
         <DropdownMenuSeparator />
         <DropdownMenuItem
           variant="destructive"
           onSelect={(e) => {
-            e.preventDefault()
-            onPick('cancelled')
+            e.preventDefault();
+            onPick("cancelled");
           }}
-          disabled={status === 'cancelled' || pending !== null}
+          disabled={status === "cancelled" || pending !== null}
           className="items-start"
         >
           <span
@@ -507,7 +502,7 @@ function HeaderStatus({
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="flex items-center gap-2">
               <span className="font-medium">Cancel file</span>
-              {status === 'cancelled' && (
+              {status === "cancelled" && (
                 <span className="text-[10px] font-medium text-muted-foreground">
                   current
                 </span>
@@ -518,7 +513,7 @@ function HeaderStatus({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }
 
 function FileHero({
@@ -530,23 +525,23 @@ function FileHero({
   inFlightExtractions,
   fileBusy,
 }: {
-  file: Doc<'files'>
-  countyName: string
-  partiesCount: number
-  openFindings: number
-  allClear: boolean
-  inFlightExtractions: number
-  fileBusy: boolean
+  file: Doc<"files">;
+  countyName: string;
+  partiesCount: number;
+  openFindings: number;
+  allClear: boolean;
+  inFlightExtractions: number;
+  fileBusy: boolean;
 }) {
-  const addr = file.propertyAddress
+  const addr = file.propertyAddress;
   const addrLine = addr
-    ? `${addr.line1}${addr.line2 ? `, ${addr.line2}` : ''} · ${addr.city}, ${addr.state} ${addr.zip}`
-    : null
-  const opened = new Date(file.openedAt)
-  const target = file.targetCloseDate ? new Date(file.targetCloseDate) : null
+    ? `${addr.line1}${addr.line2 ? `, ${addr.line2}` : ""} · ${addr.city}, ${addr.state} ${addr.zip}`
+    : null;
+  const opened = new Date(file.openedAt);
+  const target = file.targetCloseDate ? new Date(file.targetCloseDate) : null;
   const daysToClose = target
     ? Math.ceil((target.getTime() - Date.now()) / (24 * 3600 * 1000))
-    : null
+    : null;
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
@@ -562,8 +557,8 @@ function FileHero({
             {fileBusy && (
               <span className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-[#fdf6e8] px-2 py-0.5 text-[11px] font-medium text-[#7a5818] ring-1 ring-[#b78625]/30 ring-inset">
                 <Sparkles className="tk-soft-pulse size-3" />
-                Processing {inFlightExtractions}{' '}
-                {inFlightExtractions === 1 ? 'doc' : 'docs'}
+                Processing {inFlightExtractions}{" "}
+                {inFlightExtractions === 1 ? "doc" : "docs"}
                 <span className="inline-flex gap-0.5 leading-none">
                   <span className="tk-dot inline-block">.</span>
                   <span className="tk-dot inline-block" data-i="1">
@@ -584,7 +579,7 @@ function FileHero({
             <div className="min-w-0">
               {addrLine ?? (
                 <span className="text-muted-foreground">
-                  No property address yet —{' '}
+                  No property address yet —{" "}
                   <a
                     href="#step-property"
                     className="font-medium text-[#40233f] underline underline-offset-2 hover:text-[#593157]"
@@ -595,7 +590,7 @@ function FileHero({
                 </span>
               )}
               <div className="mt-0.5 text-xs text-muted-foreground">
-                {countyName} County, {file.stateCode} ·{' '}
+                {countyName} County, {file.stateCode} ·{" "}
                 <span className="capitalize">{file.transactionType}</span>
               </div>
             </div>
@@ -605,9 +600,9 @@ function FileHero({
         <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-border/70 ring-1 ring-foreground/5 md:grid-cols-4">
           <Stat
             label="Opened"
-            value={opened.toLocaleDateString('en-US', {
-              month: 'short',
-              day: 'numeric',
+            value={opened.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
             })}
             sub={opened.getFullYear().toString()}
           />
@@ -615,56 +610,56 @@ function FileHero({
             label="Target close"
             value={
               target
-                ? target.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
+                ? target.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
                   })
-                : '—'
+                : "—"
             }
             sub={
               daysToClose === null
-                ? 'not set'
+                ? "not set"
                 : daysToClose < 0
                   ? `${Math.abs(daysToClose)}d overdue`
                   : daysToClose === 0
-                    ? 'today'
+                    ? "today"
                     : `in ${daysToClose}d`
             }
             tone={
               daysToClose !== null && daysToClose < 0
-                ? 'warn'
+                ? "warn"
                 : daysToClose !== null && daysToClose <= 7
-                  ? 'amber'
+                  ? "amber"
                   : undefined
             }
           />
           <Stat
             label="Parties"
-            value={String(partiesCount).padStart(2, '0')}
+            value={String(partiesCount).padStart(2, "0")}
             sub={
               partiesCount === 0
-                ? 'none yet'
+                ? "none yet"
                 : partiesCount < 2
-                  ? 'need ≥2'
-                  : 'on file'
+                  ? "need ≥2"
+                  : "on file"
             }
           />
           <Stat
             label="Findings"
-            value={allClear ? '✓' : String(openFindings).padStart(2, '0')}
+            value={allClear ? "✓" : String(openFindings).padStart(2, "0")}
             sub={
               allClear
-                ? 'all clear'
+                ? "all clear"
                 : openFindings === 0
-                  ? 'not run yet'
-                  : 'open'
+                  ? "not run yet"
+                  : "open"
             }
-            tone={allClear ? 'good' : openFindings > 0 ? 'warn' : undefined}
+            tone={allClear ? "good" : openFindings > 0 ? "warn" : undefined}
           />
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function Stat({
@@ -673,19 +668,19 @@ function Stat({
   sub,
   tone,
 }: {
-  label: string
-  value: string
-  sub?: string
-  tone?: 'good' | 'warn' | 'amber'
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "good" | "warn" | "amber";
 }) {
   const valueClass =
-    tone === 'good'
-      ? 'text-[#2f5d4b]'
-      : tone === 'warn'
-        ? 'text-[#8a3942]'
-        : tone === 'amber'
-          ? 'text-[#7a5818]'
-          : 'text-[#40233f]'
+    tone === "good"
+      ? "text-[#2f5d4b]"
+      : tone === "warn"
+        ? "text-[#8a3942]"
+        : tone === "amber"
+          ? "text-[#7a5818]"
+          : "text-[#40233f]";
   return (
     <div className="bg-card px-4 py-3">
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
@@ -700,7 +695,7 @@ function Stat({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function WorkflowRibbon({
@@ -715,75 +710,75 @@ function WorkflowRibbon({
   allClear,
   blockingCount,
 }: {
-  property: boolean
-  partiesCount: number
-  partiesReady: boolean
-  docsCount: number
-  docsExtracted: number
-  docsReady: boolean
-  reconcileReady: boolean
-  reconciled: boolean
-  allClear: boolean
-  blockingCount: number
+  property: boolean;
+  partiesCount: number;
+  partiesReady: boolean;
+  docsCount: number;
+  docsExtracted: number;
+  docsReady: boolean;
+  reconcileReady: boolean;
+  reconciled: boolean;
+  allClear: boolean;
+  blockingCount: number;
 }) {
   const steps: Array<{
-    n: number
-    label: string
-    anchor: string
-    state: 'done' | 'todo' | 'pending'
-    detail: string
+    n: number;
+    label: string;
+    anchor: string;
+    state: "done" | "todo" | "pending";
+    detail: string;
   }> = [
     {
       n: 1,
-      label: 'Property',
-      anchor: '#step-property',
-      state: property ? 'done' : 'todo',
-      detail: property ? 'Address on file' : 'Add the property address',
+      label: "Property",
+      anchor: "#step-property",
+      state: property ? "done" : "todo",
+      detail: property ? "Address on file" : "Add the property address",
     },
     {
       n: 2,
-      label: 'Parties',
-      anchor: '#step-parties',
-      state: partiesReady ? 'done' : partiesCount > 0 ? 'pending' : 'todo',
+      label: "Parties",
+      anchor: "#step-parties",
+      state: partiesReady ? "done" : partiesCount > 0 ? "pending" : "todo",
       detail: partiesReady
         ? `${partiesCount} on file`
         : partiesCount > 0
           ? `${partiesCount} on file · need ≥ 2`
-          : 'Add buyer and seller',
+          : "Add buyer and seller",
     },
     {
       n: 3,
-      label: 'Documents',
-      anchor: '#step-documents',
-      state: docsReady ? 'done' : docsCount > 0 ? 'pending' : 'todo',
+      label: "Documents",
+      anchor: "#step-documents",
+      state: docsReady ? "done" : docsCount > 0 ? "pending" : "todo",
       detail: docsReady
         ? docsExtracted >= 2
           ? `${docsCount} uploaded · ${docsExtracted} extracted`
           : `${docsExtracted} extracted — add another doc for richer findings`
         : docsCount === 0
-          ? 'Upload at least one — PA, commitment, etc.'
+          ? "Upload at least one — PA, commitment, etc."
           : `${docsCount} uploaded · waiting on extraction`,
     },
     {
       n: 4,
-      label: 'Reconcile',
-      anchor: '#step-reconcile',
+      label: "Reconcile",
+      anchor: "#step-reconcile",
       state: allClear
-        ? 'done'
+        ? "done"
         : reconciled
-          ? 'pending'
+          ? "pending"
           : reconcileReady
-            ? 'pending'
-            : 'todo',
+            ? "pending"
+            : "todo",
       detail: allClear
-        ? 'All clear'
+        ? "All clear"
         : reconciled
-          ? `${blockingCount} blocker${blockingCount === 1 ? '' : 's'} open`
+          ? `${blockingCount} blocker${blockingCount === 1 ? "" : "s"} open`
           : reconcileReady
-            ? 'Ready to run'
-            : 'Finish steps 1–3',
+            ? "Ready to run"
+            : "Finish steps 1–3",
     },
-  ]
+  ];
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-foreground/5">
@@ -816,11 +811,11 @@ function WorkflowRibbon({
                 </div>
                 <div
                   className={`mt-1 text-xs leading-snug ${
-                    s.state === 'done'
-                      ? 'text-[#2f5d4b]'
-                      : s.state === 'pending'
-                        ? 'text-[#7a5818]'
-                        : 'text-muted-foreground'
+                    s.state === "done"
+                      ? "text-[#2f5d4b]"
+                      : s.state === "pending"
+                        ? "text-[#7a5818]"
+                        : "text-muted-foreground"
                   }`}
                 >
                   {s.detail}
@@ -834,35 +829,35 @@ function WorkflowRibbon({
         ))}
       </ol>
     </div>
-  )
+  );
 }
 
 function StepBadge({
   n,
   state,
 }: {
-  n: number
-  state: 'done' | 'todo' | 'pending'
+  n: number;
+  state: "done" | "todo" | "pending";
 }) {
-  if (state === 'done') {
+  if (state === "done") {
     return (
       <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#3f7c64] text-white ring-2 ring-[#e6f3ed]">
         <Check className="size-4" />
       </div>
-    )
+    );
   }
-  if (state === 'pending') {
+  if (state === "pending") {
     return (
       <div className="font-numerals grid size-8 shrink-0 place-items-center rounded-full bg-[#f8eed7] text-xs font-semibold text-[#7a5818] tabular-nums ring-2 ring-[#fdf6e8]">
         {n}
       </div>
-    )
+    );
   }
   return (
     <div className="font-numerals grid size-8 shrink-0 place-items-center rounded-full bg-card text-xs font-semibold text-muted-foreground tabular-nums ring-1 ring-border ring-inset">
       {n}
     </div>
-  )
+  );
 }
 
 function SectionShell({
@@ -876,15 +871,15 @@ function SectionShell({
   actions,
   children,
 }: {
-  id?: string
-  step?: number
-  done?: boolean
-  eyebrow: string
-  title: string
-  description?: React.ReactNode
-  icon?: React.ReactNode
-  actions?: React.ReactNode
-  children: React.ReactNode
+  id?: string;
+  step?: number;
+  done?: boolean;
+  eyebrow: string;
+  title: string;
+  description?: React.ReactNode;
+  icon?: React.ReactNode;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <article
@@ -895,7 +890,7 @@ function SectionShell({
         <div className="flex min-w-0 items-start gap-3">
           {step !== undefined && (
             <div className="mt-0.5">
-              <StepBadge n={step} state={done ? 'done' : 'todo'} />
+              <StepBadge n={step} state={done ? "done" : "todo"} />
             </div>
           )}
           {icon && step === undefined && (
@@ -923,42 +918,42 @@ function SectionShell({
       </header>
       <div className="px-6 py-5">{children}</div>
     </article>
-  )
+  );
 }
 
 function PropertyDetailsPanel({
   fileId,
   file,
 }: {
-  fileId: Id<'files'>
-  file: Doc<'files'>
+  fileId: Id<"files">;
+  file: Doc<"files">;
 }) {
-  const update = useConvexMutation(api.files.update)
-  const [edit, setEdit] = useState(!file.propertyAddress?.line1)
-  const [transactionType, setTransactionType] = useState(file.transactionType)
-  const [propertyApn, setPropertyApn] = useState(file.propertyApn ?? '')
-  const [line1, setLine1] = useState(file.propertyAddress?.line1 ?? '')
-  const [line2, setLine2] = useState(file.propertyAddress?.line2 ?? '')
-  const [city, setCity] = useState(file.propertyAddress?.city ?? '')
+  const update = useConvexMutation(api.files.update);
+  const [edit, setEdit] = useState(!file.propertyAddress?.line1);
+  const [transactionType, setTransactionType] = useState(file.transactionType);
+  const [propertyApn, setPropertyApn] = useState(file.propertyApn ?? "");
+  const [line1, setLine1] = useState(file.propertyAddress?.line1 ?? "");
+  const [line2, setLine2] = useState(file.propertyAddress?.line2 ?? "");
+  const [city, setCity] = useState(file.propertyAddress?.city ?? "");
   const [stateCode, setStateCode] = useState(
-    file.propertyAddress?.state ?? file.stateCode
-  )
-  const [zip, setZip] = useState(file.propertyAddress?.zip ?? '')
+    file.propertyAddress?.state ?? file.stateCode,
+  );
+  const [zip, setZip] = useState(file.propertyAddress?.zip ?? "");
   const [targetCloseDate, setTargetCloseDate] = useState(
     file.targetCloseDate
       ? new Date(file.targetCloseDate).toISOString().slice(0, 10)
-      : ''
-  )
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+      : "",
+  );
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const onSave = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setPending(true)
-    setError(null)
+    e.preventDefault();
+    setPending(true);
+    setError(null);
     try {
       const addrFilled =
-        line1.trim() && city.trim() && stateCode.trim() && zip.trim()
+        line1.trim() && city.trim() && stateCode.trim() && zip.trim();
       await update({
         fileId,
         transactionType,
@@ -975,21 +970,21 @@ function PropertyDetailsPanel({
         targetCloseDate: targetCloseDate
           ? new Date(targetCloseDate).getTime()
           : undefined,
-      })
-      setEdit(false)
+      });
+      setEdit(false);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg.replace(/^.*ConvexError:\s*/, ''))
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg.replace(/^.*ConvexError:\s*/, ""));
     } finally {
-      setPending(false)
+      setPending(false);
     }
-  }
+  };
 
-  const addr = file.propertyAddress
+  const addr = file.propertyAddress;
   const addrLine = addr
-    ? `${addr.line1}${addr.line2 ? `, ${addr.line2}` : ''}, ${addr.city}, ${addr.state} ${addr.zip}`
-    : null
-  const done = !!addr?.line1
+    ? `${addr.line1}${addr.line2 ? `, ${addr.line2}` : ""}, ${addr.city}, ${addr.state} ${addr.zip}`
+    : null;
+  const done = !!addr?.line1;
 
   return (
     <SectionShell
@@ -1001,7 +996,7 @@ function PropertyDetailsPanel({
       description="Where the transaction lives. Used by reconciliation to match what's in the documents."
       actions={
         <Button variant="outline" size="sm" onClick={() => setEdit(!edit)}>
-          {edit ? 'Cancel' : addrLine ? 'Edit' : 'Add details'}
+          {edit ? "Cancel" : addrLine ? "Edit" : "Add details"}
         </Button>
       }
     >
@@ -1073,10 +1068,10 @@ function PropertyDetailsPanel({
             </FieldGroup>
           </div>
           {(() => {
-            const filled = [line1, city, stateCode, zip].map((v) => v.trim())
-            const allFilled = filled.every(Boolean)
-            const anyFilled = filled.some(Boolean)
-            const partialAddr = anyFilled && !allFilled
+            const filled = [line1, city, stateCode, zip].map((v) => v.trim());
+            const allFilled = filled.every(Boolean);
+            const anyFilled = filled.some(Boolean);
+            const partialAddr = anyFilled && !allFilled;
             return (
               <>
                 {partialAddr && (
@@ -1104,18 +1099,18 @@ function PropertyDetailsPanel({
                       Cancel
                     </Button>
                     <Button type="submit" disabled={pending || partialAddr}>
-                      {pending ? 'Saving...' : 'Save details'}
+                      {pending ? "Saving..." : "Save details"}
                     </Button>
                   </div>
                 </div>
               </>
-            )
+            );
           })()}
         </form>
       ) : addrLine ? (
         <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <KV label="Address" value={addrLine} />
-          <KV label="APN" value={file.propertyApn || '—'} mono />
+          <KV label="APN" value={file.propertyApn || "—"} mono />
           <KV
             label="Transaction"
             value={<span className="capitalize">{file.transactionType}</span>}
@@ -1124,10 +1119,10 @@ function PropertyDetailsPanel({
             label="Target close"
             value={
               file.targetCloseDate
-                ? new Date(file.targetCloseDate).toLocaleDateString('en-US', {
-                    dateStyle: 'medium',
+                ? new Date(file.targetCloseDate).toLocaleDateString("en-US", {
+                    dateStyle: "medium",
                   })
-                : '—'
+                : "—"
             }
             mono
           />
@@ -1140,7 +1135,7 @@ function PropertyDetailsPanel({
         />
       )}
     </SectionShell>
-  )
+  );
 }
 
 function FieldGroup({
@@ -1149,10 +1144,10 @@ function FieldGroup({
   required,
   children,
 }: {
-  label: string
-  hint?: string
-  required?: boolean
-  children: React.ReactNode
+  label: string;
+  hint?: string;
+  required?: boolean;
+  children: React.ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -1171,7 +1166,7 @@ function FieldGroup({
         </span>
       )}
     </label>
-  )
+  );
 }
 
 function KV({
@@ -1179,20 +1174,20 @@ function KV({
   value,
   mono,
 }: {
-  label: string
-  value: React.ReactNode
-  mono?: boolean
+  label: string;
+  value: React.ReactNode;
+  mono?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-0.5">
       <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
       <dd
-        className={`text-sm text-foreground/90 ${mono ? 'font-numerals tabular-nums' : ''}`}
+        className={`text-sm text-foreground/90 ${mono ? "font-numerals tabular-nums" : ""}`}
       >
         {value}
       </dd>
     </div>
-  )
+  );
 }
 
 function EmptyHint({
@@ -1200,9 +1195,9 @@ function EmptyHint({
   title,
   body,
 }: {
-  icon?: React.ReactNode
-  title: string
-  body: string
+  icon?: React.ReactNode;
+  title: string;
+  body: string;
 }) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-[#fdf6e8]/40 px-4 py-3 text-sm">
@@ -1216,51 +1211,51 @@ function EmptyHint({
         <div className="text-xs leading-snug text-muted-foreground">{body}</div>
       </div>
     </div>
-  )
+  );
 }
 
 function PartiesPanel({
   fileId,
   parties,
 }: {
-  fileId: Id<'files'>
+  fileId: Id<"files">;
   parties: ReadonlyArray<{
-    fileParty: { _id: string; role: string; capacity?: string }
+    fileParty: { _id: string; role: string; capacity?: string };
     party: {
-      _id: string
-      legalName: string
-      partyType: string
-      einOrSsnToken?: string
-    }
-  }>
+      _id: string;
+      legalName: string;
+      partyType: string;
+      einOrSsnToken?: string;
+    };
+  }>;
 }) {
-  const addParty = useConvexMutation(api.files.addParty)
-  const [show, setShow] = useState(false)
-  const [legalName, setLegalName] = useState('')
-  const [role, setRole] = useState('buyer')
+  const addParty = useConvexMutation(api.files.addParty);
+  const [show, setShow] = useState(false);
+  const [legalName, setLegalName] = useState("");
+  const [role, setRole] = useState("buyer");
   const [partyType, setPartyType] = useState<
-    'person' | 'entity' | 'trust' | 'estate'
-  >('person')
-  const [error, setError] = useState<string | null>(null)
-  const [pending, setPending] = useState(false)
+    "person" | "entity" | "trust" | "estate"
+  >("person");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setPending(true)
-    setError(null)
+    e.preventDefault();
+    setPending(true);
+    setError(null);
     try {
-      await addParty({ fileId, legalName, role, partyType })
-      setShow(false)
-      setLegalName('')
+      await addParty({ fileId, legalName, role, partyType });
+      setShow(false);
+      setLegalName("");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg.replace(/^.*ConvexError:\s*/, ''))
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg.replace(/^.*ConvexError:\s*/, ""));
     } finally {
-      setPending(false)
+      setPending(false);
     }
-  }
+  };
 
-  const done = parties.length >= 2
+  const done = parties.length >= 2;
 
   return (
     <SectionShell
@@ -1273,12 +1268,12 @@ function PartiesPanel({
       actions={
         <Button
           onClick={() => setShow(!show)}
-          variant={show ? 'outline' : 'default'}
+          variant={show ? "outline" : "default"}
           size="sm"
           className="gap-1.5"
         >
           {show ? <X className="size-3.5" /> : <Plus className="size-3.5" />}
-          {show ? 'Cancel' : 'Add party'}
+          {show ? "Cancel" : "Add party"}
         </Button>
       }
     >
@@ -1305,7 +1300,7 @@ function PartiesPanel({
                 <Select
                   value={partyType}
                   onValueChange={(v) =>
-                    setPartyType(v as 'person' | 'entity' | 'trust' | 'estate')
+                    setPartyType(v as "person" | "entity" | "trust" | "estate")
                   }
                 >
                   <SelectTrigger className="w-full">
@@ -1342,14 +1337,14 @@ function PartiesPanel({
             )}
             <div className="mt-3 flex items-center justify-between gap-3">
               <div className="text-xs text-muted-foreground">
-                {!legalName.trim() && 'Enter a legal name to continue.'}
+                {!legalName.trim() && "Enter a legal name to continue."}
               </div>
               <Button
                 type="submit"
                 disabled={pending || !legalName.trim()}
                 size="sm"
               >
-                {pending ? 'Adding...' : 'Add party'}
+                {pending ? "Adding..." : "Add party"}
               </Button>
             </div>
           </form>
@@ -1377,7 +1372,7 @@ function PartiesPanel({
                       <RolePill role={fileParty.role} />
                       <span className="text-xs text-muted-foreground">
                         {party.partyType}
-                        {fileParty.capacity ? ` · ${fileParty.capacity}` : ''}
+                        {fileParty.capacity ? ` · ${fileParty.capacity}` : ""}
                       </span>
                     </div>
                   </div>
@@ -1385,7 +1380,7 @@ function PartiesPanel({
                 <div className="border-t border-border/50 pt-2">
                   <NpiCell
                     fileId={fileId}
-                    partyId={party._id as Id<'parties'>}
+                    partyId={party._id as Id<"parties">}
                     token={party.einOrSsnToken}
                   />
                 </div>
@@ -1395,25 +1390,25 @@ function PartiesPanel({
         )}
       </div>
     </SectionShell>
-  )
+  );
 }
 
 function RolePill({ role }: { role: string }) {
   const tone =
-    role === 'buyer' || role === 'borrower'
-      ? 'bg-[#e8f0f8] text-[#2c4a6b] ring-[#3f668f]/30'
-      : role === 'seller'
-        ? 'bg-[#fde9dc] text-[#7a3d18] ring-[#c9652e]/30'
-        : role === 'lender'
-          ? 'bg-[#f2e7f1] text-[#40233f] ring-[#593157]/30'
-          : 'bg-muted text-muted-foreground ring-border'
+    role === "buyer" || role === "borrower"
+      ? "bg-[#e8f0f8] text-[#2c4a6b] ring-[#3f668f]/30"
+      : role === "seller"
+        ? "bg-[#fde9dc] text-[#7a3d18] ring-[#c9652e]/30"
+        : role === "lender"
+          ? "bg-[#f2e7f1] text-[#40233f] ring-[#593157]/30"
+          : "bg-muted text-muted-foreground ring-border";
   return (
     <span
       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${tone}`}
     >
       {role}
     </span>
-  )
+  );
 }
 
 function NpiCell({
@@ -1421,54 +1416,54 @@ function NpiCell({
   partyId,
   token,
 }: {
-  fileId: Id<'files'>
-  partyId: Id<'parties'>
-  token?: string
+  fileId: Id<"files">;
+  partyId: Id<"parties">;
+  token?: string;
 }) {
-  const issue = useConvexMutation(api.secrets.issue)
-  const reveal = useConvexMutation(api.secrets.reveal)
-  const setSecretToken = useConvexMutation(api.parties.setSecretToken)
+  const issue = useConvexMutation(api.secrets.issue);
+  const reveal = useConvexMutation(api.secrets.reveal);
+  const setSecretToken = useConvexMutation(api.parties.setSecretToken);
 
-  const [show, setShow] = useState(false)
-  const [fieldKind, setFieldKind] = useState<'ssn' | 'ein' | 'account' | 'dob'>(
-    'ssn'
-  )
-  const [plaintext, setPlaintext] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [revealed, setRevealed] = useState<string | null>(null)
+  const [show, setShow] = useState(false);
+  const [fieldKind, setFieldKind] = useState<"ssn" | "ein" | "account" | "dob">(
+    "ssn",
+  );
+  const [plaintext, setPlaintext] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<string | null>(null);
 
   const onAdd = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setBusy(true)
-    setError(null)
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
     try {
-      const { token: t } = await issue({ fieldKind, plaintext })
-      await setSecretToken({ partyId, token: t })
-      setShow(false)
-      setPlaintext('')
+      const { token: t } = await issue({ fieldKind, plaintext });
+      await setSecretToken({ partyId, token: t });
+      setShow(false);
+      setPlaintext("");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg.replace(/^.*ConvexError:\s*/, ''))
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg.replace(/^.*ConvexError:\s*/, ""));
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   const onReveal = async () => {
-    if (!token) return
-    setBusy(true)
-    setError(null)
+    if (!token) return;
+    setBusy(true);
+    setError(null);
     try {
-      const r = await reveal({ token, fileId, purpose: 'file_detail_view' })
-      setRevealed(r.plaintext)
+      const r = await reveal({ token, fileId, purpose: "file_detail_view" });
+      setRevealed(r.plaintext);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg.replace(/^.*ConvexError:\s*/, ''))
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg.replace(/^.*ConvexError:\s*/, ""));
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   if (!token) {
     return (
@@ -1481,7 +1476,7 @@ function NpiCell({
             <Select
               value={fieldKind}
               onValueChange={(v) =>
-                setFieldKind(v as 'ssn' | 'ein' | 'account' | 'dob')
+                setFieldKind(v as "ssn" | "ein" | "account" | "dob")
               }
             >
               <SelectTrigger size="sm" className="text-xs">
@@ -1509,7 +1504,7 @@ function NpiCell({
               size="sm"
               disabled={busy || !plaintext.trim()}
             >
-              {busy ? '...' : 'Save'}
+              {busy ? "..." : "Save"}
             </Button>
             <button
               type="button"
@@ -1531,7 +1526,7 @@ function NpiCell({
           </button>
         )}
       </div>
-    )
+    );
   }
 
   return (
@@ -1539,7 +1534,7 @@ function NpiCell({
       <Lock className="size-3 text-[#b78625]" />
       <span className="text-muted-foreground">NPI on file:</span>
       <code className="font-numerals rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums">
-        {revealed ?? '••••••••'}
+        {revealed ?? "••••••••"}
       </code>
       {revealed ? (
         <button
@@ -1558,60 +1553,60 @@ function NpiCell({
           className="flex items-center gap-1 text-[#40233f] transition hover:text-[#593157] disabled:opacity-50"
         >
           <Eye className="size-3" />
-          {busy ? '...' : 'reveal'}
+          {busy ? "..." : "reveal"}
         </button>
       )}
       {error && <span className="text-[#8a3942]">{error}</span>}
     </div>
-  )
+  );
 }
 
 function DocumentsPanel({
   fileId,
   documents,
 }: {
-  fileId: Id<'files'>
+  fileId: Id<"files">;
   documents: ReadonlyArray<{
-    _id: string
-    title?: string
-    docType: string
-    sizeBytes?: number
-    uploadedAt: number
-  }>
+    _id: string;
+    title?: string;
+    docType: string;
+    sizeBytes?: number;
+    uploadedAt: number;
+  }>;
 }) {
-  const generateUploadUrl = useConvexMutation(api.files.generateUploadUrl)
-  const recordDocument = useConvexMutation(api.files.recordDocument)
-  const [docType, setDocType] = useState('purchase_agreement')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const generateUploadUrl = useConvexMutation(api.files.generateUploadUrl);
+  const recordDocument = useConvexMutation(api.files.recordDocument);
+  const [docType, setDocType] = useState("purchase_agreement");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setBusy(true)
-    setError(null)
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setBusy(true);
+    setError(null);
     try {
-      const uploadUrl = await generateUploadUrl({})
+      const uploadUrl = await generateUploadUrl({});
       const res = await fetch(uploadUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': f.type },
+        method: "POST",
+        headers: { "Content-Type": f.type },
         body: f,
-      })
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
-      const { storageId } = (await res.json()) as { storageId: string }
+      });
+      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      const { storageId } = (await res.json()) as { storageId: string };
       await recordDocument({
         fileId,
-        storageId: storageId as Id<'_storage'>,
+        storageId: storageId as Id<"_storage">,
         docType,
         title: f.name,
-      })
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false)
-      e.target.value = ''
+      setBusy(false);
+      e.target.value = "";
     }
-  }
+  };
 
   return (
     <SectionShell
@@ -1643,7 +1638,7 @@ function DocumentsPanel({
           <Button asChild disabled={busy} size="sm" className="gap-1.5">
             <label className="cursor-pointer">
               <Upload className="size-3.5" />
-              {busy ? 'Uploading...' : 'Upload'}
+              {busy ? "Uploading..." : "Upload"}
               <Input
                 type="file"
                 className="hidden"
@@ -1672,7 +1667,7 @@ function DocumentsPanel({
           {documents.map((d) => (
             <DocumentRow
               key={d._id}
-              documentId={d._id as Id<'documents'>}
+              documentId={d._id as Id<"documents">}
               title={d.title}
               docType={d.docType}
               sizeBytes={d.sizeBytes}
@@ -1682,7 +1677,7 @@ function DocumentsPanel({
         </ul>
       )}
     </SectionShell>
-  )
+  );
 }
 
 function DocumentRow({
@@ -1692,111 +1687,112 @@ function DocumentRow({
   sizeBytes,
   uploadedAt,
 }: {
-  documentId: Id<'documents'>
-  title?: string
-  docType: string
-  sizeBytes?: number
-  uploadedAt: number
+  documentId: Id<"documents">;
+  title?: string;
+  docType: string;
+  sizeBytes?: number;
+  uploadedAt: number;
 }) {
   const ext = useQuery(
-    convexQuery(api.extractions.getForDocument, { documentId })
-  )
-  const runExtraction = useConvexMutation(api.extractions.run)
-  const deleteDocument = useConvexMutation(api.files.deleteDocument)
-  const openPreview = useDocumentPreview()
-  const [busy, setBusy] = useState(false)
-  const [deleting, setDeleting] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
+    convexQuery(api.extractions.getForDocument, { documentId }),
+  );
+  const runExtraction = useConvexMutation(api.extractions.run);
+  const deleteDocument = useConvexMutation(api.files.deleteDocument);
+  const openPreview = useDocumentPreview();
+  const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const onExtract = async () => {
-    setBusy(true)
-    setErr(null)
+    setBusy(true);
+    setErr(null);
     try {
-      await runExtraction({ documentId })
+      await runExtraction({ documentId });
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   const onDelete = async () => {
     if (
       !confirm(
-        `Delete "${title ?? docType}"? Its extraction will be removed too.`
+        `Delete "${title ?? docType}"? Its extraction will be removed too.`,
       )
     ) {
-      return
+      return;
     }
-    setDeleting(true)
-    setErr(null)
+    setDeleting(true);
+    setErr(null);
     try {
-      await deleteDocument({ documentId })
+      await deleteDocument({ documentId });
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e))
+      setErr(e instanceof Error ? e.message : String(e));
     } finally {
-      setDeleting(false)
+      setDeleting(false);
     }
-  }
+  };
 
-  const status = ext.data?.status
-  const startedAt = ext.data?.startedAt as number | undefined
+  const status = ext.data?.status;
+  const startedAt = ext.data?.startedAt as number | undefined;
   // Anthropic typically finishes in <30 s; consider anything older than
   // 90 s without a state change "stuck" so the user has a way out.
-  const STUCK_AFTER_MS = 90_000
+  const STUCK_AFTER_MS = 90_000;
   const isStale =
-    (status === 'running' || status === 'pending') &&
+    (status === "running" || status === "pending") &&
     !!startedAt &&
-    Date.now() - startedAt > STUCK_AFTER_MS
+    Date.now() - startedAt > STUCK_AFTER_MS;
 
   const label =
-    status === 'succeeded'
-      ? 'Re-extract'
+    status === "succeeded"
+      ? "Re-extract"
       : isStale
-        ? 'Cancel & retry'
-        : status === 'running' || status === 'pending'
-          ? 'Extracting...'
-          : status === 'failed'
-            ? 'Retry'
-            : 'Extract'
+        ? "Cancel & retry"
+        : status === "running" || status === "pending"
+          ? "Extracting..."
+          : status === "failed"
+            ? "Retry"
+            : "Extract";
 
   // Derive a 4-stage "stage tracker" so users see the full pipeline live:
   // upload → extracting → reconciling → ready. The "reconciling" stage is
   // synthetic — auto-reconcile fires on extraction.success but completes in
   // ~1s, so we show it briefly using a time-since-completion heuristic.
-  const completedAt = ext.data?.completedAt as number | undefined
+  const completedAt = ext.data?.completedAt as number | undefined;
   const justCompleted =
-    status === 'succeeded' && !!completedAt && Date.now() - completedAt < 2000
+    status === "succeeded" && !!completedAt && Date.now() - completedAt < 2000;
   const activeStage:
-    | 'uploaded'
-    | 'extracting'
-    | 'reconciling'
-    | 'ready'
-    | 'failed' =
-    status === 'failed'
-      ? 'failed'
+    | "uploaded"
+    | "extracting"
+    | "reconciling"
+    | "ready"
+    | "failed" =
+    status === "failed"
+      ? "failed"
       : !status
-        ? 'uploaded'
-        : status === 'succeeded' && justCompleted
-          ? 'reconciling'
-          : status === 'succeeded'
-            ? 'ready'
-            : 'extracting'
+        ? "uploaded"
+        : status === "succeeded" && justCompleted
+          ? "reconciling"
+          : status === "succeeded"
+            ? "ready"
+            : "extracting";
 
   const friendly =
-    activeStage === 'uploaded'
-      ? 'Just uploaded'
-      : activeStage === 'extracting'
+    activeStage === "uploaded"
+      ? "Just uploaded"
+      : activeStage === "extracting"
         ? isStale
-          ? 'Stuck — try again'
-          : 'Reading the document...'
-        : activeStage === 'reconciling'
-          ? 'Cross-checking against other docs...'
-          : activeStage === 'ready'
-            ? 'Ready'
-            : 'Extraction failed'
+          ? "Stuck — try again"
+          : "Reading the document..."
+        : activeStage === "reconciling"
+          ? "Cross-checking against other docs..."
+          : activeStage === "ready"
+            ? "Ready"
+            : "Extraction failed";
 
-  const isActive = activeStage === 'extracting' || activeStage === 'reconciling'
+  const isActive =
+    activeStage === "extracting" || activeStage === "reconciling";
 
   return (
     <li
@@ -1815,19 +1811,19 @@ function DocumentRow({
           <div
             className={`grid size-9 shrink-0 place-items-center rounded-md border ${
               isActive
-                ? 'border-[#b78625]/40 bg-[#fdf6e8] text-[#7a5818]'
-                : activeStage === 'ready'
-                  ? 'border-[#3f7c64]/30 bg-[#e6f3ed] text-[#2f5d4b]'
-                  : activeStage === 'failed'
-                    ? 'border-[#b94f58]/30 bg-[#fdecee] text-[#8a3942]'
-                    : 'border-border bg-muted text-[#40233f]'
+                ? "border-[#b78625]/40 bg-[#fdf6e8] text-[#7a5818]"
+                : activeStage === "ready"
+                  ? "border-[#3f7c64]/30 bg-[#e6f3ed] text-[#2f5d4b]"
+                  : activeStage === "failed"
+                    ? "border-[#b94f58]/30 bg-[#fdecee] text-[#8a3942]"
+                    : "border-border bg-muted text-[#40233f]"
             }`}
           >
             {isActive ? (
               <Sparkles className="tk-soft-pulse size-4" />
-            ) : activeStage === 'ready' ? (
+            ) : activeStage === "ready" ? (
               <Check className="size-4" />
-            ) : activeStage === 'failed' ? (
+            ) : activeStage === "failed" ? (
               <CircleAlert className="size-4" />
             ) : (
               <FileText className="size-4" />
@@ -1838,7 +1834,7 @@ function DocumentRow({
               {title ?? docType}
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="capitalize">{docType.replace(/_/g, ' ')}</span>
+              <span className="capitalize">{docType.replace(/_/g, " ")}</span>
               {sizeBytes !== undefined && (
                 <>
                   <span>·</span>
@@ -1849,11 +1845,11 @@ function DocumentRow({
               )}
               <span>·</span>
               <span className="font-numerals tabular-nums">
-                {new Date(uploadedAt).toLocaleString('en-US', {
-                  month: 'short',
-                  day: 'numeric',
-                  hour: 'numeric',
-                  minute: '2-digit',
+                {new Date(uploadedAt).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
                 })}
               </span>
             </div>
@@ -1888,7 +1884,7 @@ function DocumentRow({
             disabled={
               busy ||
               deleting ||
-              ((status === 'running' || status === 'pending') && !isStale)
+              ((status === "running" || status === "pending") && !isStale)
             }
             className="gap-1.5"
           >
@@ -1909,66 +1905,66 @@ function DocumentRow({
         </div>
       </div>
     </li>
-  )
+  );
 }
 
 function ProcessingTracker({
   stage,
   friendly,
 }: {
-  stage: 'uploaded' | 'extracting' | 'reconciling' | 'ready' | 'failed'
-  friendly: string
+  stage: "uploaded" | "extracting" | "reconciling" | "ready" | "failed";
+  friendly: string;
 }) {
   const STAGES: ReadonlyArray<{
-    key: 'uploaded' | 'extracting' | 'reconciling' | 'ready'
-    label: string
+    key: "uploaded" | "extracting" | "reconciling" | "ready";
+    label: string;
   }> = [
-    { key: 'uploaded', label: 'Uploaded' },
-    { key: 'extracting', label: 'Reading' },
-    { key: 'reconciling', label: 'Cross-checking' },
-    { key: 'ready', label: 'Ready' },
-  ]
+    { key: "uploaded", label: "Uploaded" },
+    { key: "extracting", label: "Reading" },
+    { key: "reconciling", label: "Cross-checking" },
+    { key: "ready", label: "Ready" },
+  ];
   const currentIndex =
-    stage === 'failed' ? 1 : STAGES.findIndex((s) => s.key === stage)
+    stage === "failed" ? 1 : STAGES.findIndex((s) => s.key === stage);
 
   return (
     <div className="mt-2 flex items-center gap-2">
       <div className="flex items-center gap-1">
         {STAGES.map((s, i) => {
-          const done = stage !== 'failed' && i < currentIndex
+          const done = stage !== "failed" && i < currentIndex;
           const active =
-            stage !== 'failed' && i === currentIndex && stage !== 'ready'
-          const ready = stage === 'ready'
+            stage !== "failed" && i === currentIndex && stage !== "ready";
+          const ready = stage === "ready";
           return (
             <span
               key={s.key}
               aria-label={s.label}
               className={`inline-block h-1 rounded-full transition-all duration-500 ${
                 ready || done
-                  ? 'w-5 bg-[#3f7c64]'
+                  ? "w-5 bg-[#3f7c64]"
                   : active
-                    ? 'tk-soft-pulse w-7 bg-[#b78625]'
-                    : stage === 'failed' && i <= 1
-                      ? 'w-5 bg-[#b94f58]'
-                      : 'w-3 bg-border'
+                    ? "tk-soft-pulse w-7 bg-[#b78625]"
+                    : stage === "failed" && i <= 1
+                      ? "w-5 bg-[#b94f58]"
+                      : "w-3 bg-border"
               }`}
             />
-          )
+          );
         })}
       </div>
       <span
         className={`text-xs ${
-          stage === 'ready'
-            ? 'text-[#2f5d4b]'
-            : stage === 'failed'
-              ? 'text-[#8a3942]'
-              : stage === 'extracting' || stage === 'reconciling'
-                ? 'text-[#7a5818]'
-                : 'text-muted-foreground'
+          stage === "ready"
+            ? "text-[#2f5d4b]"
+            : stage === "failed"
+              ? "text-[#8a3942]"
+              : stage === "extracting" || stage === "reconciling"
+                ? "text-[#7a5818]"
+                : "text-muted-foreground"
         }`}
       >
         {friendly}
-        {(stage === 'extracting' || stage === 'reconciling') && (
+        {(stage === "extracting" || stage === "reconciling") && (
           <span className="ml-0.5 inline-flex gap-0.5">
             <span className="tk-dot inline-block">.</span>
             <span className="tk-dot inline-block" data-i="1">
@@ -1981,36 +1977,36 @@ function ProcessingTracker({
         )}
       </span>
     </div>
-  )
+  );
 }
 
 type FindingDoc = ReadonlyArray<{
-  _id: string
-  title?: string
-  docType: string
-  uploadedAt: number
-  contentType?: string
-}>
+  _id: string;
+  title?: string;
+  docType: string;
+  uploadedAt: number;
+  contentType?: string;
+}>;
 
 type Finding = {
-  _id: string
-  findingType: string
-  severity: 'info' | 'warn' | 'block'
-  message: string
-  involvedDocumentIds: ReadonlyArray<string>
-  involvedFields: ReadonlyArray<string>
-  rawDetail: unknown
-  status: 'open' | 'acknowledged' | 'resolved' | 'dismissed'
-  resolvedDocumentId?: string
-  resolvedValue?: unknown
-}
+  _id: string;
+  findingType: string;
+  severity: "info" | "warn" | "block";
+  message: string;
+  involvedDocumentIds: ReadonlyArray<string>;
+  involvedFields: ReadonlyArray<string>;
+  rawDetail: unknown;
+  status: "open" | "acknowledged" | "resolved" | "dismissed";
+  resolvedDocumentId?: string;
+  resolvedValue?: unknown;
+};
 
 const DocumentPreviewContext = createContext<
-  ((documentId: Id<'documents'>) => void) | null
->(null)
+  ((documentId: Id<"documents">) => void) | null
+>(null);
 
 function useDocumentPreview() {
-  return useContext(DocumentPreviewContext)
+  return useContext(DocumentPreviewContext);
 }
 
 function DocumentPreviewSheet({
@@ -2018,22 +2014,22 @@ function DocumentPreviewSheet({
   documents,
   onOpenChange,
 }: {
-  documentId: Id<'documents'> | null
-  documents: FindingDoc
-  onOpenChange: (open: boolean) => void
+  documentId: Id<"documents"> | null;
+  documents: FindingDoc;
+  onOpenChange: (open: boolean) => void;
 }) {
   return (
     <Drawer open={!!documentId} onOpenChange={onOpenChange} direction="right">
       <DrawerContent
         className={
           // PDFs are dense — give the drawer most of the viewport on desktop.
-          'flex h-full w-full flex-col border-l border-border/70 bg-card p-0 text-foreground shadow-2xl ring-1 ring-foreground/5 ' +
-          'data-[vaul-drawer-direction=right]:w-full ' +
-          'data-[vaul-drawer-direction=right]:sm:max-w-none ' +
-          'data-[vaul-drawer-direction=right]:sm:w-[92vw] ' +
-          'data-[vaul-drawer-direction=right]:lg:w-[85vw] ' +
-          'data-[vaul-drawer-direction=right]:xl:w-[78vw] ' +
-          'data-[vaul-drawer-direction=right]:2xl:w-[72vw]'
+          "flex h-full w-full flex-col border-l border-border/70 bg-card p-0 text-foreground shadow-2xl ring-1 ring-foreground/5 " +
+          "data-[vaul-drawer-direction=right]:w-full " +
+          "data-[vaul-drawer-direction=right]:sm:max-w-none " +
+          "data-[vaul-drawer-direction=right]:sm:w-[92vw] " +
+          "data-[vaul-drawer-direction=right]:lg:w-[85vw] " +
+          "data-[vaul-drawer-direction=right]:xl:w-[78vw] " +
+          "data-[vaul-drawer-direction=right]:2xl:w-[72vw]"
         }
       >
         {documentId ? (
@@ -2041,33 +2037,33 @@ function DocumentPreviewSheet({
         ) : null}
       </DrawerContent>
     </Drawer>
-  )
+  );
 }
 
 function DocumentPreviewBody({
   documentId,
   documents,
 }: {
-  documentId: Id<'documents'>
-  documents: FindingDoc
+  documentId: Id<"documents">;
+  documents: FindingDoc;
 }) {
-  const url = useQuery(convexQuery(api.files.documentUrl, { documentId }))
-  const doc = documents.find((d) => d._id === documentId)
-  const title = doc?.title ?? doc?.docType ?? 'Document'
-  const docType = doc?.docType?.replace(/_/g, ' ') ?? null
-  const isImage = (doc?.contentType ?? '').startsWith('image/')
+  const url = useQuery(convexQuery(api.files.documentUrl, { documentId }));
+  const doc = documents.find((d) => d._id === documentId);
+  const title = doc?.title ?? doc?.docType ?? "Document";
+  const docType = doc?.docType?.replace(/_/g, " ") ?? null;
+  const isImage = (doc?.contentType ?? "").startsWith("image/");
   const sizeKb =
-    doc && 'sizeBytes' in doc && typeof doc.sizeBytes === 'number'
+    doc && "sizeBytes" in doc && typeof doc.sizeBytes === "number"
       ? `${(doc.sizeBytes / 1024).toFixed(1)} KB`
-      : null
+      : null;
   const uploaded = doc?.uploadedAt
-    ? new Date(doc.uploadedAt).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
+    ? new Date(doc.uploadedAt).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
       })
-    : null
+    : null;
 
   return (
     <>
@@ -2174,74 +2170,74 @@ function DocumentPreviewBody({
         )}
       </div>
     </>
-  )
+  );
 }
 
 type ExtractionLite = {
-  documentId: string
-  status: string
-  payload?: unknown
-}
+  documentId: string;
+  status: string;
+  payload?: unknown;
+};
 
 type ExtractionView = {
-  documentKind?: string
-  parties?: Array<{ role?: string; legalName?: string; capacity?: string }>
+  documentKind?: string;
+  parties?: Array<{ role?: string; legalName?: string; capacity?: string }>;
   financial?: {
-    purchasePrice?: number
-    earnestMoney?: { amount?: number; refundable?: boolean }
-  } | null
+    purchasePrice?: number;
+    earnestMoney?: { amount?: number; refundable?: boolean };
+  } | null;
   dates?: {
-    closingDate?: string
-    financingApprovalDays?: number
-  } | null
-  titleCompany?: { name?: string; selectedBy?: string } | null
-}
+    closingDate?: string;
+    financingApprovalDays?: number;
+  } | null;
+  titleCompany?: { name?: string; selectedBy?: string } | null;
+};
 
-type FactSeverity = 'info' | 'warn' | 'block'
+type FactSeverity = "info" | "warn" | "block";
 
-type FactStatus = 'agreed' | 'disagreed' | 'single-source' | 'resolved'
+type FactStatus = "agreed" | "disagreed" | "single-source" | "resolved";
 
 type FactEvidenceRow = {
-  documentId: string
-  documentKind?: string
-  uploadedAt: number
-  display: string
-  raw: unknown
-  confidence?: number
-}
+  documentId: string;
+  documentKind?: string;
+  uploadedAt: number;
+  display: string;
+  raw: unknown;
+  confidence?: number;
+};
 
 type Fact = {
-  id: string
-  label: string
-  status: FactStatus
-  agreedDisplay?: string
-  evidence: FactEvidenceRow[]
-  finding?: Finding
-  severity?: FactSeverity
-  isAmendment: boolean
-  confidenceFieldPath: string | null
-}
+  id: string;
+  label: string;
+  status: FactStatus;
+  agreedDisplay?: string;
+  evidence: FactEvidenceRow[];
+  finding?: Finding;
+  severity?: FactSeverity;
+  isAmendment: boolean;
+  confidenceFieldPath: string | null;
+};
 
 // The ordering reconciliation surfaces facts in: needs-attention first
 // (block → warn → info), then settled (agreed / single-source / resolved).
 const FACT_LAYOUT = [
-  { id: 'purchase_price', label: 'Purchase price' },
-  { id: 'earnest_money', label: 'Earnest money' },
-  { id: 'closing_date', label: 'Closing date' },
-  { id: 'financing_window', label: 'Financing window' },
-  { id: 'title_company', label: 'Title company' },
-] as const
+  { id: "purchase_price", label: "Purchase price" },
+  { id: "earnest_money", label: "Earnest money" },
+  { id: "closing_date", label: "Closing date" },
+  { id: "financing_window", label: "Financing window" },
+  { id: "title_company", label: "Title company" },
+] as const;
 
 const FACTABLE_FINDING_TYPES = new Set([
-  'price_mismatch',
-  'price_amended',
-  'title_company_change',
-  'title_company_set',
-  'earnest_money_refundability_change',
-  'closing_date_mismatch',
-  'financing_window_change',
-  'party_name_mismatch',
-])
+  "price_mismatch",
+  "price_amended",
+  "title_company_change",
+  "title_company_set",
+  "earnest_money_refundability_change",
+  "closing_date_mismatch",
+  "financing_window_change",
+  "party_name_mismatch",
+]);
 
 function ReconciliationPanel({
   fileId,
@@ -2252,57 +2248,57 @@ function ReconciliationPanel({
   reconcileReady,
   missingPrereqs,
 }: {
-  fileId: Id<'files'>
-  documents: FindingDoc
-  extractions: ReadonlyArray<ExtractionLite>
-  confidenceByDoc: Map<string, Record<string, number>>
-  findings: ReadonlyArray<Finding>
-  reconcileReady: boolean
-  missingPrereqs: { property: boolean; parties: boolean; docs: boolean }
+  fileId: Id<"files">;
+  documents: FindingDoc;
+  extractions: ReadonlyArray<ExtractionLite>;
+  confidenceByDoc: Map<string, Record<string, number>>;
+  findings: ReadonlyArray<Finding>;
+  reconcileReady: boolean;
+  missingPrereqs: { property: boolean; parties: boolean; docs: boolean };
 }) {
-  const reconcile = useConvexMutation(api.reconciliation.runForFile)
-  const setStatus = useConvexMutation(api.reconciliation.setStatus)
-  const resolveWith = useConvexMutation(api.reconciliation.resolveWith)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const reconcile = useConvexMutation(api.reconciliation.runForFile);
+  const setStatus = useConvexMutation(api.reconciliation.setStatus);
+  const resolveWith = useConvexMutation(api.reconciliation.resolveWith);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<FactSeverity>>(
-    () => new Set(['block', 'warn', 'info'])
-  )
+    () => new Set(["block", "warn", "info"]),
+  );
 
   const onReconcile = async () => {
-    setBusy(true)
-    setError(null)
+    setBusy(true);
+    setError(null);
     try {
-      await reconcile({ fileId })
+      await reconcile({ fileId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }
+  };
 
   const onAck = async (
-    findingId: Id<'reconciliationFindings'>,
-    next: 'acknowledged' | 'resolved' | 'dismissed'
+    findingId: Id<"reconciliationFindings">,
+    next: "acknowledged" | "resolved" | "dismissed",
   ) => {
     try {
-      await setStatus({ findingId, status: next })
+      await setStatus({ findingId, status: next });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err instanceof Error ? err.message : String(err));
     }
-  }
+  };
 
   const onResolveWith = async (
-    findingId: Id<'reconciliationFindings'>,
-    documentId: Id<'documents'>,
-    value: unknown
+    findingId: Id<"reconciliationFindings">,
+    documentId: Id<"documents">,
+    value: unknown,
   ) => {
     try {
-      await resolveWith({ findingId, documentId, value })
+      await resolveWith({ findingId, documentId, value });
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(err instanceof Error ? err.message : String(err));
     }
-  }
+  };
 
   const { facts, otherFindings } = useMemo(
     () =>
@@ -2312,50 +2308,50 @@ function ReconciliationPanel({
         findings,
         confidenceByDoc,
       }),
-    [documents, extractions, findings, confidenceByDoc]
-  )
+    [documents, extractions, findings, confidenceByDoc],
+  );
 
-  const dismissedFindings = findings.filter((f) => f.status === 'dismissed')
+  const dismissedFindings = findings.filter((f) => f.status === "dismissed");
 
   const counts = useMemo(() => {
-    const c = { block: 0, warn: 0, info: 0 }
+    const c = { block: 0, warn: 0, info: 0 };
     for (const f of facts) {
-      if (f.status !== 'disagreed') continue
-      if (f.severity) c[f.severity]++
+      if (f.status !== "disagreed") continue;
+      if (f.severity) c[f.severity]++;
     }
     for (const f of otherFindings) {
-      if (f.status === 'open' || f.status === 'acknowledged') c[f.severity]++
+      if (f.status === "open" || f.status === "acknowledged") c[f.severity]++;
     }
-    return c
-  }, [facts, otherFindings])
+    return c;
+  }, [facts, otherFindings]);
 
-  const total = counts.block + counts.warn + counts.info
-  const reconciled = findings.length > 0 || facts.length > 0
-  const allClear = reconciled && total === 0
-  const done = allClear
+  const total = counts.block + counts.warn + counts.info;
+  const reconciled = findings.length > 0 || facts.length > 0;
+  const allClear = reconciled && total === 0;
+  const done = allClear;
 
   const toggleFilter = (sev: FactSeverity) => {
     setActiveFilters((prev) => {
-      const next = new Set(prev)
-      if (next.has(sev)) next.delete(sev)
-      else next.add(sev)
+      const next = new Set(prev);
+      if (next.has(sev)) next.delete(sev);
+      else next.add(sev);
       // Empty filter set is a footgun — treat it as "all on".
-      if (next.size === 0) return new Set(['block', 'warn', 'info'])
-      return next
-    })
-  }
+      if (next.size === 0) return new Set(["block", "warn", "info"]);
+      return next;
+    });
+  };
 
-  const settledFacts = facts.filter((f) => f.status !== 'disagreed')
+  const settledFacts = facts.filter((f) => f.status !== "disagreed");
   const disagreedFacts = facts
-    .filter((f) => f.status === 'disagreed')
-    .filter((f) => !f.severity || activeFilters.has(f.severity))
+    .filter((f) => f.status === "disagreed")
+    .filter((f) => !f.severity || activeFilters.has(f.severity));
 
   const visibleOtherFindings = otherFindings
-    .filter((f) => f.status === 'open' || f.status === 'acknowledged')
+    .filter((f) => f.status === "open" || f.status === "acknowledged")
     .filter((f) => activeFilters.has(f.severity))
-    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
+    .sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
 
-  const allFiltersOn = activeFilters.size === 3
+  const allFiltersOn = activeFilters.size === 3;
 
   return (
     <SectionShell
@@ -2370,22 +2366,22 @@ function ReconciliationPanel({
           <SeverityChip
             count={counts.block}
             severity="block"
-            active={activeFilters.has('block')}
-            onClick={() => toggleFilter('block')}
+            active={activeFilters.has("block")}
+            onClick={() => toggleFilter("block")}
             disabled={total === 0}
           />
           <SeverityChip
             count={counts.warn}
             severity="warn"
-            active={activeFilters.has('warn')}
-            onClick={() => toggleFilter('warn')}
+            active={activeFilters.has("warn")}
+            onClick={() => toggleFilter("warn")}
             disabled={total === 0}
           />
           <SeverityChip
             count={counts.info}
             severity="info"
-            active={activeFilters.has('info')}
-            onClick={() => toggleFilter('info')}
+            active={activeFilters.has("info")}
+            onClick={() => toggleFilter("info")}
             disabled={total === 0}
           />
           <Button
@@ -2395,12 +2391,12 @@ function ReconciliationPanel({
             size="sm"
             title={
               reconcileReady
-                ? 'Run reconciliation now'
-                : 'Finish steps 1–3 first to make this useful'
+                ? "Run reconciliation now"
+                : "Finish steps 1–3 first to make this useful"
             }
           >
             <Stamp className="size-3.5" />
-            {busy ? 'Running...' : reconciled ? 'Re-run' : 'Run reconcile'}
+            {busy ? "Running..." : reconciled ? "Re-run" : "Run reconcile"}
           </Button>
         </div>
       }
@@ -2426,8 +2422,8 @@ function ReconciliationPanel({
             title="Waiting on the first extraction"
             body={
               reconcileReady
-                ? 'Reconciliation will start automatically — or click Run reconcile to kick it now.'
-                : 'Reconciliation runs on its own as soon as a document finishes extracting. Finish the steps above to unlock it.'
+                ? "Reconciliation will start automatically — or click Run reconcile to kick it now."
+                : "Reconciliation runs on its own as soon as a document finishes extracting. Finish the steps above to unlock it."
             }
           />
         ) : (
@@ -2507,8 +2503,8 @@ function ReconciliationPanel({
         {dismissedFindings.length > 0 && (
           <details className="text-xs text-muted-foreground">
             <summary className="cursor-pointer font-medium hover:text-[#40233f]">
-              {dismissedFindings.length} closed{' '}
-              {dismissedFindings.length === 1 ? 'issue' : 'issues'}
+              {dismissedFindings.length} closed{" "}
+              {dismissedFindings.length === 1 ? "issue" : "issues"}
             </summary>
             <ul className="mt-2 flex flex-col gap-1.5">
               {dismissedFindings.map((f) => (
@@ -2521,7 +2517,7 @@ function ReconciliationPanel({
                       {f.status}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {f.findingType.replace(/_/g, ' ')}
+                      {f.findingType.replace(/_/g, " ")}
                     </span>
                   </div>
                   <div className="mt-0.5 text-[12px] text-foreground/80">
@@ -2534,164 +2530,164 @@ function ReconciliationPanel({
         )}
       </div>
     </SectionShell>
-  )
+  );
 }
 
 function severityRank(s: FactSeverity): number {
-  return s === 'block' ? 3 : s === 'warn' ? 2 : 1
+  return s === "block" ? 3 : s === "warn" ? 2 : 1;
 }
 
 function SectionLabel({
   children,
   muted,
 }: {
-  children: React.ReactNode
-  muted?: boolean
+  children: React.ReactNode;
+  muted?: boolean;
 }) {
   return (
     <h3
       className={`flex items-center gap-2 text-xs font-medium ${
-        muted ? 'text-muted-foreground/70' : 'text-muted-foreground'
+        muted ? "text-muted-foreground/70" : "text-muted-foreground"
       }`}
     >
       <span>{children}</span>
       <span aria-hidden className="h-px flex-1 bg-border/70" />
     </h3>
-  )
+  );
 }
 
 function deriveFacts(args: {
-  documents: FindingDoc
-  extractions: ReadonlyArray<ExtractionLite>
-  findings: ReadonlyArray<Finding>
-  confidenceByDoc: Map<string, Record<string, number>>
+  documents: FindingDoc;
+  extractions: ReadonlyArray<ExtractionLite>;
+  findings: ReadonlyArray<Finding>;
+  confidenceByDoc: Map<string, Record<string, number>>;
 }): { facts: Fact[]; otherFindings: Finding[] } {
-  const { documents, extractions, findings, confidenceByDoc } = args
-  const docById = new Map<string, FindingDoc[number]>()
-  for (const d of documents) docById.set(d._id, d)
+  const { documents, extractions, findings, confidenceByDoc } = args;
+  const docById = new Map<string, FindingDoc[number]>();
+  for (const d of documents) docById.set(d._id, d);
 
-  const views = new Map<string, ExtractionView>()
+  const views = new Map<string, ExtractionView>();
   for (const e of extractions) {
-    if (e.status === 'succeeded' && e.payload) {
-      views.set(e.documentId, e.payload as ExtractionView)
+    if (e.status === "succeeded" && e.payload) {
+      views.set(e.documentId, e.payload as ExtractionView);
     }
   }
 
   const findingByType = (...types: string[]): Finding | undefined =>
     findings.find(
-      (f) => types.includes(f.findingType) && f.status !== 'dismissed'
-    )
+      (f) => types.includes(f.findingType) && f.status !== "dismissed",
+    );
 
   const otherFindings = findings.filter(
-    (f) => !FACTABLE_FINDING_TYPES.has(f.findingType)
-  )
+    (f) => !FACTABLE_FINDING_TYPES.has(f.findingType),
+  );
 
-  const facts: Fact[] = []
+  const facts: Fact[] = [];
 
   // Single-value scalar facts (price, dates, financing window, title company).
   facts.push(
     buildFact({
-      id: 'purchase_price',
-      label: 'Purchase price',
-      confidenceFieldPath: 'financial.purchasePrice',
+      id: "purchase_price",
+      label: "Purchase price",
+      confidenceFieldPath: "financial.purchasePrice",
       pickRaw: (v) => v.financial?.purchasePrice,
       format: (raw) =>
-        typeof raw === 'number' ? `$${raw.toLocaleString()}` : '—',
-      finding: findingByType('price_mismatch', 'price_amended'),
-      isAmendment: !!findingByType('price_amended'),
+        typeof raw === "number" ? `$${raw.toLocaleString()}` : "—",
+      finding: findingByType("price_mismatch", "price_amended"),
+      isAmendment: !!findingByType("price_amended"),
       compareKey: (raw) =>
-        typeof raw === 'number' ? String(raw) : JSON.stringify(raw),
+        typeof raw === "number" ? String(raw) : JSON.stringify(raw),
     }),
     buildFact({
-      id: 'closing_date',
-      label: 'Closing date',
-      confidenceFieldPath: 'dates.closingDate',
+      id: "closing_date",
+      label: "Closing date",
+      confidenceFieldPath: "dates.closingDate",
       pickRaw: (v) => v.dates?.closingDate,
-      format: (raw) => (typeof raw === 'string' ? raw : '—'),
-      finding: findingByType('closing_date_mismatch'),
+      format: (raw) => (typeof raw === "string" ? raw : "—"),
+      finding: findingByType("closing_date_mismatch"),
       isAmendment: false,
-      compareKey: (raw) => (typeof raw === 'string' ? raw.trim() : ''),
+      compareKey: (raw) => (typeof raw === "string" ? raw.trim() : ""),
     }),
     buildFact({
-      id: 'financing_window',
-      label: 'Financing window',
-      confidenceFieldPath: 'dates.financingApprovalDays',
+      id: "financing_window",
+      label: "Financing window",
+      confidenceFieldPath: "dates.financingApprovalDays",
       pickRaw: (v) => v.dates?.financingApprovalDays,
-      format: (raw) => (typeof raw === 'number' ? `${raw} days` : '—'),
-      finding: findingByType('financing_window_change'),
-      isAmendment: !!findingByType('financing_window_change'),
+      format: (raw) => (typeof raw === "number" ? `${raw} days` : "—"),
+      finding: findingByType("financing_window_change"),
+      isAmendment: !!findingByType("financing_window_change"),
       compareKey: (raw) =>
-        typeof raw === 'number' ? String(raw) : JSON.stringify(raw),
+        typeof raw === "number" ? String(raw) : JSON.stringify(raw),
     }),
     buildFact({
-      id: 'title_company',
-      label: 'Title company',
-      confidenceFieldPath: 'titleCompany.name',
+      id: "title_company",
+      label: "Title company",
+      confidenceFieldPath: "titleCompany.name",
       pickRaw: (v) => v.titleCompany ?? undefined,
       format: (raw) => {
-        const tc = raw as { name?: string; selectedBy?: string } | undefined
-        if (!tc?.name) return '—'
-        return tc.selectedBy ? `${tc.name} · ${tc.selectedBy}` : tc.name
+        const tc = raw as { name?: string; selectedBy?: string } | undefined;
+        if (!tc?.name) return "—";
+        return tc.selectedBy ? `${tc.name} · ${tc.selectedBy}` : tc.name;
       },
-      finding: findingByType('title_company_change', 'title_company_set'),
-      isAmendment: !!findingByType('title_company_change'),
+      finding: findingByType("title_company_change", "title_company_set"),
+      isAmendment: !!findingByType("title_company_change"),
       compareKey: (raw) => {
-        const tc = raw as { name?: string } | undefined
-        return (tc?.name ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
+        const tc = raw as { name?: string } | undefined;
+        return (tc?.name ?? "").trim().toLowerCase().replace(/\s+/g, " ");
       },
     }),
     buildFact({
-      id: 'earnest_money',
-      label: 'Earnest money',
-      confidenceFieldPath: 'financial.earnestMoney.refundable',
+      id: "earnest_money",
+      label: "Earnest money",
+      confidenceFieldPath: "financial.earnestMoney.refundable",
       pickRaw: (v) => v.financial?.earnestMoney,
       format: (raw) => {
-        const em = raw as { amount?: number; refundable?: boolean } | undefined
-        if (!em) return '—'
+        const em = raw as { amount?: number; refundable?: boolean } | undefined;
+        if (!em) return "—";
         const refund =
           em.refundable === true
-            ? 'refundable'
+            ? "refundable"
             : em.refundable === false
-              ? 'non-refundable'
-              : null
+              ? "non-refundable"
+              : null;
         const amt =
-          typeof em.amount === 'number'
+          typeof em.amount === "number"
             ? `$${em.amount.toLocaleString()}`
-            : null
-        return [amt, refund].filter(Boolean).join(' · ') || '—'
+            : null;
+        return [amt, refund].filter(Boolean).join(" · ") || "—";
       },
-      finding: findingByType('earnest_money_refundability_change'),
-      isAmendment: !!findingByType('earnest_money_refundability_change'),
+      finding: findingByType("earnest_money_refundability_change"),
+      isAmendment: !!findingByType("earnest_money_refundability_change"),
       compareKey: (raw) => {
-        const em = raw as { amount?: number; refundable?: boolean } | undefined
-        return `${em?.refundable ?? '?'}|${em?.amount ?? '?'}`
+        const em = raw as { amount?: number; refundable?: boolean } | undefined;
+        return `${em?.refundable ?? "?"}|${em?.amount ?? "?"}`;
       },
-    })
-  )
+    }),
+  );
 
   function buildFact(args: {
-    id: string
-    label: string
-    confidenceFieldPath: string
-    pickRaw: (v: ExtractionView) => unknown
-    format: (raw: unknown) => string
-    compareKey: (raw: unknown) => string
-    finding?: Finding
-    isAmendment: boolean
+    id: string;
+    label: string;
+    confidenceFieldPath: string;
+    pickRaw: (v: ExtractionView) => unknown;
+    format: (raw: unknown) => string;
+    compareKey: (raw: unknown) => string;
+    finding?: Finding;
+    isAmendment: boolean;
   }): Fact {
-    const evidence: FactEvidenceRow[] = []
+    const evidence: FactEvidenceRow[] = [];
     for (const [docId, view] of views) {
-      const raw = args.pickRaw(view)
-      if (raw === undefined || raw === null) continue
+      const raw = args.pickRaw(view);
+      if (raw === undefined || raw === null) continue;
       // earnestMoney can be {} — drop empties.
       if (
-        typeof raw === 'object' &&
+        typeof raw === "object" &&
         raw !== null &&
         Object.values(raw).every((v) => v === undefined)
       ) {
-        continue
+        continue;
       }
-      const doc = docById.get(docId)
+      const doc = docById.get(docId);
       evidence.push({
         documentId: docId,
         documentKind: view.documentKind,
@@ -2700,34 +2696,34 @@ function deriveFacts(args: {
         raw,
         confidence: lookupConfidence(
           confidenceByDoc.get(docId),
-          args.confidenceFieldPath
+          args.confidenceFieldPath,
         ),
-      })
+      });
     }
-    evidence.sort((a, b) => a.uploadedAt - b.uploadedAt)
+    evidence.sort((a, b) => a.uploadedAt - b.uploadedAt);
 
-    const finding = args.finding
-    let status: FactStatus
-    let agreedDisplay: string | undefined
+    const finding = args.finding;
+    let status: FactStatus;
+    let agreedDisplay: string | undefined;
 
-    if (finding?.status === 'resolved') {
-      status = 'resolved'
+    if (finding?.status === "resolved") {
+      status = "resolved";
       agreedDisplay =
         finding.resolvedValue !== undefined
           ? args.format(finding.resolvedValue)
-          : undefined
+          : undefined;
     } else if (evidence.length === 0) {
-      status = 'single-source'
+      status = "single-source";
     } else if (evidence.length === 1) {
-      status = 'single-source'
-      agreedDisplay = evidence[0].display
+      status = "single-source";
+      agreedDisplay = evidence[0].display;
     } else {
-      const distinct = new Set(evidence.map((e) => args.compareKey(e.raw)))
+      const distinct = new Set(evidence.map((e) => args.compareKey(e.raw)));
       if (distinct.size <= 1) {
-        status = 'agreed'
-        agreedDisplay = evidence[0].display
+        status = "agreed";
+        agreedDisplay = evidence[0].display;
       } else {
-        status = 'disagreed'
+        status = "disagreed";
       }
     }
 
@@ -2741,30 +2737,30 @@ function deriveFacts(args: {
       severity: finding?.severity,
       isAmendment: args.isAmendment,
       confidenceFieldPath: args.confidenceFieldPath,
-    }
+    };
   }
 
   // Empty facts (no evidence at all) are not interesting — drop them.
-  const filtered = facts.filter((f) => f.evidence.length > 0)
+  const filtered = facts.filter((f) => f.evidence.length > 0);
 
   // Order: disagreed first (block → warn → info), then agreed/resolved/single-source
   // in the canonical layout order.
   const layoutIndex = new Map<string, number>(
-    FACT_LAYOUT.map((l, i) => [l.id, i])
-  )
+    FACT_LAYOUT.map((l, i) => [l.id, i]),
+  );
   filtered.sort((a, b) => {
-    const aDis = a.status === 'disagreed' ? 0 : 1
-    const bDis = b.status === 'disagreed' ? 0 : 1
-    if (aDis !== bDis) return aDis - bDis
-    if (a.status === 'disagreed' && b.status === 'disagreed') {
+    const aDis = a.status === "disagreed" ? 0 : 1;
+    const bDis = b.status === "disagreed" ? 0 : 1;
+    if (aDis !== bDis) return aDis - bDis;
+    if (a.status === "disagreed" && b.status === "disagreed") {
       return (
-        severityRank(b.severity ?? 'info') - severityRank(a.severity ?? 'info')
-      )
+        severityRank(b.severity ?? "info") - severityRank(a.severity ?? "info")
+      );
     }
-    return (layoutIndex.get(a.id) ?? 99) - (layoutIndex.get(b.id) ?? 99)
-  })
+    return (layoutIndex.get(a.id) ?? 99) - (layoutIndex.get(b.id) ?? 99);
+  });
 
-  return { facts: filtered, otherFindings }
+  return { facts: filtered, otherFindings };
 }
 
 function DisagreedFactCard({
@@ -2773,47 +2769,47 @@ function DisagreedFactCard({
   onSetStatus,
   onResolveWith,
 }: {
-  fact: Fact
-  documents: FindingDoc
+  fact: Fact;
+  documents: FindingDoc;
   onSetStatus: (
-    findingId: Id<'reconciliationFindings'>,
-    status: 'acknowledged' | 'resolved' | 'dismissed'
-  ) => void
+    findingId: Id<"reconciliationFindings">,
+    status: "acknowledged" | "resolved" | "dismissed",
+  ) => void;
   onResolveWith: (
-    findingId: Id<'reconciliationFindings'>,
-    documentId: Id<'documents'>,
-    value: unknown
-  ) => void
+    findingId: Id<"reconciliationFindings">,
+    documentId: Id<"documents">,
+    value: unknown,
+  ) => void;
 }) {
-  const sev = fact.severity ?? 'warn'
+  const sev = fact.severity ?? "warn";
   const tone =
-    sev === 'block'
+    sev === "block"
       ? {
-          border: 'border-[#b94f58]/40',
-          bg: 'bg-[#fdecee]/40',
-          text: 'text-[#8a3942]',
-          chip: 'bg-[#fdecee] text-[#8a3942]',
+          border: "border-[#b94f58]/40",
+          bg: "bg-[#fdecee]/40",
+          text: "text-[#8a3942]",
+          chip: "bg-[#fdecee] text-[#8a3942]",
         }
-      : sev === 'warn'
+      : sev === "warn"
         ? {
-            border: 'border-[#c9652e]/35',
-            bg: 'bg-[#fde9dc]/40',
-            text: 'text-[#7a3d18]',
-            chip: 'bg-[#fde9dc] text-[#7a3d18]',
+            border: "border-[#c9652e]/35",
+            bg: "bg-[#fde9dc]/40",
+            text: "text-[#7a3d18]",
+            chip: "bg-[#fde9dc] text-[#7a3d18]",
           }
         : {
-            border: 'border-[#3f668f]/35',
-            bg: 'bg-[#e8f0f8]/50',
-            text: 'text-[#2c4a6b]',
-            chip: 'bg-[#e8f0f8] text-[#2c4a6b]',
-          }
+            border: "border-[#3f668f]/35",
+            bg: "bg-[#e8f0f8]/50",
+            text: "text-[#2c4a6b]",
+            chip: "bg-[#e8f0f8] text-[#2c4a6b]",
+          };
 
-  const finding = fact.finding
-  const latestDocId = fact.evidence[fact.evidence.length - 1]?.documentId
+  const finding = fact.finding;
+  const latestDocId = fact.evidence[fact.evidence.length - 1]?.documentId;
 
   return (
     <div
-      className={`rounded-xl border ${tone.border} ${tone.bg} p-3.5 ring-1 ring-inset ${tone.border.replace('border', 'ring')}`}
+      className={`rounded-xl border ${tone.border} ${tone.bg} p-3.5 ring-1 ring-inset ${tone.border.replace("border", "ring")}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -2822,14 +2818,14 @@ function DisagreedFactCard({
           >
             <span
               className={`size-1 rounded-full ${
-                sev === 'block'
-                  ? 'bg-[#b94f58]'
-                  : sev === 'warn'
-                    ? 'bg-[#c9652e]'
-                    : 'bg-[#3f668f]'
+                sev === "block"
+                  ? "bg-[#b94f58]"
+                  : sev === "warn"
+                    ? "bg-[#c9652e]"
+                    : "bg-[#3f668f]"
               }`}
             />
-            {sev === 'block' ? 'Blocker' : sev === 'warn' ? 'Warning' : 'Note'}
+            {sev === "block" ? "Blocker" : sev === "warn" ? "Warning" : "Note"}
           </span>
           <span className={`text-sm font-semibold ${tone.text}`}>
             {fact.label}
@@ -2846,8 +2842,8 @@ function DisagreedFactCard({
               type="button"
               onClick={() =>
                 onSetStatus(
-                  finding._id as Id<'reconciliationFindings'>,
-                  'acknowledged'
+                  finding._id as Id<"reconciliationFindings">,
+                  "acknowledged",
                 )
               }
               className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-card hover:text-[#40233f]"
@@ -2858,8 +2854,8 @@ function DisagreedFactCard({
               type="button"
               onClick={() =>
                 onSetStatus(
-                  finding._id as Id<'reconciliationFindings'>,
-                  'dismissed'
+                  finding._id as Id<"reconciliationFindings">,
+                  "dismissed",
                 )
               }
               className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-card hover:text-[#40233f]"
@@ -2883,9 +2879,9 @@ function DisagreedFactCard({
           finding
             ? (documentId, value) =>
                 onResolveWith(
-                  finding._id as Id<'reconciliationFindings'>,
+                  finding._id as Id<"reconciliationFindings">,
                   documentId,
-                  value
+                  value,
                 )
             : undefined
         }
@@ -2902,7 +2898,7 @@ function DisagreedFactCard({
         </details>
       )}
     </div>
-  )
+  );
 }
 
 function FactEvidenceTable({
@@ -2912,21 +2908,22 @@ function FactEvidenceTable({
   timeline,
   onResolveWith,
 }: {
-  rows: FactEvidenceRow[]
-  documents: FindingDoc
-  latestDocId?: string
-  timeline: boolean
-  onResolveWith?: (documentId: Id<'documents'>, value: unknown) => void
+  rows: FactEvidenceRow[];
+  documents: FindingDoc;
+  latestDocId?: string;
+  timeline: boolean;
+  onResolveWith?: (documentId: Id<"documents">, value: unknown) => void;
 }) {
-  const openPreview = useDocumentPreview()
+  const openPreview = useDocumentPreview();
   return (
     <div className="mt-3 overflow-hidden rounded-md border border-current/15 bg-card/70">
       <ul className="divide-y divide-border/40">
         {rows.map((r, i) => {
-          const doc = documents.find((d) => d._id === r.documentId)
-          const label = doc?.title ?? doc?.docType ?? '(unknown)'
-          const isLatest = r.documentId === latestDocId
-          const lowConfidence = r.confidence !== undefined && r.confidence < 0.7
+          const doc = documents.find((d) => d._id === r.documentId);
+          const label = doc?.title ?? doc?.docType ?? "(unknown)";
+          const isLatest = r.documentId === latestDocId;
+          const lowConfidence =
+            r.confidence !== undefined && r.confidence < 0.7;
           return (
             <li
               key={`${r.documentId}-${i}`}
@@ -2938,8 +2935,8 @@ function FactEvidenceTable({
                     aria-hidden
                     className={`grid size-5 shrink-0 place-items-center rounded-full text-[10px] font-semibold ${
                       isLatest
-                        ? 'bg-[#40233f] text-[#f6e8d9]'
-                        : 'bg-card text-muted-foreground ring-1 ring-border ring-inset'
+                        ? "bg-[#40233f] text-[#f6e8d9]"
+                        : "bg-card text-muted-foreground ring-1 ring-border ring-inset"
                     }`}
                   >
                     {i + 1}
@@ -2947,7 +2944,7 @@ function FactEvidenceTable({
                 )}
                 <button
                   type="button"
-                  onClick={() => openPreview?.(r.documentId as Id<'documents'>)}
+                  onClick={() => openPreview?.(r.documentId as Id<"documents">)}
                   className="truncate font-medium text-[#40233f] underline decoration-transparent underline-offset-2 transition hover:decoration-current"
                   title={`Preview ${label}`}
                 >
@@ -2981,7 +2978,7 @@ function FactEvidenceTable({
                   <button
                     type="button"
                     onClick={() =>
-                      onResolveWith(r.documentId as Id<'documents'>, r.raw)
+                      onResolveWith(r.documentId as Id<"documents">, r.raw)
                     }
                     className="rounded-full bg-[#40233f] px-2 py-0.5 text-xs text-[#f6e8d9] transition hover:bg-[#593157]"
                     title="Promote this value to the reconciled set"
@@ -2991,7 +2988,7 @@ function FactEvidenceTable({
                 )}
                 <button
                   type="button"
-                  onClick={() => openPreview?.(r.documentId as Id<'documents'>)}
+                  onClick={() => openPreview?.(r.documentId as Id<"documents">)}
                   className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-card hover:text-[#40233f]"
                   title="Preview document"
                 >
@@ -3000,34 +2997,34 @@ function FactEvidenceTable({
                 </button>
               </div>
             </li>
-          )
+          );
         })}
       </ul>
     </div>
-  )
+  );
 }
 
 function SettledFactRow({
   fact,
   documents,
 }: {
-  fact: Fact
-  documents: FindingDoc
+  fact: Fact;
+  documents: FindingDoc;
 }) {
-  const isResolved = fact.status === 'resolved'
-  const isSingle = fact.status === 'single-source'
+  const isResolved = fact.status === "resolved";
+  const isSingle = fact.status === "single-source";
   const dotTone = isResolved
-    ? 'bg-[#3f668f]'
+    ? "bg-[#3f668f]"
     : isSingle
-      ? 'bg-muted-foreground/40'
-      : 'bg-[#3f7c64]'
+      ? "bg-muted-foreground/40"
+      : "bg-[#3f7c64]";
   const subtitle = isResolved
-    ? `chosen from ${documentLabel(fact.finding?.resolvedDocumentId ?? '', documents)}`
+    ? `chosen from ${documentLabel(fact.finding?.resolvedDocumentId ?? "", documents)}`
     : isSingle
-      ? `from ${fact.evidence[0] ? documentLabel(fact.evidence[0].documentId, documents) : '—'} only`
+      ? `from ${fact.evidence[0] ? documentLabel(fact.evidence[0].documentId, documents) : "—"} only`
       : fact.evidence.length > 0
-        ? `${fact.evidence.length} ${fact.evidence.length === 1 ? 'doc' : 'docs'} agree`
-        : ''
+        ? `${fact.evidence.length} ${fact.evidence.length === 1 ? "doc" : "docs"} agree`
+        : "";
 
   return (
     <div className="flex items-start gap-2.5 rounded-lg border border-border/60 bg-card px-3 py-2">
@@ -3041,7 +3038,7 @@ function SettledFactRow({
             {fact.label}
           </span>
           <span className="font-numerals truncate text-sm text-foreground tabular-nums">
-            {fact.agreedDisplay ?? '—'}
+            {fact.agreedDisplay ?? "—"}
           </span>
         </div>
         {subtitle && (
@@ -3051,7 +3048,7 @@ function SettledFactRow({
         )}
       </div>
     </div>
-  )
+  );
 }
 
 function OtherIssueCard({
@@ -3059,47 +3056,47 @@ function OtherIssueCard({
   documents,
   onSetStatus,
 }: {
-  finding: Finding
-  documents: FindingDoc
+  finding: Finding;
+  documents: FindingDoc;
   onSetStatus: (
-    findingId: Id<'reconciliationFindings'>,
-    status: 'acknowledged' | 'resolved' | 'dismissed'
-  ) => void
+    findingId: Id<"reconciliationFindings">,
+    status: "acknowledged" | "resolved" | "dismissed",
+  ) => void;
 }) {
-  const sev = finding.severity
+  const sev = finding.severity;
   const tone =
-    sev === 'block'
+    sev === "block"
       ? {
-          border: 'border-[#b94f58]/40',
-          bg: 'bg-[#fdecee]/40',
-          text: 'text-[#8a3942]',
-          chip: 'bg-[#fdecee] text-[#8a3942]',
-          dot: 'bg-[#b94f58]',
+          border: "border-[#b94f58]/40",
+          bg: "bg-[#fdecee]/40",
+          text: "text-[#8a3942]",
+          chip: "bg-[#fdecee] text-[#8a3942]",
+          dot: "bg-[#b94f58]",
         }
-      : sev === 'warn'
+      : sev === "warn"
         ? {
-            border: 'border-[#c9652e]/35',
-            bg: 'bg-[#fde9dc]/40',
-            text: 'text-[#7a3d18]',
-            chip: 'bg-[#fde9dc] text-[#7a3d18]',
-            dot: 'bg-[#c9652e]',
+            border: "border-[#c9652e]/35",
+            bg: "bg-[#fde9dc]/40",
+            text: "text-[#7a3d18]",
+            chip: "bg-[#fde9dc] text-[#7a3d18]",
+            dot: "bg-[#c9652e]",
           }
         : {
-            border: 'border-[#3f668f]/35',
-            bg: 'bg-[#e8f0f8]/50',
-            text: 'text-[#2c4a6b]',
-            chip: 'bg-[#e8f0f8] text-[#2c4a6b]',
-            dot: 'bg-[#3f668f]',
-          }
+            border: "border-[#3f668f]/35",
+            bg: "bg-[#e8f0f8]/50",
+            text: "text-[#2c4a6b]",
+            chip: "bg-[#e8f0f8] text-[#2c4a6b]",
+            dot: "bg-[#3f668f]",
+          };
 
-  const openPreview = useDocumentPreview()
+  const openPreview = useDocumentPreview();
   const involved = finding.involvedDocumentIds.filter((id) =>
-    documents.find((d) => d._id === id)
-  )
+    documents.find((d) => d._id === id),
+  );
 
   return (
     <div
-      className={`rounded-xl border ${tone.border} ${tone.bg} p-3.5 ring-1 ring-inset ${tone.border.replace('border', 'ring')}`}
+      className={`rounded-xl border ${tone.border} ${tone.bg} p-3.5 ring-1 ring-inset ${tone.border.replace("border", "ring")}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -3107,12 +3104,12 @@ function OtherIssueCard({
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${tone.chip}`}
           >
             <span className={`size-1 rounded-full ${tone.dot}`} />
-            {sev === 'block' ? 'Blocker' : sev === 'warn' ? 'Warning' : 'Note'}
+            {sev === "block" ? "Blocker" : sev === "warn" ? "Warning" : "Note"}
           </span>
           <span className={`text-xs font-medium ${tone.text}`}>
-            {finding.findingType.replace(/_/g, ' ')}
+            {finding.findingType.replace(/_/g, " ")}
           </span>
-          {finding.status === 'acknowledged' && (
+          {finding.status === "acknowledged" && (
             <span className="rounded-full bg-card px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-border ring-inset">
               acknowledged
             </span>
@@ -3123,8 +3120,8 @@ function OtherIssueCard({
             type="button"
             onClick={() =>
               onSetStatus(
-                finding._id as Id<'reconciliationFindings'>,
-                'acknowledged'
+                finding._id as Id<"reconciliationFindings">,
+                "acknowledged",
               )
             }
             className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-card hover:text-[#40233f]"
@@ -3135,8 +3132,8 @@ function OtherIssueCard({
             type="button"
             onClick={() =>
               onSetStatus(
-                finding._id as Id<'reconciliationFindings'>,
-                'resolved'
+                finding._id as Id<"reconciliationFindings">,
+                "resolved",
               )
             }
             className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-card hover:text-[#40233f]"
@@ -3147,8 +3144,8 @@ function OtherIssueCard({
             type="button"
             onClick={() =>
               onSetStatus(
-                finding._id as Id<'reconciliationFindings'>,
-                'dismissed'
+                finding._id as Id<"reconciliationFindings">,
+                "dismissed",
               )
             }
             className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-card hover:text-[#40233f]"
@@ -3167,7 +3164,7 @@ function OtherIssueCard({
             <button
               key={id}
               type="button"
-              onClick={() => openPreview?.(id as Id<'documents'>)}
+              onClick={() => openPreview?.(id as Id<"documents">)}
               className="inline-flex items-center gap-1 rounded-full bg-card px-2 py-0.5 text-xs text-[#40233f] ring-1 ring-border transition ring-inset hover:bg-muted"
               title={`Preview ${documentLabel(id, documents)}`}
             >
@@ -3189,7 +3186,7 @@ function OtherIssueCard({
         </details>
       )}
     </div>
-  )
+  );
 }
 
 function PrereqBanner({
@@ -3197,23 +3194,23 @@ function PrereqBanner({
   parties,
   docs,
 }: {
-  property: boolean
-  parties: boolean
-  docs: boolean
+  property: boolean;
+  parties: boolean;
+  docs: boolean;
 }) {
   const items: Array<{ todo: boolean; label: string; anchor: string }> = [
     {
       todo: property,
-      label: 'Add the property address',
-      anchor: '#step-property',
+      label: "Add the property address",
+      anchor: "#step-property",
     },
-    { todo: parties, label: 'Add at least 2 parties', anchor: '#step-parties' },
+    { todo: parties, label: "Add at least 2 parties", anchor: "#step-parties" },
     {
       todo: docs,
-      label: 'Upload at least one document and let it extract',
-      anchor: '#step-documents',
+      label: "Upload at least one document and let it extract",
+      anchor: "#step-documents",
     },
-  ]
+  ];
   return (
     <div className="rounded-xl border border-[#b78625]/35 bg-[#fdf6e8] px-4 py-3 ring-1 ring-[#b78625]/15 ring-inset">
       <div className="flex items-center gap-2 text-xs font-medium text-[#7a5818]">
@@ -3236,11 +3233,11 @@ function PrereqBanner({
                   <ArrowRight className="size-3 opacity-0 transition group-hover/jump:translate-x-0.5 group-hover/jump:opacity-100" />
                 </a>
               </li>
-            )
+            ),
         )}
       </ul>
     </div>
-  )
+  );
 }
 
 function SeverityChip({
@@ -3250,33 +3247,33 @@ function SeverityChip({
   onClick,
   disabled,
 }: {
-  count: number
-  severity: 'block' | 'warn' | 'info'
-  active: boolean
-  onClick: () => void
-  disabled?: boolean
+  count: number;
+  severity: "block" | "warn" | "info";
+  active: boolean;
+  onClick: () => void;
+  disabled?: boolean;
 }) {
   const tone =
-    severity === 'block'
+    severity === "block"
       ? {
-          ring: 'ring-[#b94f58]/40',
-          text: 'text-[#8a3942]',
-          bg: 'bg-[#fdecee]',
-          dot: 'bg-[#b94f58]',
+          ring: "ring-[#b94f58]/40",
+          text: "text-[#8a3942]",
+          bg: "bg-[#fdecee]",
+          dot: "bg-[#b94f58]",
         }
-      : severity === 'warn'
+      : severity === "warn"
         ? {
-            ring: 'ring-[#c9652e]/40',
-            text: 'text-[#7a3d18]',
-            bg: 'bg-[#fde9dc]',
-            dot: 'bg-[#c9652e]',
+            ring: "ring-[#c9652e]/40",
+            text: "text-[#7a3d18]",
+            bg: "bg-[#fde9dc]",
+            dot: "bg-[#c9652e]",
           }
         : {
-            ring: 'ring-[#3f668f]/40',
-            text: 'text-[#2c4a6b]',
-            bg: 'bg-[#e8f0f8]',
-            dot: 'bg-[#3f668f]',
-          }
+            ring: "ring-[#3f668f]/40",
+            text: "text-[#2c4a6b]",
+            bg: "bg-[#e8f0f8]",
+            dot: "bg-[#3f668f]",
+          };
   // Empty / disabled state — render as static pill, no toggle.
   if (count === 0 || disabled) {
     return (
@@ -3286,7 +3283,7 @@ function SeverityChip({
       >
         {severity} · {count}
       </span>
-    )
+    );
   }
   return (
     <button
@@ -3297,39 +3294,39 @@ function SeverityChip({
       className={`font-numerals inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs tabular-nums ring-1 transition ring-inset ${
         active
           ? `${tone.ring} ${tone.text} ${tone.bg}`
-          : 'bg-card/60 text-muted-foreground opacity-60 ring-border hover:opacity-100'
+          : "bg-card/60 text-muted-foreground opacity-60 ring-border hover:opacity-100"
       }`}
     >
       <span className={`size-1 rounded-full ${tone.dot}`} />
       {severity} · {count}
     </button>
-  )
+  );
 }
 
 function documentLabel(documentId: string, documents: FindingDoc): string {
-  const doc = documents.find((d) => d._id === documentId)
-  if (!doc) return '(unknown document)'
-  return doc.title ?? doc.docType
+  const doc = documents.find((d) => d._id === documentId);
+  if (!doc) return "(unknown document)";
+  return doc.title ?? doc.docType;
 }
 
 function lookupConfidence(
   conf: Record<string, number> | undefined,
-  fieldPath: string | null
+  fieldPath: string | null,
 ): number | undefined {
-  if (!conf || !fieldPath) return undefined
-  if (fieldPath in conf) return conf[fieldPath]
-  const [head, ...rest] = fieldPath.split('.')
-  if (rest.length === 0) return undefined
-  const tail = rest.join('.')
-  const prefix = `${head}[`
-  const matches: number[] = []
+  if (!conf || !fieldPath) return undefined;
+  if (fieldPath in conf) return conf[fieldPath];
+  const [head, ...rest] = fieldPath.split(".");
+  if (rest.length === 0) return undefined;
+  const tail = rest.join(".");
+  const prefix = `${head}[`;
+  const matches: number[] = [];
   for (const [k, v] of Object.entries(conf)) {
     if (k.startsWith(prefix) && k.endsWith(`].${tail}`)) {
-      matches.push(v)
+      matches.push(v);
     }
   }
-  if (matches.length === 0) return undefined
-  return Math.min(...matches)
+  if (matches.length === 0) return undefined;
+  return Math.min(...matches);
 }
 
 function ConfidenceChip({ value }: { value?: number }) {
@@ -3341,16 +3338,16 @@ function ConfidenceChip({ value }: { value?: number }) {
       >
         high
       </span>
-    )
+    );
   }
-  const pct = Math.round(value * 100)
+  const pct = Math.round(value * 100);
   const tone =
     value >= 0.85
-      ? 'bg-[#e6f3ed] text-[#2f5d4b]'
+      ? "bg-[#e6f3ed] text-[#2f5d4b]"
       : value >= 0.65
-        ? 'bg-[#f8eed7] text-[#7a5818]'
-        : 'bg-[#fdecee] text-[#8a3942]'
-  const label = value >= 0.85 ? 'high' : value >= 0.65 ? 'medium' : 'low'
+        ? "bg-[#f8eed7] text-[#7a5818]"
+        : "bg-[#fdecee] text-[#8a3942]";
+  const label = value >= 0.85 ? "high" : value >= 0.65 ? "medium" : "low";
   return (
     <span
       className={`font-numerals inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs tabular-nums ${tone}`}
@@ -3358,19 +3355,19 @@ function ConfidenceChip({ value }: { value?: number }) {
     >
       {label} · {pct}%
     </span>
-  )
+  );
 }
 
-function ReconciledFactsPanel({ file }: { file: Doc<'files'> }) {
+function ReconciledFactsPanel({ file }: { file: Doc<"files"> }) {
   const has =
     file.purchasePrice !== undefined ||
     !!file.titleCompany?.name ||
     file.earnestMoney !== undefined ||
-    file.financingApprovalDays !== undefined
-  if (!has) return null
+    file.financingApprovalDays !== undefined;
+  if (!has) return null;
 
-  const em = file.earnestMoney
-  const tc = file.titleCompany
+  const em = file.earnestMoney;
+  const tc = file.titleCompany;
 
   return (
     <SectionShell
@@ -3407,15 +3404,15 @@ function ReconciledFactsPanel({ file }: { file: Doc<'files'> }) {
             label="Earnest money"
             value={
               <>
-                {typeof em.amount === 'number'
+                {typeof em.amount === "number"
                   ? `$${em.amount.toLocaleString()}`
-                  : '—'}
+                  : "—"}
                 {em.refundable !== undefined && (
                   <div className="text-xs text-muted-foreground">
-                    {em.refundable ? 'refundable' : 'non-refundable'}
-                    {typeof em.depositDays === 'number'
+                    {em.refundable ? "refundable" : "non-refundable"}
+                    {typeof em.depositDays === "number"
                       ? ` · ${em.depositDays}d window`
-                      : ''}
+                      : ""}
                   </div>
                 )}
               </>
@@ -3432,24 +3429,24 @@ function ReconciledFactsPanel({ file }: { file: Doc<'files'> }) {
         )}
       </dl>
     </SectionShell>
-  )
+  );
 }
 
 const DOC_TYPES = [
-  { code: 'deed', label: 'Deed' },
-  { code: 'mortgage', label: 'Mortgage' },
-  { code: 'release', label: 'Release' },
-  { code: 'assignment', label: 'Assignment' },
-  { code: 'deed_of_trust', label: 'Deed of trust' },
-] as const
+  { code: "deed", label: "Deed" },
+  { code: "mortgage", label: "Mortgage" },
+  { code: "release", label: "Release" },
+  { code: "assignment", label: "Assignment" },
+  { code: "deed_of_trust", label: "Deed of trust" },
+] as const;
 
-type DocType = (typeof DOC_TYPES)[number]['code']
+type DocType = (typeof DOC_TYPES)[number]["code"];
 
-function RulesPanel({ fileId }: { fileId: Id<'files'> }) {
-  const [docType, setDocType] = useState<DocType>('deed')
+function RulesPanel({ fileId }: { fileId: Id<"files"> }) {
+  const [docType, setDocType] = useState<DocType>("deed");
   const rule = useQuery(
-    convexQuery(api.rules.resolveForFile, { fileId, docType })
-  )
+    convexQuery(api.rules.resolveForFile, { fileId, docType }),
+  );
 
   return (
     <SectionShell
@@ -3484,42 +3481,42 @@ function RulesPanel({ fileId }: { fileId: Id<'files'> }) {
         <RuleCard rule={rule.data} />
       )}
     </SectionShell>
-  )
+  );
 }
 
-function RuleCard({ rule }: { rule: Doc<'countyRecordingRules'> }) {
-  const r = rule.rules
+function RuleCard({ rule }: { rule: Doc<"countyRecordingRules"> }) {
+  const r = rule.rules;
   const fees = r.feeSchedule as
     | {
-        firstPage?: number
-        additionalPage?: number
-        salesDisclosureFee?: number
+        firstPage?: number;
+        additionalPage?: number;
+        salesDisclosureFee?: number;
       }
-    | undefined
+    | undefined;
   const sig = r.signaturePageRequirements as
     | {
-        notarized?: boolean
-        witnessRequired?: boolean
-        printedNameBeneathSignature?: boolean
+        notarized?: boolean;
+        witnessRequired?: boolean;
+        printedNameBeneathSignature?: boolean;
       }
-    | undefined
+    | undefined;
   return (
     <div>
       <div className="font-numerals mb-3 inline-flex items-center gap-2 rounded-md border border-border/60 bg-[#fdf6e8] px-2.5 py-1 text-xs text-[#40233f] tabular-nums">
-        v{rule.version} · effective from{' '}
+        v{rule.version} · effective from{" "}
         {new Date(rule.effectiveFrom).toLocaleDateString()}
         {rule.effectiveTo
           ? ` until ${new Date(rule.effectiveTo).toLocaleDateString()}`
-          : ' · in force'}
+          : " · in force"}
       </div>
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
-        <KV label="Page size" value={r.pageSize ?? '—'} />
+        <KV label="Page size" value={r.pageSize ?? "—"} />
         <KV
           label="Margins (TBLR)"
           value={
             r.margins
               ? `${r.margins.top} · ${r.margins.bottom} · ${r.margins.left} · ${r.margins.right}`
-              : '—'
+              : "—"
           }
           mono
         />
@@ -3527,8 +3524,8 @@ function RuleCard({ rule }: { rule: Doc<'countyRecordingRules'> }) {
           label="Required exhibits"
           value={
             r.requiredExhibits.length > 0
-              ? r.requiredExhibits.join(', ')
-              : 'none'
+              ? r.requiredExhibits.join(", ")
+              : "none"
           }
         />
         <KV
@@ -3537,10 +3534,10 @@ function RuleCard({ rule }: { rule: Doc<'countyRecordingRules'> }) {
             <>
               {fees?.firstPage !== undefined
                 ? `$${fees.firstPage} first / $${fees.additionalPage ?? 0} ea.`
-                : '—'}
+                : "—"}
               {fees?.salesDisclosureFee
                 ? ` · SDF $${fees.salesDisclosureFee}`
-                : ''}
+                : ""}
             </>
           }
           mono
@@ -3549,103 +3546,103 @@ function RuleCard({ rule }: { rule: Doc<'countyRecordingRules'> }) {
           label="Signatures"
           value={
             <>
-              {sig?.notarized ? 'notarized' : '—'}
-              {sig?.witnessRequired ? ', witness required' : ''}
-              {sig?.printedNameBeneathSignature ? ', printed name' : ''}
+              {sig?.notarized ? "notarized" : "—"}
+              {sig?.witnessRequired ? ", witness required" : ""}
+              {sig?.printedNameBeneathSignature ? ", printed name" : ""}
             </>
           }
         />
       </dl>
     </div>
-  )
+  );
 }
 
 type AuditActor =
   | {
-      kind: 'member'
-      memberId: string
-      email: string
-      name: string | null
-      role: string
+      kind: "member";
+      memberId: string;
+      email: string;
+      name: string | null;
+      role: string;
     }
-  | { kind: 'system' }
-  | { kind: 'unknown'; type: string }
+  | { kind: "system" }
+  | { kind: "unknown"; type: string };
 
 type AuditEvent = {
-  _id: string
-  action: string
-  occurredAt: number
-  metadata?: unknown
-  actor?: AuditActor
-}
+  _id: string;
+  action: string;
+  occurredAt: number;
+  metadata?: unknown;
+  actor?: AuditActor;
+};
 
 const ACTION_VERBS: Record<string, string> = {
-  'file.created': 'opened the file',
-  'file.status_changed': 'changed the status',
-  'file.party_added': 'added a party',
-  'file.party_removed': 'removed a party',
-  'file.updated': 'updated file details',
-  'document.uploaded': 'uploaded a document',
-  'document.deleted': 'deleted a document',
-  'documents.deduped': 'removed duplicate documents',
-  'extraction.requested': 'started an extraction',
-  'extraction.succeeded': 'completed an extraction',
-  'extraction.failed': 'extraction failed',
-  'reconciliation.run': 'ran reconciliation',
-  'reconciliation.finding_resolved': 'resolved a finding',
-  'reconciliation.finding_acknowledged': 'acknowledged a finding',
-  'reconciliation.finding_dismissed': 'dismissed a finding',
-  'secret.issued': 'issued a tokenized secret',
-  'secret.revealed': 'revealed a tokenized secret',
-}
+  "file.created": "opened the file",
+  "file.status_changed": "changed the status",
+  "file.party_added": "added a party",
+  "file.party_removed": "removed a party",
+  "file.updated": "updated file details",
+  "document.uploaded": "uploaded a document",
+  "document.deleted": "deleted a document",
+  "documents.deduped": "removed duplicate documents",
+  "extraction.requested": "started an extraction",
+  "extraction.succeeded": "completed an extraction",
+  "extraction.failed": "extraction failed",
+  "reconciliation.run": "ran reconciliation",
+  "reconciliation.finding_resolved": "resolved a finding",
+  "reconciliation.finding_acknowledged": "acknowledged a finding",
+  "reconciliation.finding_dismissed": "dismissed a finding",
+  "secret.issued": "issued a tokenized secret",
+  "secret.revealed": "revealed a tokenized secret",
+};
 
 function describeAction(action: string): string {
   return (
     ACTION_VERBS[action] ??
     action
-      .split('.')
+      .split(".")
       .pop()!
-      .replace(/_/g, ' ')
+      .replace(/_/g, " ")
       .replace(/^./, (c) => c.toLowerCase())
-  )
+  );
 }
 
 function actionDetail(e: AuditEvent): string | null {
-  const md = (e.metadata ?? {}) as Record<string, unknown>
+  const md = (e.metadata ?? {}) as Record<string, unknown>;
   switch (e.action) {
-    case 'file.status_changed':
-      if (md.from && md.to) return `${md.from} → ${md.to}`
-      return null
-    case 'file.party_added':
-    case 'file.party_removed':
-      if (typeof md.legalName === 'string' && typeof md.role === 'string') {
-        return `${md.legalName} · ${md.role}`
+    case "file.status_changed":
+      if (md.from && md.to) return `${md.from} → ${md.to}`;
+      return null;
+    case "file.party_added":
+    case "file.party_removed":
+      if (typeof md.legalName === "string" && typeof md.role === "string") {
+        return `${md.legalName} · ${md.role}`;
       }
-      return null
-    case 'document.uploaded':
-    case 'document.deleted':
-      if (typeof md.docType === 'string') {
+      return null;
+    case "document.uploaded":
+    case "document.deleted":
+      if (typeof md.docType === "string") {
         const kb =
-          typeof md.sizeBytes === 'number'
+          typeof md.sizeBytes === "number"
             ? ` · ${(md.sizeBytes / 1024).toFixed(1)} KB`
-            : ''
-        return `${md.docType.replace(/_/g, ' ')}${kb}`
+            : "";
+        return `${md.docType.replace(/_/g, " ")}${kb}`;
       }
-      return null
-    case 'documents.deduped':
-      if (typeof md.removed === 'number') {
-        return `${md.removed} document${md.removed === 1 ? '' : 's'} removed`
+      return null;
+    case "documents.deduped":
+      if (typeof md.removed === "number") {
+        return `${md.removed} document${md.removed === 1 ? "" : "s"} removed`;
       }
-      return null
-    case 'extraction.requested':
-      if (typeof md.docType === 'string') {
-        return md.source === 'auto'
-          ? `${md.docType.replace(/_/g, ' ')} · auto`
-          : md.docType.replace(/_/g, ' ')
+      return null;
+    case "extraction.requested":
+      if (typeof md.docType === "string") {
+        return md.source === "auto"
+          ? `${md.docType.replace(/_/g, " ")} · auto`
+          : md.docType.replace(/_/g, " ");
       }
-      return null
+      return null;
     default:
-      return null
+      return null;
   }
 }
 
@@ -3675,35 +3672,35 @@ function AuditPanel({ events }: { events: ReadonlyArray<AuditEvent> }) {
         </ol>
       )}
     </SectionShell>
-  )
+  );
 }
 
 function ActivityRow({
   event,
   latest,
 }: {
-  event: AuditEvent
-  latest: boolean
+  event: AuditEvent;
+  latest: boolean;
 }) {
-  const verb = describeAction(event.action)
-  const detail = actionDetail(event)
-  const actor = event.actor
+  const verb = describeAction(event.action);
+  const detail = actionDetail(event);
+  const actor = event.actor;
   const actorLabel =
-    actor?.kind === 'member'
+    actor?.kind === "member"
       ? actor.name && actor.name.trim().length > 0
         ? actor.name
         : actor.email
-      : actor?.kind === 'system'
-        ? 'System'
-        : 'Unknown'
+      : actor?.kind === "system"
+        ? "System"
+        : "Unknown";
   const actorSub =
-    actor?.kind === 'member'
+    actor?.kind === "member"
       ? actor.name && actor.name.trim().length > 0
         ? `${actor.email} · ${actor.role}`
         : actor.role
-      : actor?.kind === 'system'
-        ? 'automated'
-        : null
+      : actor?.kind === "system"
+        ? "automated"
+        : null;
 
   return (
     <li className="relative grid grid-cols-[3rem_1fr_auto] items-start gap-3 py-3">
@@ -3712,11 +3709,11 @@ function ActivityRow({
       </div>
       <div className="min-w-0">
         <div className="text-sm leading-snug text-[#2e2430]">
-          <span className="font-medium text-[#40233f]">{actorLabel}</span>{' '}
+          <span className="font-medium text-[#40233f]">{actorLabel}</span>{" "}
           <span className="text-muted-foreground">{verb}</span>
           {detail && (
             <>
-              {' — '}
+              {" — "}
               <span className="text-foreground/80">{detail}</span>
             </>
           )}
@@ -3726,64 +3723,64 @@ function ActivityRow({
         )}
       </div>
       <div className="font-numerals text-right text-xs text-muted-foreground tabular-nums">
-        {new Date(event.occurredAt).toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
+        {new Date(event.occurredAt).toLocaleString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
         })}
       </div>
     </li>
-  )
+  );
 }
 
 function ActorAvatar({
   actor,
   latest,
 }: {
-  actor?: AuditActor
-  latest: boolean
+  actor?: AuditActor;
+  latest: boolean;
 }) {
-  if (actor?.kind === 'system') {
+  if (actor?.kind === "system") {
     return (
       <div
         className={`relative z-10 grid size-7 place-items-center rounded-full bg-[#40233f] text-[#f4d48f] ring-4 ring-card ${
-          latest ? '' : 'opacity-90'
+          latest ? "" : "opacity-90"
         }`}
         title="System action"
       >
         <Sparkles className="size-3" />
       </div>
-    )
+    );
   }
-  if (actor?.kind === 'member') {
-    const initials = personInitials(actor.name, actor.email)
+  if (actor?.kind === "member") {
+    const initials = personInitials(actor.name, actor.email);
     return (
       <div className="relative z-10 grid size-7 place-items-center rounded-full border border-[#40233f]/15 bg-[#fdf6e8] text-xs font-semibold text-[#40233f] ring-4 ring-card">
         {initials}
       </div>
-    )
+    );
   }
   return (
     <div className="relative z-10 grid size-7 place-items-center rounded-full bg-muted text-xs font-medium text-muted-foreground ring-4 ring-card">
       ?
     </div>
-  )
+  );
 }
 
 function personInitials(name?: string | null, email?: string | null): string {
   if (name && name.trim()) {
-    const parts = name.trim().split(/\s+/).slice(0, 2)
+    const parts = name.trim().split(/\s+/).slice(0, 2);
     return parts
       .map((p) => p[0])
-      .join('')
-      .toUpperCase()
+      .join("")
+      .toUpperCase();
   }
   if (email) {
-    const local = email.split('@')[0] ?? email
-    const segs = local.split(/[._-]+/).filter(Boolean)
-    if (segs.length >= 2) return (segs[0]![0]! + segs[1]![0]!).toUpperCase()
-    return (local.slice(0, 2) || '··').toUpperCase()
+    const local = email.split("@")[0] ?? email;
+    const segs = local.split(/[._-]+/).filter(Boolean);
+    if (segs.length >= 2) return (segs[0]![0]! + segs[1]![0]!).toUpperCase();
+    return (local.slice(0, 2) || "··").toUpperCase();
   }
-  return '··'
+  return "··";
 }

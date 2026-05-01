@@ -6,7 +6,7 @@ import {
   useRouter,
 } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { convexQuery } from '@convex-dev/react-query'
 import {
   Building2,
@@ -66,6 +66,7 @@ type Membership = {
 function SettingsPage() {
   const router = useRouter()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const search = Route.useSearch() as SettingsSearch
   const section: SectionKey = search.section ?? 'profile'
 
@@ -88,8 +89,13 @@ function SettingsPage() {
   const activeOrg = list.find((m) => m.tenantId === activeTenantId) ?? null
 
   const onSignOut = async () => {
+    // Navigate first so the settings tree unmounts in a single transition;
+    // signOut + cache clear + route invalidation happen behind the new page.
+    // Mirrors app-sidebar.tsx onSignOut — keep them in sync.
+    await router.navigate({ to: '/signin' })
     await authClient.signOut()
-    router.navigate({ to: '/signin' })
+    queryClient.clear()
+    await router.invalidate()
   }
 
   const goto = (s: SectionKey) =>

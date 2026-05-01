@@ -100,6 +100,7 @@ describe('Sprint 2 NPI tokenization', () => {
 
     // Run cryptographic erasure
     const me = await alice.asUser.query(api.tenants.current, {})
+    if (!me) throw new Error('expected tenant context')
     const erased = await alice.asUser.mutation(api.secrets.eraseTenant, {
       tenantId: me.tenantId,
       confirm: 'ERASE',
@@ -143,6 +144,7 @@ describe('Sprint 2 NPI tokenization', () => {
       if (m) await ctx.db.patch(m._id, { role: 'admin' })
     })
     const me = await alice.asUser.query(api.tenants.current, {})
+    if (!me) throw new Error('expected tenant context')
     await expect(
       alice.asUser.mutation(api.secrets.eraseTenant, {
         tenantId: me.tenantId,

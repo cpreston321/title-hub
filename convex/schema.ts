@@ -454,6 +454,34 @@ export default defineSchema({
     .index('by_tenant_active', ['tenantId', 'status'])
     .index('by_tenant_keyRef', ['tenantId', 'keyRef']),
 
+  // Short-lived, single-use credentials issued by an admin in the web UI to
+  // bootstrap an agent install. The customer-side `agent install` command
+  // POSTs the plaintext token to /integrations/agent/redeem; the server
+  // hashes, looks up by `tokenHash`, marks `consumedAt`, and returns the
+  // integrationId + inboundSecret. No long-lived secrets ever cross the
+  // copy-paste boundary.
+  agentInstallTokens: defineTable({
+    tenantId: v.id('tenants'),
+    integrationId: v.id('integrations'),
+    // Hex-encoded SHA-256 of the plaintext token. Plaintext is shown to
+    // the admin once (at generation time) and never stored.
+    tokenHash: v.string(),
+    // First 8 chars of the plaintext, surfaced in the admin UI so an admin
+    // can identify a still-active token at a glance.
+    prefix: v.string(),
+    expiresAt: v.number(),
+    consumedAt: v.optional(v.number()),
+    consumedFromIp: v.optional(v.string()),
+    createdByMemberId: v.id('tenantMembers'),
+    createdAt: v.number(),
+  })
+    .index('by_token_hash', ['tokenHash'])
+    .index('by_tenant_integration', [
+      'tenantId',
+      'integrationId',
+      'createdAt',
+    ]),
+
   // Allowlist of users who can create organizations. The very first user to
   // sign up (via the user trigger) is auto-inserted here; everyone else must
   // be added explicitly. Non-admins are restricted to invitation-based

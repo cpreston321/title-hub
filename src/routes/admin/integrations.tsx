@@ -1,11 +1,13 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
+  Check,
   CheckCircle2,
   ChevronLeft,
   CircleAlert,
+  Copy,
   Plug,
   Plus,
   Power,
@@ -74,7 +76,8 @@ const KIND_LABEL: Record<Kind, string> = {
 const KIND_DESCRIPTION: Record<Kind, string> = {
   softpro_360:
     "SoftPro's 360 transactional integration. Pulls files via the standard 360 transport.",
-  softpro_standard: 'Direct SoftPro Select/Standard connection — coming soon.',
+  softpro_standard:
+    'Direct SoftPro Select/Standard connection. A customer-side agent watches ProForm and pushes file snapshots — no inbound network access required.',
   qualia: 'Qualia Connect — coming soon.',
   resware: 'ResWare title production — coming soon.',
   encompass: 'Encompass loan files — coming soon.',
@@ -82,7 +85,7 @@ const KIND_DESCRIPTION: Record<Kind, string> = {
 }
 
 const SUPPORTED_KINDS: Array<Kind> = ['softpro_360', 'softpro_standard', 'mock']
-const COMING_SOON: ReadonlySet<Kind> = new Set(['softpro_standard'])
+const COMING_SOON: ReadonlySet<Kind> = new Set()
 
 function IntegrationsAdminPage() {
   const current = useQuery(convexQuery(api.tenants.current, {}))
@@ -92,20 +95,53 @@ function IntegrationsAdminPage() {
   const remove = useConvexMutation(api.integrations.remove)
   const runSync = useConvexMutation(api.integrations.runSync)
   const agentInstallInfo = useConvexMutation(api.integrations.agentInstallInfo)
+  const generateInstallToken = useConvexMutation(
+    api.integrations.generateAgentInstallToken,
+  )
 
   const [showForm, setShowForm] = useState(false)
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Per-integration UI state: an "Agent install" panel can show either
+  // the legacy raw-TOML reveal (agentInfo) OR a freshly-issued one-time
+  // install token (installToken). The token is preferred — admins should
+  // hand the install command to the agency, not the long-lived secret.
   const [agentInfo, setAgentInfo] = useState<{
     integrationId: string
     inboundSecret: string
   } | null>(null)
+  const [installToken, setInstallToken] = useState<{
+    integrationId: string
+    token: string
+    expiresAt: number
+    prefix: string
+  } | null>(null)
+
+  const onGenerateInstallToken = async (id: Id<'integrations'>) => {
+    setPending(id)
+    setError(null)
+    try {
+      const issued = await generateInstallToken({ integrationId: id })
+      setAgentInfo(null)
+      setInstallToken({
+        integrationId: id,
+        token: issued.token,
+        expiresAt: issued.expiresAt,
+        prefix: issued.prefix,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPending(null)
+    }
+  }
 
   const onShowAgentInfo = async (id: Id<'integrations'>) => {
     setPending(id)
     setError(null)
     try {
       const info = await agentInstallInfo({ integrationId: id })
+      setInstallToken(null)
       setAgentInfo({
         integrationId: info.integrationId,
         inboundSecret: info.inboundSecret,
@@ -267,7 +303,13 @@ function IntegrationsAdminPage() {
                     onShowAgentInfo={() =>
                       onShowAgentInfo(i._id as Id<'integrations'>)
                     }
+                    onHideAgentInfo={() => setAgentInfo(null)}
+                    onGenerateInstallToken={() =>
+                      onGenerateInstallToken(i._id as Id<'integrations'>)
+                    }
+                    onClearInstallToken={() => setInstallToken(null)}
                     agentInfo={agentInfo}
+                    installToken={installToken}
                   />
                 </li>
               ))}
@@ -426,7 +468,11 @@ function IntegrationCard({
   onSync,
   onRemove,
   onShowAgentInfo,
+  onHideAgentInfo,
+  onGenerateInstallToken,
+  onClearInstallToken,
   agentInfo,
+  installToken,
 }: {
   integration: IntegrationRow
   pending: boolean
@@ -434,7 +480,16 @@ function IntegrationCard({
   onSync: () => void
   onRemove: () => void
   onShowAgentInfo: () => void
+  onHideAgentInfo: () => void
+  onGenerateInstallToken: () => void
+  onClearInstallToken: () => void
   agentInfo: { integrationId: string; inboundSecret: string } | null
+  installToken: {
+    integrationId: string
+    token: string
+    expiresAt: number
+    prefix: string
+  } | null
 }) {
   const lastSync = integration.lastSyncAt
     ? new Date(integration.lastSyncAt).toLocaleString('en-US', {
@@ -509,21 +564,38 @@ function IntegrationCard({
         )}
 
         {integration.mode === 'push' && (
-          <AgentPanel integration={integration} agentInfo={agentInfo} />
+          <AgentPanel
+            integration={integration}
+            agentInfo={agentInfo}
+            installToken={installToken}
+            onHideAgentInfo={onHideAgentInfo}
+            onClearInstallToken={onClearInstallToken}
+          />
         )}
       </div>
 
       <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-border/50 bg-[#fdf6e8]/30 px-5 py-3">
         {integration.mode === 'push' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onShowAgentInfo}
-            disabled={pending}
-            className="gap-1.5"
-          >
-            Agent install
-          </Button>
+          <>
+            <Button
+              size="sm"
+              onClick={onGenerateInstallToken}
+              disabled={pending}
+              className="gap-1.5"
+            >
+              Generate install command
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onShowAgentInfo}
+              disabled={pending}
+              className="gap-1.5"
+              title="Reveal the long-lived inbound secret. Use only for offline / airgapped installs — prefer the install command."
+            >
+              Show secret
+            </Button>
+          </>
         )}
         {integration.mode === 'pull' && (
           <Button
@@ -565,9 +637,20 @@ function IntegrationCard({
 function AgentPanel({
   integration,
   agentInfo,
+  installToken,
+  onHideAgentInfo,
+  onClearInstallToken,
 }: {
   integration: IntegrationRow
   agentInfo: { integrationId: string; inboundSecret: string } | null
+  installToken: {
+    integrationId: string
+    token: string
+    expiresAt: number
+    prefix: string
+  } | null
+  onHideAgentInfo: () => void
+  onClearInstallToken: () => void
 }) {
   const heartbeat = integration.agentLastHeartbeatAt
     ? new Date(integration.agentLastHeartbeatAt).toLocaleString('en-US', {
@@ -623,27 +706,253 @@ function AgentPanel({
           <span className="font-mono">{integration.agentWatermark}</span>
         </div>
       )}
-      {showInfo && (
-        <div className="mt-3 rounded-md border border-[#b78625]/30 bg-[#fff8e8] p-3">
-          <div className="text-[10px] font-medium tracking-wide text-[#7a5818] uppercase">
-            Install token — copy into the agent's config
-          </div>
-          <div className="mt-2 grid gap-2 font-mono text-xs">
-            <div>
-              <div className="text-muted-foreground">Integration ID</div>
-              <div className="break-all">{agentInfo!.integrationId}</div>
-            </div>
-            <div>
-              <div className="text-muted-foreground">Inbound secret</div>
-              <div className="break-all">{agentInfo!.inboundSecret}</div>
-            </div>
-          </div>
-          <p className="mt-2 text-[11px] text-[#7a5818]">
-            The secret is shown once per click. Treat it like a password —
-            anyone with it can post snapshots into this tenant.
-          </p>
-        </div>
+      {installToken?.integrationId === integration._id && (
+        <InstallCommandPanel
+          token={installToken.token}
+          prefix={installToken.prefix}
+          expiresAt={installToken.expiresAt}
+          onClear={onClearInstallToken}
+        />
       )}
+      {showInfo && (
+        <AgentInstallToken
+          integrationId={agentInfo!.integrationId}
+          inboundSecret={agentInfo!.inboundSecret}
+          onHide={onHideAgentInfo}
+        />
+      )}
+    </div>
+  )
+}
+
+function InstallCommandPanel({
+  token,
+  prefix,
+  expiresAt,
+  onClear,
+}: {
+  token: string
+  prefix: string
+  expiresAt: number
+  onClear: () => void
+}) {
+  const baseUrl = (import.meta.env.VITE_CONVEX_SITE_URL ?? '').toString()
+  const psOneLiner = `iwr ${baseUrl}/agent/install.ps1?t=${token} -UseBasicParsing | iex`
+  const shOneLiner = `curl -fsSL "${baseUrl}/agent/install.sh?t=${token}" | bash`
+  const fallbackCli = `agent install --token ${token} --server ${baseUrl}`
+
+  const [tab, setTab] = useState<'windows' | 'unix' | 'manual'>('windows')
+  const command =
+    tab === 'windows' ? psOneLiner : tab === 'unix' ? shOneLiner : fallbackCli
+
+  const [copied, setCopied] = useState(false)
+  const [now, setNow] = useState(Date.now())
+
+  // Tick once a second so the countdown stays live without re-querying.
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000))
+  const expired = remaining === 0
+  const min = Math.floor(remaining / 60)
+  const sec = remaining % 60
+  const countdown = expired
+    ? 'expired — generate a new one'
+    : `${min}:${sec.toString().padStart(2, '0')} until expiry`
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(command)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+
+  const tabs: ReadonlyArray<{
+    id: 'windows' | 'unix' | 'manual'
+    label: string
+    hint: string
+  }> = [
+    {
+      id: 'windows',
+      label: 'Windows (PowerShell)',
+      hint: 'Downloads the signed agent.exe, installs into %ProgramData%\\TitleHubAgent, and registers the config.',
+    },
+    {
+      id: 'unix',
+      label: 'macOS / Linux',
+      hint: 'For dev/testing — agencies typically run the agent on Windows.',
+    },
+    {
+      id: 'manual',
+      label: 'Manual (have the binary)',
+      hint: 'Skip the bootstrap script. Use this if you already built or downloaded the agent and just need to write the config.',
+    },
+  ]
+
+  return (
+    <div className="mt-3 rounded-md border border-[#3f7c64]/40 bg-[#e9f3ed] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-[10px] font-medium tracking-wide text-[#2f5d4b] uppercase">
+          One-line install — paste on the agent host
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCopy}
+            disabled={expired}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            {copied ? (
+              <>
+                <Check className="size-3" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="size-3" />
+                Copy
+              </>
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClear}
+            className="h-7 px-2 text-xs"
+          >
+            Hide
+          </Button>
+        </div>
+      </div>
+
+      <div className="mt-2 flex items-center gap-1 rounded-full bg-card p-1 ring-1 ring-[#3f7c64]/30">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded-full px-2.5 py-0.5 text-[11px] transition ${
+              tab === t.id
+                ? 'bg-[#2f5d4b] text-white shadow-sm'
+                : 'text-[#2f5d4b] hover:bg-[#e9f3ed]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <pre className="mt-2 overflow-x-auto rounded bg-[#40233f] p-3 font-mono text-[11px] leading-relaxed text-[#f4d48f]">
+        <code>{command}</code>
+      </pre>
+      <p className="mt-1 text-[11px] text-[#2f5d4b]/80">
+        {tabs.find((t) => t.id === tab)?.hint}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+        <span className="text-[#2f5d4b]">
+          Token <span className="font-mono">{prefix}…</span> · {countdown}
+        </span>
+        <span className="text-[#2f5d4b]/70">
+          Single-use. Generate a new one if you need to reinstall.
+        </span>
+      </div>
+      {!baseUrl && (
+        <p className="mt-2 text-[11px] text-[#8a3942]">
+          <strong>Note:</strong> <code>VITE_CONVEX_SITE_URL</code> isn't set in
+          this build, so the install URL is blank. Fill it in manually with
+          your deployment's <code>.convex.site</code> URL.
+        </p>
+      )}
+    </div>
+  )
+}
+
+function AgentInstallToken({
+  integrationId,
+  inboundSecret,
+  onHide,
+}: {
+  integrationId: string
+  inboundSecret: string
+  onHide: () => void
+}) {
+  const baseUrl = (import.meta.env.VITE_CONVEX_SITE_URL ?? '').toString()
+
+  // Matches agent/agent.example.toml — paste-as-is into agent.toml.
+  const tomlBlock = [
+    `# title-hub-agent config — generated ${new Date().toISOString()}`,
+    `base_url = "${baseUrl}"`,
+    `integration_id = "${integrationId}"`,
+    `inbound_secret = "${inboundSecret}"`,
+    `agent_version = "0.1.0"`,
+  ].join('\n')
+
+  const [copied, setCopied] = useState(false)
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(tomlBlock)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // Browser blocked clipboard — leave the textarea selectable instead.
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-[#b78625]/30 bg-[#fff8e8] p-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] font-medium tracking-wide text-[#7a5818] uppercase">
+          Install token — paste into the agent's <code>agent.toml</code>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onCopy}
+            className="h-7 gap-1.5 px-2 text-xs"
+          >
+            {copied ? (
+              <>
+                <Check className="size-3" />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy className="size-3" />
+                Copy
+              </>
+            )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onHide}
+            className="h-7 px-2 text-xs"
+          >
+            Hide
+          </Button>
+        </div>
+      </div>
+      <pre className="mt-2 overflow-x-auto rounded bg-[#40233f] p-3 font-mono text-[11px] leading-relaxed text-[#f4d48f]">
+        <code>{tomlBlock}</code>
+      </pre>
+      {!baseUrl && (
+        <p className="mt-2 text-[11px] text-[#8a3942]">
+          <strong>Note:</strong> <code>VITE_CONVEX_SITE_URL</code> isn't set in
+          this build, so <code>base_url</code> is blank. Fill it in manually
+          with your deployment's <code>.convex.site</code> URL.
+        </p>
+      )}
+      <p className="mt-2 text-[11px] text-[#7a5818]">
+        The secret is shown once per click. Treat it like a password — anyone
+        with it can post snapshots into this tenant.
+      </p>
     </div>
   )
 }

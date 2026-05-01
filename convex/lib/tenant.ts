@@ -33,11 +33,18 @@ export async function requireTenant(
   if (!identity) throw new ConvexError('UNAUTHENTICATED')
   const betterAuthUserId = identity.subject
 
-  // Most-recent active session for this user.
+  // Look up the session that issued THIS request's JWT, not "any session for
+  // the user". The Convex Better Auth plugin puts `sessionId` on the identity
+  // (see @convex-dev/better-auth/src/plugins/convex/index.ts) — looking up by
+  // userId can return a stale session whose activeOrganizationId hasn't been
+  // updated by setActive, which produced an infinite NO_ACTIVE_TENANT loop
+  // when a user had more than one session.
+  const sessionId = identity.sessionId as string | undefined
+  if (!sessionId) throw new ConvexError('UNAUTHENTICATED')
   const session = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
     model: 'session',
     where: [
-      { field: 'userId', value: betterAuthUserId },
+      { field: '_id', value: sessionId },
       {
         field: 'expiresAt',
         operator: 'gt',
@@ -83,6 +90,37 @@ export async function requireTenant(
 
 export function requireRole(tc: TenantContext, ...allowed: Role[]) {
   if (!allowed.includes(tc.role)) throw new ConvexError('FORBIDDEN')
+}
+
+// Like `requireTenant` but returns `null` instead of throwing when the
+// caller is mid-handshake (no JWT yet, no active org on the session, tenant
+// row missing, etc.). Use this from queries that are commonly subscribed
+// during the auth/active-org dance — like the notifications bell or the
+// dashboard's secondary feeds — so they don't pollute the Convex log with
+// expected transient `UNAUTHENTICATED` / `NO_ACTIVE_TENANT` errors. Real
+// authorization failures (a logged-in user trying to read another tenant's
+// data) should still go through `requireTenant`.
+export async function optionalTenant(
+  ctx: QueryCtx | MutationCtx
+): Promise<TenantContext | null> {
+  try {
+    return await requireTenant(ctx)
+  } catch (err) {
+    if (err instanceof ConvexError) {
+      const msg = String(err.data ?? err.message)
+      if (
+        msg === 'UNAUTHENTICATED' ||
+        msg === 'NO_ACTIVE_TENANT' ||
+        msg === 'TENANT_NOT_FOUND' ||
+        msg === 'TENANT_INACTIVE' ||
+        msg === 'NOT_A_MEMBER' ||
+        msg === 'MEMBER_INACTIVE'
+      ) {
+        return null
+      }
+    }
+    throw err
+  }
 }
 
 export function requireNpiAccess(tc: TenantContext) {

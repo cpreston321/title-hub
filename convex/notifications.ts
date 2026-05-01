@@ -14,7 +14,7 @@ import {
   type MutationCtx,
 } from './_generated/server'
 import type { Id } from './_generated/dataModel'
-import { requireTenant } from './lib/tenant'
+import { optionalTenant, requireTenant } from './lib/tenant'
 
 export type NotificationSeed = {
   kind: string
@@ -98,7 +98,12 @@ export const fanOutInternal = internalMutation({
 export const listForMe = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    const tc = await requireTenant(ctx)
+    // Subscribed by the notifications bell on every authenticated route, so
+    // it fires during transient auth states (initial JWT handshake, the
+    // setActive dance on first login). Use optionalTenant so those phases
+    // resolve as "no notifications yet" instead of logged ConvexErrors.
+    const tc = await optionalTenant(ctx)
+    if (!tc) return []
     const cap = Math.min(limit ?? 30, 100)
     return await ctx.db
       .query('notifications')
@@ -113,7 +118,8 @@ export const listForMe = query({
 export const unreadCount = query({
   args: {},
   handler: async (ctx) => {
-    const tc = await requireTenant(ctx)
+    const tc = await optionalTenant(ctx)
+    if (!tc) return 0
     // We index by (tenant, member, readAt, occurredAt). Unread rows have
     // readAt === undefined — Convex doesn't index undefined values, so we
     // count by walking the recent feed and filtering. Fast in practice

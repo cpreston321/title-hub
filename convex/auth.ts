@@ -132,6 +132,52 @@ export const createAuthOptions = (
       },
     },
     socialProviders: socialProviders(),
+    databaseHooks: {
+      session: {
+        create: {
+          // Preset activeOrganizationId on a freshly-created session so the
+          // returning user lands directly on the tenant they last used.
+          // Best-effort: if the lookup fails for any reason we just create
+          // the session without an active org (the picker takes over).
+          before: async (session: { userId?: string }) => {
+            try {
+              const orgId = (await (
+                ctx as GenericActionCtx<DataModel>
+              ).runQuery(internal.tenants.lastActiveOrgForUser, {
+                betterAuthUserId: session.userId ?? "",
+              })) as string | null;
+              if (orgId) {
+                return { data: { ...session, activeOrganizationId: orgId } };
+              }
+            } catch {
+              // ignore — never block session creation
+            }
+            return { data: session };
+          },
+        },
+        update: {
+          // After Better Auth's setActive writes a new activeOrganizationId,
+          // bump tenantMembers.lastLoginAt for that (user, tenant) pair so
+          // the next sign-in resolves to the same org.
+          after: async (session: {
+            userId?: string;
+            activeOrganizationId?: string | null;
+          }) => {
+            const orgId = session.activeOrganizationId;
+            const userId = session.userId;
+            if (!orgId || !userId) return;
+            try {
+              await (ctx as GenericActionCtx<DataModel>).runMutation(
+                internal.tenants.touchLastActiveOrg,
+                { betterAuthUserId: userId, betterAuthOrgId: orgId },
+              );
+            } catch {
+              // ignore — best-effort persistence
+            }
+          },
+        },
+      },
+    },
     plugins: [
       organization({
         allowUserToCreateOrganization: async (user) => {
@@ -170,7 +216,12 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
-    return await authComponent.getAuthUser(ctx);
+    // Use safeGetAuthUser (returns null when there's no identity) instead of
+    // getAuthUser (throws "Unauthenticated"). The sidebar subscribes to this
+    // on every authenticated route; with the throwing variant, every brief
+    // JWT-handshake gap shows up as a logged ConvexError.
+    const user = await authComponent.safeGetAuthUser(ctx);
+    return user ?? null;
   },
 });
 

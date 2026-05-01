@@ -1,0 +1,268 @@
+name: Agent release
+
+# Triggered when an agent-vX.Y.Z tag is pushed. Builds the Rust agent for
+# Windows / macOS / Linux, generates SHA-256 checksums, optionally signs the
+# Windows binary, and uploads everything to a GitHub Release. The Convex
+# bootstrap endpoint (`/agent/install.ps1`) reads `AGENT_RELEASE_BASE_URL` +
+# `AGENT_RELEASE_VERSION` env vars to point at a specific release.
+#
+# Code signing is opt-in: set the `WINDOWS_CERT_BASE64` (PKCS#12 file,
+# base64-encoded) and `WINDOWS_CERT_PASSWORD` repo secrets and the Windows
+# job will sign the .exe before zipping. Without those secrets the binary
+# ships unsigned (SmartScreen will warn until the publisher builds reputation,
+# but the bootstrap script's SHA-256 verification still proves integrity).
+
+on:
+  push:
+    tags:
+      - 'agent-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to publish (e.g. agent-v0.1.0). Required when triggered manually.
+        required: true
+        type: string
+      publish_to_convex:
+        description: Update AGENT_RELEASE_* env vars on the Convex deployment after release.
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            ext: ''
+            archive: tar.gz
+          - runner: macos-latest
+            target: aarch64-apple-darwin
+            ext: ''
+            archive: tar.gz
+          - runner: macos-13
+            target: x86_64-apple-darwin
+            ext: ''
+            archive: tar.gz
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: '.exe'
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${tag#agent-v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=title-hub-agent-$tag-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+
+      - name: Build release
+        shell: bash
+        working-directory: agent
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Run agent unit tests
+        shell: bash
+        working-directory: agent
+        run: cargo test --release --target ${{ matrix.target }}
+
+      # ── Windows code signing ───────────────────────────────────────
+      #
+      # Two opt-in paths; the first one whose secrets are populated wins.
+      # See agent/SIGNING.md for procurement + setup details.
+      #
+      # 1) Azure Trusted Signing (recommended). Cloud HSM, no hardware
+      #    token, first-party GitHub Action. Activates when AZURE_TS_*
+      #    secrets are present.
+      - name: Sign Windows binary (Azure Trusted Signing)
+        if: matrix.target == 'x86_64-pc-windows-msvc' && env.AZURE_TS_CLIENT_ID != ''
+        uses: azure/trusted-signing-action@v0.5.1
+        env:
+          AZURE_TS_CLIENT_ID: ${{ secrets.AZURE_TS_CLIENT_ID }}
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TS_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_TS_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_TS_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_TS_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TS_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_TS_PROFILE_NAME }}
+          files-folder: agent/target/${{ matrix.target }}/release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # 2) Legacy signtool + PKCS#12 file. Only works for grandfathered
+      #    certs (issued before the 2023-06 HSM mandate). Activates when
+      #    WINDOWS_CERT_BASE64 + WINDOWS_CERT_PASSWORD are present AND no
+      #    Azure secrets are set, so we never double-sign.
+      - name: Sign Windows binary (legacy signtool / .pfx)
+        if: matrix.target == 'x86_64-pc-windows-msvc' && env.AZURE_TS_CLIENT_ID == '' && env.WINDOWS_CERT_BASE64 != ''
+        shell: pwsh
+        env:
+          AZURE_TS_CLIENT_ID: ${{ secrets.AZURE_TS_CLIENT_ID }}
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $cert = [System.Convert]::FromBase64String($env:WINDOWS_CERT_BASE64)
+          $certPath = "$env:RUNNER_TEMP\agent-cert.pfx"
+          [System.IO.File]::WriteAllBytes($certPath, $cert)
+          $signtool = (Get-ChildItem -Recurse -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter "signtool.exe" | Where-Object { $_.Directory -match 'x64' } | Select-Object -First 1).FullName
+          & $signtool sign /f $certPath /p $env:WINDOWS_CERT_PASSWORD /tr "http://timestamp.digicert.com" /td sha256 /fd sha256 "agent\target\${{ matrix.target }}\release\agent.exe"
+          Remove-Item $certPath
+
+      - name: Verify Windows signature
+        if: matrix.target == 'x86_64-pc-windows-msvc' && (env.AZURE_TS_CLIENT_ID != '' || env.WINDOWS_CERT_BASE64 != '')
+        shell: pwsh
+        env:
+          AZURE_TS_CLIENT_ID: ${{ secrets.AZURE_TS_CLIENT_ID }}
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        run: |
+          $signtool = (Get-ChildItem -Recurse -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter "signtool.exe" | Where-Object { $_.Directory -match 'x64' } | Select-Object -First 1).FullName
+          & $signtool verify /pa /v "agent\target\${{ matrix.target }}\release\agent.exe"
+
+      - name: Note unsigned Windows build
+        if: matrix.target == 'x86_64-pc-windows-msvc' && env.AZURE_TS_CLIENT_ID == '' && env.WINDOWS_CERT_BASE64 == ''
+        shell: bash
+        env:
+          AZURE_TS_CLIENT_ID: ${{ secrets.AZURE_TS_CLIENT_ID }}
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        run: |
+          echo "::warning::Building agent.exe UNSIGNED. SmartScreen will warn customers on first run. See agent/SIGNING.md to enable signing."
+
+      # ── Package: tar.gz on Unix, zip on Windows ────────────────────
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp agent/target/${{ matrix.target }}/release/agent dist/agent
+          cp agent/agent.example.toml dist/
+          cp agent/README.md dist/
+          tar -C dist -czf "${{ steps.tag.outputs.name }}.tar.gz" agent agent.example.toml README.md
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "agent\target\${{ matrix.target }}\release\agent.exe" "dist\agent.exe"
+          Copy-Item "agent\agent.example.toml" "dist\"
+          Copy-Item "agent\README.md" "dist\"
+          Compress-Archive -Path dist\* -DestinationPath "${{ steps.tag.outputs.name }}.zip" -Force
+
+      # ── SHA-256 checksum (the bootstrap script verifies this) ──────
+      - name: Compute SHA-256
+        shell: bash
+        run: |
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            archive="${{ steps.tag.outputs.name }}.zip"
+          else
+            archive="${{ steps.tag.outputs.name }}.tar.gz"
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            powershell -Command "(Get-FileHash -Algorithm SHA256 '$archive').Hash.ToLower()" | tr -d '\r' > "$archive.sha256"
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            shasum -a 256 "$archive" | awk '{print $1}' > "$archive.sha256"
+          else
+            sha256sum "$archive" | awk '{print $1}' > "$archive.sha256"
+          fi
+          echo "Computed checksum:"
+          cat "$archive.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.tag.outputs.name }}
+          path: |
+            ${{ steps.tag.outputs.name }}.${{ matrix.archive }}
+            ${{ steps.tag.outputs.name }}.${{ matrix.archive }}.sha256
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      release_base_url: ${{ steps.tag.outputs.release_base_url }}
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release_base_url=https://github.com/${{ github.repository }}/releases/download/$tag" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" -o -name "*.sha256" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Title Hub agent ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          files: release/*
+
+  publish-to-convex:
+    # Pushes AGENT_RELEASE_BASE_URL + AGENT_RELEASE_VERSION to the Convex
+    # deployment so the bootstrap endpoint (`/agent/install.ps1`) starts
+    # serving the new version immediately. Uses the same self-hosted
+    # secrets ci.yml already relies on for `convex deploy`.
+    name: Update Convex env vars
+    needs: release
+    runs-on: ubuntu-latest
+    # Don't run on workflow_dispatch when explicitly opted out — useful
+    # for re-running a build without rotating the deployment pointer.
+    if: github.event_name == 'push' || github.event.inputs.publish_to_convex != 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Set agent release env vars on Convex
+        env:
+          CONVEX_SELF_HOSTED_URL: ${{ secrets.CONVEX_SELF_HOSTED_URL }}
+          CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.CONVEX_SELF_HOSTED_ADMIN_KEY }}
+          AGENT_RELEASE_BASE_URL: ${{ needs.release.outputs.release_base_url }}
+          AGENT_RELEASE_VERSION: ${{ needs.release.outputs.tag }}
+        run: |
+          if [ -z "$CONVEX_SELF_HOSTED_URL" ] || [ -z "$CONVEX_SELF_HOSTED_ADMIN_KEY" ]; then
+            echo "::warning::CONVEX_SELF_HOSTED_* secrets are not set; skipping Convex env update."
+            echo "Set AGENT_RELEASE_BASE_URL=$AGENT_RELEASE_BASE_URL"
+            echo "    AGENT_RELEASE_VERSION=$AGENT_RELEASE_VERSION"
+            exit 0
+          fi
+          echo "Pointing Convex at $AGENT_RELEASE_BASE_URL"
+          bunx convex env set AGENT_RELEASE_BASE_URL "$AGENT_RELEASE_BASE_URL"
+          bunx convex env set AGENT_RELEASE_VERSION "$AGENT_RELEASE_VERSION"

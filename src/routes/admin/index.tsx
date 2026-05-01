@@ -67,30 +67,32 @@ function AdminPage() {
     )
   }
 
-  if (current.error) {
-    const msg = current.error.message
-    if (/NO_ACTIVE_TENANT|NOT_A_MEMBER|TENANT_NOT_FOUND/.test(msg)) {
-      return (
-        <AppShell isAuthenticated title="Admin">
-          <Card className="mx-auto max-w-xl">
-            <CardHeader>
-              <CardTitle>No active organization</CardTitle>
-              <CardDescription>
-                You need to choose or create one before accessing admin.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild>
-                <Link to="/tenants">Go to organizations</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </AppShell>
-      )
-    }
+  if (current.data === null) {
     return (
       <AppShell isAuthenticated title="Admin">
-        <p className="text-sm text-destructive">Error: {msg}</p>
+        <Card className="mx-auto max-w-xl">
+          <CardHeader>
+            <CardTitle>No active organization</CardTitle>
+            <CardDescription>
+              You need to choose or create one before accessing admin.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to="/tenants">Go to organizations</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </AppShell>
+    )
+  }
+
+  if (current.error) {
+    return (
+      <AppShell isAuthenticated title="Admin">
+        <p className="text-sm text-destructive">
+          Error: {current.error.message}
+        </p>
       </AppShell>
     )
   }

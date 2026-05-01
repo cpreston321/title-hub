@@ -1,0 +1,21 @@
+[
+  {
+    "externalId": "AGENT-DEV-001",
+    "fileNumber": "AGENT-DEV-001",
+    "externalStatus": "in_exam",
+    "stateCode": "IN",
+    "countyFips": "18097",
+    "transactionType": "purchase",
+    "propertyAddress": {
+      "line1": "100 N Main St",
+      "city": "Indianapolis",
+      "state": "IN",
+      "zip": "46204"
+    },
+    "parties": [
+      { "role": "buyer", "legalName": "Bob Buyer", "partyType": "person" },
+      { "role": "seller", "legalName": "Sam Seller", "partyType": "person" }
+    ],
+    "updatedAt": 1730000000000
+  }
+]

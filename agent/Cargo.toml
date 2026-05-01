@@ -1,0 +1,56 @@
+[package]
+name = "title-hub-agent"
+version = "0.1.0"
+edition = "2024"
+description = "Customer-side agent for SoftPro Standard direct integrations with Title Hub"
+license = "Proprietary"
+
+[[bin]]
+name = "agent"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime + HTTP client. rustls-tls so we don't depend on a system OpenSSL.
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "time", "fs", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "gzip"] }
+
+# JSON / TOML / serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# HMAC-SHA256 — matches the server's verifySignature in convex/http.ts.
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
+# CLI + tracing
+clap = { version = "4", features = ["derive", "env"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Errors + small ergonomics
+anyhow = "1"
+thiserror = "1"
+
+# Hostname for heartbeats
+hostname = "0.4"
+
+# SQL Server connectivity for the ProForm poller. tokio-util gives us the
+# Compat<TcpStream> tiberius needs over a tokio runtime.
+tiberius = { version = "0.12", default-features = false, features = ["chrono", "rustls", "tds73"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+
+# Cross-platform default-config-path discovery.
+dirs = "5"
+
+[dev-dependencies]
+httpmock = "0.7"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
