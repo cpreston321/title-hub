@@ -315,6 +315,7 @@ const COMMANDS: ReadonlyArray<Command> = [
         role: string
         userCreated: boolean
         memberCreated: boolean
+        passwordSet: boolean
       }>('systemAdmins:seedUserAndAssign', {
         email,
         password,
@@ -329,12 +330,32 @@ const COMMANDS: ReadonlyArray<Command> = [
       const memberMark = r.memberCreated
         ? c.green('+ added')
         : c.dim('· already member')
+      const pwMark = r.passwordSet ? c.green('· password set') : ''
       console.log(
         c.green('✓') +
           ` ${c.bold(r.email)} ${userMark} → ${c.plum(r.tenantSlug)} ${c.dim(
             `(${r.tenantName})`
-          )} as ${c.bold(r.role)} ${memberMark}`
+          )} as ${c.bold(r.role)} ${memberMark} ${pwMark}`
       )
+    },
+  },
+  {
+    name: 'set-password',
+    args: '<email> <password>',
+    description:
+      "Reset a user's password directly. Updates (or creates) their credential account in Better Auth.",
+    run: (args) => {
+      const email = requireArg(args, 0, 'email')
+      const password = requireArg(args, 1, 'password')
+      const r = runConvex<{
+        email: string
+        userId: string
+        accountCreated: boolean
+      }>('systemAdmins:setUserPassword', { email, password })
+      const mark = r.accountCreated
+        ? c.green('+ credential account created')
+        : c.green('· password updated')
+      console.log(c.green('✓') + ` ${c.bold(r.email)} ${mark}`)
     },
   },
   {
@@ -617,6 +638,7 @@ function printHelp() {
     )
   )
   console.log(c.dim('  bun run admin seed-recording-rules'))
+  console.log(c.dim('  bun run admin set-password alice@firm.com hunter2'))
   console.log()
   console.log(
     c.dim(

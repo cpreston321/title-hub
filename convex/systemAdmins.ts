@@ -565,6 +565,71 @@ type SeedUserResult = {
   role: 'owner' | 'admin' | 'member'
   userCreated: boolean
   memberCreated: boolean
+  passwordSet: boolean
+}
+
+// Shared password-writing path used by both seed-user and set-password. Hashes
+// with `@better-auth/utils/password` (the function BA's default sign-in path
+// also uses to verify), patches the credential account if one exists, or
+// creates one if the user only had social providers. Round-trips the hash
+// through verifyPassword as a self-test before returning — if scrypt produced
+// something unverifiable we want to fail loudly rather than ship a bad hash.
+async function writeCredentialPassword(
+  ctx: {
+    runQuery: (...args: any) => any
+    runMutation: (...args: any) => any
+  },
+  userId: string,
+  password: string,
+): Promise<{ accountCreated: boolean }> {
+  const { hashPassword, verifyPassword } = await import(
+    '@better-auth/utils/password'
+  )
+  const hashed = await hashPassword(password)
+  const verified = await verifyPassword(hashed, password)
+  if (!verified) {
+    throw new ConvexError(
+      'PASSWORD_HASH_SELFCHECK_FAILED: hashPassword produced a hash that verifyPassword rejected. Refusing to write a bad credential.',
+    )
+  }
+
+  const account = (await ctx.runQuery(
+    components.betterAuth.adapter.findOne,
+    {
+      model: 'account',
+      where: [
+        { field: 'userId', value: userId },
+        { field: 'providerId', value: 'credential' },
+      ],
+    },
+  )) as { _id: string } | null
+
+  const now = Date.now()
+  if (account) {
+    await ctx.runMutation(components.betterAuth.adapter.updateOne, {
+      input: {
+        model: 'account',
+        update: { password: hashed, updatedAt: now },
+        where: [{ field: '_id', value: account._id }],
+      },
+    })
+    return { accountCreated: false }
+  }
+
+  await ctx.runMutation(components.betterAuth.adapter.create, {
+    input: {
+      model: 'account',
+      data: {
+        accountId: userId,
+        providerId: 'credential',
+        userId,
+        password: hashed,
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+  })
+  return { accountCreated: true }
 }
 
 export const seedUserAndAssign = internalAction({
@@ -637,6 +702,11 @@ export const seedUserAndAssign = internalAction({
       userCreated = true
     }
 
+    // Always (re)write the credential password. signUpEmail also writes one
+    // for new users, but doing it again here is harmless and means existing
+    // users get the password they were just told they'd be given.
+    await writeCredentialPassword(ctx, userId, password)
+
     // If they're already a member of this org, don't try to add again — BA's
     // addMember endpoint throws on duplicate.
     const memberAlready = (await ctx.runQuery(
@@ -671,6 +741,7 @@ export const seedUserAndAssign = internalAction({
       role: finalRole,
       userCreated,
       memberCreated,
+      passwordSet: true,
     }
   },
 })
@@ -779,5 +850,46 @@ export const adminSeedRecordingRules = internalMutation({
     }
 
     return { totalInserted, totalSkipped, results }
+  },
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// Set / reset a user's password
+// ─────────────────────────────────────────────────────────────────────
+// Hashes with Better Auth's default scrypt (`@better-auth/utils/password`)
+// and patches the user's `credential` account row in the BA component, or
+// creates one if the user only had social providers. Bypasses email reset.
+
+type SetPasswordResult = {
+  email: string
+  userId: string
+  accountCreated: boolean
+}
+
+export const setUserPassword = internalAction({
+  args: { email: v.string(), password: v.string() },
+  handler: async (
+    ctx,
+    { email, password },
+  ): Promise<SetPasswordResult> => {
+    const normalizedEmail = email.trim().toLowerCase()
+
+    const user = (await ctx.runQuery(
+      components.betterAuth.adapter.findOne,
+      {
+        model: 'user',
+        where: [{ field: 'email', value: normalizedEmail }],
+      },
+    )) as { _id: string; email?: string } | null
+    if (!user) {
+      throw new ConvexError(`No user with email ${normalizedEmail}`)
+    }
+
+    const { accountCreated } = await writeCredentialPassword(
+      ctx,
+      user._id,
+      password,
+    )
+    return { email: normalizedEmail, userId: user._id, accountCreated }
   },
 })

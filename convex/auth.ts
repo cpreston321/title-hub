@@ -1,58 +1,58 @@
-import { betterAuth, type BetterAuthOptions } from 'better-auth/minimal'
-import { magicLink } from 'better-auth/plugins/magic-link'
-import { organization } from 'better-auth/plugins/organization'
-import { createClient, type GenericCtx } from '@convex-dev/better-auth'
-import { convex } from '@convex-dev/better-auth/plugins'
-import authConfig from './auth.config'
-import { components, internal } from './_generated/api'
-import { internalQuery, query } from './_generated/server'
-import type { DataModel } from './_generated/dataModel'
-import type { GenericActionCtx, GenericQueryCtx } from 'convex/server'
-import { v } from 'convex/values'
-import authSchema from './betterAuth/schema'
-import { magicLinkEmail, passwordResetEmail, verificationEmail } from './email'
+import { betterAuth, type BetterAuthOptions } from "better-auth/minimal";
+import { magicLink } from "better-auth/plugins/magic-link";
+import { organization } from "better-auth/plugins/organization";
+import { createClient, type GenericCtx } from "@convex-dev/better-auth";
+import { convex } from "@convex-dev/better-auth/plugins";
+import authConfig from "./auth.config";
+import { components, internal } from "./_generated/api";
+import { internalQuery, query } from "./_generated/server";
+import type { DataModel } from "./_generated/dataModel";
+import type { GenericActionCtx, GenericQueryCtx } from "convex/server";
+import { v } from "convex/values";
+import authSchema from "./betterAuth/schema";
+import { magicLinkEmail, passwordResetEmail, verificationEmail } from "./email";
 
-const siteUrl = process.env.SITE_URL!
+const siteUrl = process.env.SITE_URL!;
 
 const env = (key: string) => {
-  const v = process.env[key]
-  return v && v.length > 0 ? v : undefined
-}
+  const v = process.env[key];
+  return v && v.length > 0 ? v : undefined;
+};
 
 function socialProviders() {
-  const out: Record<string, { clientId: string; clientSecret: string }> = {}
+  const out: Record<string, { clientId: string; clientSecret: string }> = {};
 
-  const googleId = env('GOOGLE_CLIENT_ID')
-  const googleSecret = env('GOOGLE_CLIENT_SECRET')
+  const googleId = env("GOOGLE_CLIENT_ID");
+  const googleSecret = env("GOOGLE_CLIENT_SECRET");
   if (googleId && googleSecret) {
-    out.google = { clientId: googleId, clientSecret: googleSecret }
+    out.google = { clientId: googleId, clientSecret: googleSecret };
   }
 
-  const msId = env('MICROSOFT_CLIENT_ID')
-  const msSecret = env('MICROSOFT_CLIENT_SECRET')
+  const msId = env("MICROSOFT_CLIENT_ID");
+  const msSecret = env("MICROSOFT_CLIENT_SECRET");
   if (msId && msSecret) {
-    out.microsoft = { clientId: msId, clientSecret: msSecret }
+    out.microsoft = { clientId: msId, clientSecret: msSecret };
   }
 
-  return out
+  return out;
 }
 
-type EmailArgs = { to: string; subject: string; html: string; text?: string }
+type EmailArgs = { to: string; subject: string; html: string; text?: string };
 
 function scheduleEmail(ctx: GenericCtx<DataModel>, args: EmailArgs) {
   const maybeScheduler = (ctx as { scheduler?: { runAfter: Function } })
-    .scheduler
+    .scheduler;
   if (!maybeScheduler) {
-    console.warn('[auth] cannot send email from query context')
-    return
+    console.warn("[auth] cannot send email from query context");
+    return;
   }
   return (
     maybeScheduler.runAfter as (
       ms: number,
       ref: typeof internal.email.send,
-      args: EmailArgs
+      args: EmailArgs,
     ) => Promise<unknown>
-  )(0, internal.email.send, args)
+  )(0, internal.email.send, args);
 }
 
 // Provisioning is done in `convex/authTriggers.ts` which dispatches by model.
@@ -60,22 +60,22 @@ function scheduleEmail(ctx: GenericCtx<DataModel>, args: EmailArgs) {
 // needs the FunctionReference shapes to infer the component's type, but those
 // shapes transitively reference back through _generated/api.
 const triggerRefs = internal.authTriggers as unknown as {
-  onCreate: import('convex/server').FunctionReference<
-    'mutation',
-    'internal',
+  onCreate: import("convex/server").FunctionReference<
+    "mutation",
+    "internal",
     { doc: unknown; model: string }
-  >
-  onUpdate: import('convex/server').FunctionReference<
-    'mutation',
-    'internal',
+  >;
+  onUpdate: import("convex/server").FunctionReference<
+    "mutation",
+    "internal",
     { newDoc: unknown; oldDoc: unknown; model: string }
-  >
-  onDelete: import('convex/server').FunctionReference<
-    'mutation',
-    'internal',
+  >;
+  onDelete: import("convex/server").FunctionReference<
+    "mutation",
+    "internal",
     { doc: unknown; model: string }
-  >
-}
+  >;
+};
 
 export const authComponent = createClient<DataModel, typeof authSchema>(
   components.betterAuth,
@@ -90,16 +90,16 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
       user: { onCreate: async () => {} },
     },
     authFunctions: triggerRefs,
-  }
-)
+  },
+);
 
 export const createAuthOptions = (
-  ctx: GenericCtx<DataModel>
+  ctx: GenericCtx<DataModel>,
 ): BetterAuthOptions => {
   return {
     baseURL: siteUrl,
     database: authComponent.adapter(ctx),
-    trustedOrigins: [siteUrl, 'https://title-hub.cpreston.dev'],
+    trustedOrigins: [siteUrl, "https://titlehub.cpreston.dev"],
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
@@ -107,13 +107,13 @@ export const createAuthOptions = (
         user,
         url,
       }: {
-        user: { email: string }
-        url: string
+        user: { email: string };
+        url: string;
       }) => {
         await scheduleEmail(ctx, {
           to: user.email,
           ...passwordResetEmail(url),
-        })
+        });
       },
     },
     emailVerification: {
@@ -122,13 +122,13 @@ export const createAuthOptions = (
         user,
         url,
       }: {
-        user: { email: string }
-        url: string
+        user: { email: string };
+        url: string;
       }) => {
         await scheduleEmail(ctx, {
           to: user.email,
           ...verificationEmail(url),
-        })
+        });
       },
     },
     socialProviders: socialProviders(),
@@ -142,11 +142,12 @@ export const createAuthOptions = (
           // Better Auth invokes this from the org-create HTTP handler, which
           // is an action-like context — `ctx.db` is undefined here, so we
           // hop into an internal query via `runQuery` to read systemAdmins.
-          return await (
-            ctx as GenericActionCtx<DataModel>
-          ).runQuery(internal.auth.isSystemAdmin, {
-            betterAuthUserId: user.id,
-          })
+          return await (ctx as GenericActionCtx<DataModel>).runQuery(
+            internal.auth.isSystemAdmin,
+            {
+              betterAuthUserId: user.id,
+            },
+          );
         },
       }),
       magicLink({
@@ -154,36 +155,36 @@ export const createAuthOptions = (
           await scheduleEmail(ctx, {
             to: email,
             ...magicLinkEmail(url),
-          })
+          });
         },
       }),
       convex({ authConfig }),
     ],
-  }
-}
+  };
+};
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
-  return betterAuth(createAuthOptions(ctx))
-}
+  return betterAuth(createAuthOptions(ctx));
+};
 
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
-    return await authComponent.getAuthUser(ctx)
+    return await authComponent.getAuthUser(ctx);
   },
-})
+});
 
 // True iff the given Better Auth user id is in our `systemAdmins` allowlist.
 // Tolerates mutation contexts as well as queries — both expose `ctx.db`.
 export async function isSystemAdminUserId(
   ctx: GenericQueryCtx<DataModel>,
-  betterAuthUserId: string
+  betterAuthUserId: string,
 ): Promise<boolean> {
   const row = await ctx.db
-    .query('systemAdmins')
-    .withIndex('by_user', (q) => q.eq('betterAuthUserId', betterAuthUserId))
-    .unique()
-  return !!row
+    .query("systemAdmins")
+    .withIndex("by_user", (q) => q.eq("betterAuthUserId", betterAuthUserId))
+    .unique();
+  return !!row;
 }
 
 // Internal query wrapper so action/HTTP contexts (e.g. Better Auth callbacks)
@@ -191,6 +192,6 @@ export async function isSystemAdminUserId(
 export const isSystemAdmin = internalQuery({
   args: { betterAuthUserId: v.string() },
   handler: async (ctx, { betterAuthUserId }): Promise<boolean> => {
-    return await isSystemAdminUserId(ctx, betterAuthUserId)
+    return await isSystemAdminUserId(ctx, betterAuthUserId);
   },
-})
+});
