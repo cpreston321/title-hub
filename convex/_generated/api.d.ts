@@ -29,6 +29,7 @@ import type * as lib_tenant from "../lib/tenant.js";
 import type * as lib_testHelpers from "../lib/testHelpers.js";
 import type * as lib_vesting from "../lib/vesting.js";
 import type * as notifications from "../notifications.js";
+import type * as orders from "../orders.js";
 import type * as parties from "../parties.js";
 import type * as reconciliation from "../reconciliation.js";
 import type * as rules from "../rules.js";
@@ -68,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   "lib/testHelpers": typeof lib_testHelpers;
   "lib/vesting": typeof lib_vesting;
   notifications: typeof notifications;
+  orders: typeof orders;
   parties: typeof parties;
   reconciliation: typeof reconciliation;
   rules: typeof rules;

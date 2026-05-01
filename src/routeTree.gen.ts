@@ -13,6 +13,7 @@ import { Route as TenantsRouteImport } from './routes/tenants'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -39,6 +40,11 @@ const SignUpRoute = SignUpRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrdersRoute = OrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -79,6 +85,7 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/orders': typeof OrdersRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -92,6 +99,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/orders': typeof OrdersRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/orders': typeof OrdersRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/orders'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/orders'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/orders'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  OrdersRoute: typeof OrdersRoute
   SettingsRoute: typeof SettingsRoute
   SignUpRoute: typeof SignUpRoute
   SigninRoute: typeof SigninRoute
@@ -201,6 +214,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/orders': {
+      id: '/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof OrdersRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -257,6 +277,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  OrdersRoute: OrdersRoute,
   SettingsRoute: SettingsRoute,
   SignUpRoute: SignUpRoute,
   SigninRoute: SigninRoute,

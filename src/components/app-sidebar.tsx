@@ -274,9 +274,12 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 label="Escrow"
                 icon={<Wallet className="size-4" />}
               />
-              <DisabledNavItem
+              <NavLink
+                to="/orders"
                 label="Order management"
                 icon={<ScanLine className="size-4" />}
+                active={location.pathname.startsWith("/orders")}
+                disabled={!hasActiveOrg}
               />
               <DisabledNavItem
                 label="County connect"

@@ -50,11 +50,6 @@ jobs:
           build-args: |
             VITE_CONVEX_URL=${{ vars.VITE_CONVEX_URL }}
             VITE_CONVEX_SITE_URL=${{ vars.VITE_CONVEX_SITE_URL }}
-            VITE_TURNSTILE_SITE_KEY=${{ vars.VITE_TURNSTILE_SITE_KEY }}
-            VITE_RADAR_PUBLISHABLE_KEY=${{ vars.VITE_RADAR_PUBLISHABLE_KEY }}
-            VITE_ZELLE_EMAIL=${{ vars.VITE_ZELLE_EMAIL }}
-            VITE_ZELLE_PHONE=${{ vars.VITE_ZELLE_PHONE }}
-            VITE_HELIO_PAYLINK_ID=${{ vars.VITE_HELIO_PAYLINK_ID }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
