@@ -71,6 +71,8 @@ function SettingsPage() {
 
   const session = authClient.useSession()
   const memberships = useQuery(convexQuery(api.tenants.listMine, {}))
+  const isAdminQ = useQuery(convexQuery(api.tenants.amISystemAdmin, {}))
+  const isSystemAdmin = isAdminQ.data === true
 
   const user = session.data?.user as
     | {
@@ -124,6 +126,7 @@ function SettingsPage() {
             <OrganizationsSection
               memberships={list}
               activeTenantId={activeTenantId}
+              isSystemAdmin={isSystemAdmin}
             />
           )}
           {section === 'session' && <SessionSection onSignOut={onSignOut} />}
@@ -481,9 +484,11 @@ function ProfileSection({
 function OrganizationsSection({
   memberships,
   activeTenantId,
+  isSystemAdmin,
 }: {
   memberships: Membership[]
   activeTenantId: string | null
+  isSystemAdmin: boolean
 }) {
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -539,15 +544,18 @@ function OrganizationsSection({
             <Building2 className="size-5" />
           </div>
           <div className="mt-3 font-serif text-lg text-[#40233f]">
-            No organizations yet
+            {isSystemAdmin ? 'No organizations yet' : 'Awaiting an invitation'}
           </div>
           <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-            Create your first organization to start opening files and inviting
-            teammates.
+            {isSystemAdmin
+              ? 'Create your first organization to start opening files and inviting teammates.'
+              : "Your account is set up, but you haven't been invited to an organization yet. Ask your administrator to send you an invitation."}
           </p>
-          <Button asChild className="mt-4 rounded-xl">
-            <Link to="/tenants">Create one</Link>
-          </Button>
+          {isSystemAdmin && (
+            <Button asChild className="mt-4 rounded-xl">
+              <Link to="/">Create one</Link>
+            </Button>
+          )}
         </div>
       ) : (
         <ul className="flex flex-col gap-2">

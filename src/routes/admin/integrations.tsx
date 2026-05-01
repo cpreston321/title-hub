@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AppShell } from '@/components/app-shell'
+import { Loading } from '@/components/loading'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 
@@ -119,7 +120,7 @@ function IntegrationsAdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Integrations">
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <Loading block size="lg" label="Patching in" />
       </AppShell>
     )
   }

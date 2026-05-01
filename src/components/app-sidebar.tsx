@@ -1,7 +1,7 @@
-import { Link, useLocation, useNavigate } from '@tanstack/react-router'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { convexQuery } from '@convex-dev/react-query'
-import { useState } from 'react'
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
+import { useState } from "react";
 import {
   LayoutDashboard,
   FolderOpen,
@@ -18,7 +18,7 @@ import {
   Check,
   Loader2,
   Plus,
-} from 'lucide-react'
+} from "lucide-react";
 
 import {
   Sidebar,
@@ -33,8 +33,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-} from '@/components/ui/sidebar'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+} from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,84 +42,84 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { authClient } from '@/lib/auth-client'
-import { api } from '../../convex/_generated/api'
+} from "@/components/ui/dropdown-menu";
+import { authClient } from "@/lib/auth-client";
+import { api } from "../../convex/_generated/api";
 
 type AppSidebarProps = {
-  isAuthenticated: boolean
-}
+  isAuthenticated: boolean;
+};
 
 export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const queryClient = useQueryClient()
+  const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const current = useQuery({
     ...convexQuery(api.tenants.current, {}),
     enabled: isAuthenticated,
     retry: false,
-  })
+  });
   const memberships = useQuery({
     ...convexQuery(api.tenants.listMine, {}),
     enabled: isAuthenticated,
     retry: false,
-  })
+  });
   const isAdminQ = useQuery({
     ...convexQuery(api.tenants.amISystemAdmin, {}),
     enabled: isAuthenticated,
     retry: false,
-  })
+  });
 
   const meQ = useQuery({
     ...convexQuery(api.auth.getCurrentUser, {}),
     enabled: isAuthenticated,
     retry: false,
-  })
+  });
 
-  const tenant = current.data ?? null
+  const tenant = current.data ?? null;
   const orgs = (memberships.data?.memberships ?? []) as ReadonlyArray<{
-    tenantId: string
-    legalName: string
-    slug: string
-    role: string
-    betterAuthOrgId: string
-  }>
+    tenantId: string;
+    legalName: string;
+    slug: string;
+    role: string;
+    betterAuthOrgId: string;
+  }>;
   const me = meQ.data as
     | { name?: string | null; email?: string | null }
     | null
-    | undefined
-  const accountLabel = (me?.name && me.name.trim()) || me?.email || 'Account'
-  const accountSub = me?.name && me?.email ? me.email : 'Signed in'
-  const accountInitials = personInitials(me?.name, me?.email)
-  const hasActiveOrg = !!tenant
-  const isSystemAdmin = isAdminQ.data === true
-  const [switchingTo, setSwitchingTo] = useState<string | null>(null)
+    | undefined;
+  const accountLabel = (me?.name && me.name.trim()) || me?.email || "Account";
+  const accountSub = me?.name && me?.email ? me.email : "Signed in";
+  const accountInitials = personInitials(me?.name, me?.email);
+  const hasActiveOrg = !!tenant;
+  const isSystemAdmin = isAdminQ.data === true;
+  const [switchingTo, setSwitchingTo] = useState<string | null>(null);
 
   const onSignOut = async () => {
-    await authClient.signOut()
-    navigate({ to: '/signin' })
-  }
+    await authClient.signOut();
+    navigate({ to: "/signin" });
+  };
 
   const onSwitchTo = async (betterAuthOrgId: string) => {
-    if (switchingTo) return
-    setSwitchingTo(betterAuthOrgId)
+    if (switchingTo) return;
+    setSwitchingTo(betterAuthOrgId);
     try {
       const res = await authClient.organization.setActive({
         organizationId: betterAuthOrgId,
-      })
+      });
       if (res.error) {
-        throw new Error(res.error.message ?? 'Switch failed')
+        throw new Error(res.error.message ?? "Switch failed");
       }
       // Re-fetch tenant-scoped queries so the new org's data shows up.
-      await queryClient.invalidateQueries()
-      navigate({ to: '/' })
+      await queryClient.invalidateQueries();
+      navigate({ to: "/" });
     } catch {
       // Surface the failure inline by reverting state; the dropdown closes
       // either way and the user can retry.
     } finally {
-      setSwitchingTo(null)
+      setSwitchingTo(null);
     }
-  }
+  };
 
   return (
     <Sidebar
@@ -139,14 +139,14 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
               </div>
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="truncate font-serif text-base tracking-wide text-white">
-                  {tenant?.legalName ?? 'Title Hub'}
+                  {tenant?.legalName ?? "Title Hub"}
                 </div>
                 <div className="truncate text-xs text-white/60">
                   {tenant
-                    ? `${tenant.slug} · ${tenant.role}`
+                    ? tenant.role
                     : hasActiveOrg
-                      ? 'Loading...'
-                      : 'No active org'}
+                      ? "Loading..."
+                      : "No active org"}
                 </div>
               </div>
               <ChevronsUpDown className="size-3.5 shrink-0 text-white/60 group-hover/orgswitch:text-white/85" />
@@ -172,17 +172,17 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
               </div>
             ) : (
               orgs.map((o) => {
-                const active = o.tenantId === tenant?.tenantId
-                const switching = switchingTo === o.betterAuthOrgId
+                const active = o.tenantId === tenant?.tenantId;
+                const switching = switchingTo === o.betterAuthOrgId;
                 return (
                   <DropdownMenuItem
                     key={o.tenantId}
                     onSelect={(e) => {
-                      e.preventDefault()
-                      if (active) return
-                      onSwitchTo(o.betterAuthOrgId)
+                      e.preventDefault();
+                      if (active) return;
+                      onSwitchTo(o.betterAuthOrgId);
                     }}
-                    className={`flex items-start gap-2 ${active ? 'cursor-default' : 'cursor-pointer'}`}
+                    className={`flex items-start gap-2 ${active ? "cursor-default" : "cursor-pointer"}`}
                   >
                     <div className="grid size-7 shrink-0 place-items-center rounded-md border border-[#40233f]/15 bg-[#fdf6e8] text-[#40233f]">
                       <Building className="size-3.5" />
@@ -192,7 +192,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                         {o.legalName}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {o.slug} · {o.role}
+                        {o.role}
                       </div>
                     </div>
                     {switching ? (
@@ -201,7 +201,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                       <Check className="size-3.5 shrink-0 text-[#3f7c64]" />
                     ) : null}
                   </DropdownMenuItem>
-                )
+                );
               })
             )}
             {isSystemAdmin && (
@@ -232,27 +232,27 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 to="/"
                 label="Dashboard"
                 icon={<LayoutDashboard className="size-4" />}
-                active={location.pathname === '/'}
+                active={location.pathname === "/"}
               />
               <NavLink
                 to="/files"
                 label="Files"
                 icon={<FolderOpen className="size-4" />}
-                active={location.pathname.startsWith('/files')}
+                active={location.pathname.startsWith("/files")}
                 disabled={!hasActiveOrg}
               />
               <NavLink
                 to="/admin"
                 label="Admin"
                 icon={<Shield className="size-4" />}
-                active={location.pathname === '/admin'}
+                active={location.pathname === "/admin"}
                 disabled={!hasActiveOrg}
               />
               <NavLink
                 to="/admin/rules"
                 label="Recording rules"
                 icon={<ScrollText className="size-4" />}
-                active={location.pathname.startsWith('/admin/rules')}
+                active={location.pathname.startsWith("/admin/rules")}
                 disabled={!hasActiveOrg}
               />
             </SidebarMenu>
@@ -340,7 +340,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
         </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
-  )
+  );
 }
 
 function NewFileCTA({ hasActiveOrg }: { hasActiveOrg: boolean }) {
@@ -358,7 +358,7 @@ function NewFileCTA({ hasActiveOrg }: { hasActiveOrg: boolean }) {
           New file
         </button>
       </div>
-    )
+    );
   }
   return (
     <div className="px-3 pb-2">
@@ -371,7 +371,7 @@ function NewFileCTA({ hasActiveOrg }: { hasActiveOrg: boolean }) {
         New file
       </Link>
     </div>
-  )
+  );
 }
 
 function NavLink({
@@ -382,12 +382,12 @@ function NavLink({
   badge,
   disabled,
 }: {
-  to: string
-  label: string
-  icon: React.ReactNode
-  active: boolean
-  badge?: string
-  disabled?: boolean
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+  active: boolean;
+  badge?: string;
+  disabled?: boolean;
 }) {
   if (disabled) {
     return (
@@ -402,7 +402,7 @@ function NavLink({
           <span>{label}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
-    )
+    );
   }
   return (
     <SidebarMenuItem>
@@ -422,7 +422,7 @@ function NavLink({
         </SidebarMenuBadge>
       )}
     </SidebarMenuItem>
-  )
+  );
 }
 
 function DisabledNavItem({
@@ -430,9 +430,9 @@ function DisabledNavItem({
   icon,
   badge,
 }: {
-  label: string
-  icon: React.ReactNode
-  badge?: string
+  label: string;
+  icon: React.ReactNode;
+  badge?: string;
 }) {
   return (
     <SidebarMenuItem>
@@ -449,7 +449,7 @@ function DisabledNavItem({
         </SidebarMenuBadge>
       )}
     </SidebarMenuItem>
-  )
+  );
 }
 
 function ShieldMark() {
@@ -473,25 +473,25 @@ function ShieldMark() {
       />
       <circle cx="9" cy="9" r="1.5" fill="currentColor" />
     </svg>
-  )
+  );
 }
 
 function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).slice(0, 2)
+  const parts = name.trim().split(/\s+/).slice(0, 2);
   return parts
     .map((p) => p[0])
     .filter(Boolean)
-    .join('')
-    .toUpperCase()
+    .join("")
+    .toUpperCase();
 }
 
 function personInitials(name?: string | null, email?: string | null): string {
-  if (name && name.trim()) return initials(name)
+  if (name && name.trim()) return initials(name);
   if (email && email.length > 0) {
-    const local = email.split('@')[0] ?? email
-    const segs = local.split(/[._-]+/).filter(Boolean)
-    if (segs.length >= 2) return (segs[0]![0]! + segs[1]![0]!).toUpperCase()
-    return (local.slice(0, 2) || '··').toUpperCase()
+    const local = email.split("@")[0] ?? email;
+    const segs = local.split(/[._-]+/).filter(Boolean);
+    if (segs.length >= 2) return (segs[0]![0]! + segs[1]![0]!).toUpperCase();
+    return (local.slice(0, 2) || "··").toUpperCase();
   }
-  return '··'
+  return "··";
 }

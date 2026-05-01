@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/select'
 import { AppShell } from '@/components/app-shell'
 import { CountyCombobox } from '@/components/county-combobox'
+import { Loading } from '@/components/loading'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 
@@ -298,7 +299,7 @@ function FilesListPage() {
         )}
 
         {list.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
+          <Loading block label="Pulling the register" />
         ) : isFirstFile ? (
           <FirstFileCoach onCreate={() => setShowForm(true)} />
         ) : filtered.length === 0 ? (

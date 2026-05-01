@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { AppShell } from '@/components/app-shell'
 import { authClient } from '@/lib/auth-client'
+import { toKebabCase } from '@/lib/utils'
 import { api } from '../../convex/_generated/api'
 
 export const Route = createFileRoute('/tenants')({
@@ -63,7 +64,7 @@ function TenantsPage() {
     try {
       const res = await authClient.organization.create({
         name: legalName,
-        slug,
+        slug: slug.replace(/-+$/, ''),
       })
       if (res.error) throw new Error(res.error.message ?? 'Failed to create')
       // Better Auth sets the new org as active automatically.
@@ -123,9 +124,10 @@ function TenantsPage() {
                 <Input
                   placeholder="Slug (e.g. quality-title)"
                   value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
+                  onChange={(e) => setSlug(toKebabCase(e.target.value))}
                   required
-                  pattern="[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?"
+                  minLength={2}
+                  maxLength={40}
                 />
                 <Input
                   placeholder="Legal name (e.g. Quality Title Insurance LLC)"

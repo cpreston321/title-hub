@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AppShell } from '@/components/app-shell'
+import { Loading } from '@/components/loading'
 import { CountyCombobox } from '@/components/county-combobox'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -57,7 +58,7 @@ function RulesAdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Recording rules">
-        <p className="text-sm text-muted-foreground">Loading the codex...</p>
+        <Loading block size="lg" label="Loading the codex" />
       </AppShell>
     )
   }

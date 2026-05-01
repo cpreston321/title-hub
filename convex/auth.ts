@@ -5,9 +5,10 @@ import { createClient, type GenericCtx } from '@convex-dev/better-auth'
 import { convex } from '@convex-dev/better-auth/plugins'
 import authConfig from './auth.config'
 import { components, internal } from './_generated/api'
-import { query } from './_generated/server'
+import { internalQuery, query } from './_generated/server'
 import type { DataModel } from './_generated/dataModel'
-import type { GenericQueryCtx } from 'convex/server'
+import type { GenericActionCtx, GenericQueryCtx } from 'convex/server'
+import { v } from 'convex/values'
 import authSchema from './betterAuth/schema'
 import { magicLinkEmail, passwordResetEmail, verificationEmail } from './email'
 
@@ -137,10 +138,15 @@ export const createAuthOptions = (
           // Only system admins (currently the very first signed-up user)
           // may create new organizations. Non-admins must be invited into
           // an existing org. See convex/authTriggers.ts for bootstrap rule.
-          return await isSystemAdminUserId(
-            ctx as GenericQueryCtx<DataModel>,
-            user.id
-          )
+          //
+          // Better Auth invokes this from the org-create HTTP handler, which
+          // is an action-like context — `ctx.db` is undefined here, so we
+          // hop into an internal query via `runQuery` to read systemAdmins.
+          return await (
+            ctx as GenericActionCtx<DataModel>
+          ).runQuery(internal.auth.isSystemAdmin, {
+            betterAuthUserId: user.id,
+          })
         },
       }),
       magicLink({
@@ -179,3 +185,12 @@ export async function isSystemAdminUserId(
     .unique()
   return !!row
 }
+
+// Internal query wrapper so action/HTTP contexts (e.g. Better Auth callbacks)
+// can perform the systemAdmins lookup via ctx.runQuery.
+export const isSystemAdmin = internalQuery({
+  args: { betterAuthUserId: v.string() },
+  handler: async (ctx, { betterAuthUserId }): Promise<boolean> => {
+    return await isSystemAdminUserId(ctx, betterAuthUserId)
+  },
+})

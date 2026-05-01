@@ -674,3 +674,110 @@ export const seedUserAndAssign = internalAction({
     }
   },
 })
+
+// ─────────────────────────────────────────────────────────────────────
+// Seed county recording rules
+// ─────────────────────────────────────────────────────────────────────
+// Platform-shared (no tenantId), so we can seed without a tenant context.
+// Mirrors `rules.seedPilotRules` but is callable from the CLI. Idempotent —
+// existing (county, docType) rows are left alone.
+
+const PILOT_COUNTY_FIPS: ReadonlyArray<{ fips: string; name: string }> = [
+  { fips: '18097', name: 'Marion' },
+  { fips: '18057', name: 'Hamilton' },
+]
+
+const PILOT_DOC_TYPES = [
+  'deed',
+  'mortgage',
+  'release',
+  'assignment',
+  'deed_of_trust',
+] as const
+
+function pilotRulesFor(docType: string) {
+  return {
+    pageSize: 'letter',
+    margins: { top: 2, bottom: 1, left: 1, right: 1 },
+    requiredExhibits:
+      docType === 'deed'
+        ? ['legal_description', 'sales_disclosure_form']
+        : docType === 'mortgage'
+          ? ['legal_description']
+          : [],
+    feeSchedule: {
+      firstPage: 25,
+      additionalPage: 5,
+      salesDisclosureFee: docType === 'deed' ? 20 : 0,
+    },
+    signaturePageRequirements: {
+      notarized: true,
+      witnessRequired: false,
+      printedNameBeneathSignature: true,
+    },
+    notaryRequirements: {
+      sealRequired: true,
+      commissionExpirationStatement: true,
+    },
+  }
+}
+
+export const adminSeedRecordingRules = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now()
+    const startOfYear = new Date(new Date().getFullYear(), 0, 1).getTime()
+
+    const results: Array<{
+      county: string
+      fips: string
+      inserted: number
+      skipped: number
+    }> = []
+
+    let totalInserted = 0
+    let totalSkipped = 0
+
+    for (const { fips, name } of PILOT_COUNTY_FIPS) {
+      const county = await ctx.db
+        .query('counties')
+        .withIndex('by_fips', (q) => q.eq('fipsCode', fips))
+        .unique()
+      if (!county) {
+        throw new ConvexError(
+          `County ${name} (${fips}) not found. Run \`bun run admin seed-indiana\` first.`,
+        )
+      }
+
+      let inserted = 0
+      let skipped = 0
+      for (const docType of PILOT_DOC_TYPES) {
+        const existing = await ctx.db
+          .query('countyRecordingRules')
+          .withIndex('by_county_doctype_version', (q) =>
+            q.eq('countyId', county._id).eq('docType', docType),
+          )
+          .first()
+        if (existing) {
+          skipped++
+          continue
+        }
+        await ctx.db.insert('countyRecordingRules', {
+          countyId: county._id,
+          docType,
+          rules: pilotRulesFor(docType),
+          effectiveFrom: startOfYear,
+          version: 1,
+          createdAt: now,
+        })
+        inserted++
+      }
+
+      totalInserted += inserted
+      totalSkipped += skipped
+      results.push({ county: name, fips, inserted, skipped })
+    }
+
+    return { totalInserted, totalSkipped, results }
+  },
+})

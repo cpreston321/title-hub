@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AppShell } from '@/components/app-shell'
+import { Loading } from '@/components/loading'
 import { authClient } from '@/lib/auth-client'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -61,7 +62,7 @@ function AdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Admin">
-        <p className="text-sm text-muted-foreground">Loading the bureau...</p>
+        <Loading block size="lg" label="Loading the bureau" />
       </AppShell>
     )
   }

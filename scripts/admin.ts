@@ -338,6 +338,41 @@ const COMMANDS: ReadonlyArray<Command> = [
     },
   },
   {
+    name: 'seed-recording-rules',
+    args: '',
+    description:
+      'Seed county recording rules for the pilot counties (Marion, Hamilton). Idempotent — existing (county, docType) pairs are skipped.',
+    run: () => {
+      const r = runConvex<{
+        totalInserted: number
+        totalSkipped: number
+        results: Array<{
+          county: string
+          fips: string
+          inserted: number
+          skipped: number
+        }>
+      }>('systemAdmins:adminSeedRecordingRules')
+
+      table(
+        r.results.map((row) => ({
+          county: row.county,
+          fips: row.fips,
+          inserted: String(row.inserted),
+          skipped: String(row.skipped),
+        })),
+        ['county', 'fips', 'inserted', 'skipped']
+      )
+      console.log()
+      console.log(
+        c.green('✓') +
+          ` ${c.bold(String(r.totalInserted))} rule${
+            r.totalInserted === 1 ? '' : 's'
+          } inserted, ${c.dim(`${r.totalSkipped} already present`)}.`
+      )
+    },
+  },
+  {
     name: 'help',
     args: '',
     description: 'Show this help.',
@@ -581,6 +616,7 @@ function printHelp() {
       "  bun run admin seed-user alice@firm.com hunter2 'Alice Doe' acme-title --role=admin"
     )
   )
+  console.log(c.dim('  bun run admin seed-recording-rules'))
   console.log()
   console.log(
     c.dim(

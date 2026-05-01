@@ -37,6 +37,12 @@ type AppShellProps = {
   breadcrumb?: ReadonlyArray<Crumb>
   /** Page-specific actions rendered on the right of the top row. */
   actions?: React.ReactNode
+  /**
+   * Hide the sticky top header (breadcrumb, search, notifications, actions).
+   * Used by pre-tenant flows like the org picker where the chrome would be
+   * misleading or empty.
+   */
+  noHeader?: boolean
   children: React.ReactNode
 }
 
@@ -46,6 +52,7 @@ export function AppShell({
   subtitle,
   breadcrumb,
   actions,
+  noHeader = false,
   children,
 }: AppShellProps) {
   const location = useLocation()
@@ -70,20 +77,24 @@ export function AppShell({
     <SidebarProvider>
       {isAuthenticated && <AppSidebar isAuthenticated={isAuthenticated} />}
       <SidebarInset className="bg-background">
-        <header className="sticky top-0 z-10 flex flex-col border-b border-border/60 bg-background/85 px-4 py-3 backdrop-blur lg:px-8">
-          <div className="flex items-center gap-3">
-            {isAuthenticated && <SidebarTrigger className="-ml-1 lg:hidden" />}
-            <Breadcrumb crumbs={crumbs} />
-            <div className="ml-auto flex items-center gap-2">
-              {isAuthenticated && <GlobalSearch />}
-              {isAuthenticated && <NotificationsBell />}
-              {actions}
+        {!noHeader && (
+          <header className="sticky top-0 z-10 flex flex-col border-b border-border/60 bg-background/85 px-4 py-3 backdrop-blur lg:px-8">
+            <div className="flex items-center gap-3">
+              {isAuthenticated && (
+                <SidebarTrigger className="-ml-1 lg:hidden" />
+              )}
+              <Breadcrumb crumbs={crumbs} />
+              <div className="ml-auto flex items-center gap-2">
+                {isAuthenticated && <GlobalSearch />}
+                {isAuthenticated && <NotificationsBell />}
+                {actions}
+              </div>
             </div>
-          </div>
-          {subtitle && (
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
-          )}
-        </header>
+            {subtitle && (
+              <p className="text-xs text-muted-foreground">{subtitle}</p>
+            )}
+          </header>
+        )}
 
         <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 lg:px-8">
           {children}

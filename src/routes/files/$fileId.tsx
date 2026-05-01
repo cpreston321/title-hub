@@ -51,6 +51,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { AppShell } from '@/components/app-shell'
+import { Loading } from '@/components/loading'
 import { api } from '../../../convex/_generated/api'
 import type { Doc, Id } from '../../../convex/_generated/dataModel'
 
@@ -110,7 +111,7 @@ function FileDetailPage() {
   if (detail.isLoading || !detail.data) {
     return (
       <AppShell isAuthenticated title="File">
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <Loading block size="lg" label="Pulling the file" />
       </AppShell>
     )
   }
@@ -3472,7 +3473,7 @@ function RulesPanel({ fileId }: { fileId: Id<'files'> }) {
       }
     >
       {rule.isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading...</p>
+        <Loading size="sm" label="Reading the codex" />
       ) : !rule.data ? (
         <EmptyHint
           icon={<CircleHelp className="size-4" />}

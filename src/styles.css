@@ -307,3 +307,57 @@
 .tk-count-flash {
   animation: title-hub-count-flash 0.8s ease-out both;
 }
+
+/* Notarial seal — rotary edge dial spins clockwise. */
+@keyframes title-hub-seal-rotor {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.tk-seal-rotor {
+  transform-origin: 50% 50%;
+  animation: title-hub-seal-rotor 6s linear infinite;
+}
+
+/* Notarial seal — sheen sweep across the brass disc. */
+@keyframes title-hub-seal-sheen {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.tk-seal-sheen {
+  animation: title-hub-seal-sheen 3.2s linear infinite;
+}
+
+/* Notarial seal — soft press-pulse, like a stamp finding the page. */
+@keyframes title-hub-seal-press {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(0.97);
+    filter: brightness(1.06);
+  }
+}
+.tk-seal-disc {
+  animation: title-hub-seal-press 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tk-seal-rotor,
+  .tk-seal-sheen,
+  .tk-seal-disc,
+  .tk-shimmer-bar,
+  .tk-soft-pulse,
+  .tk-dot {
+    animation: none;
+  }
+}
