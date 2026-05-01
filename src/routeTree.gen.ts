@@ -12,11 +12,13 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TenantsRouteImport } from './routes/tenants'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SignUpRouteImport } from './routes/sign-up'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as FilesFileIdRouteImport } from './routes/files/$fileId'
 import { Route as AdminRulesRouteImport } from './routes/admin/rules'
+import { Route as AdminIntegrationsRouteImport } from './routes/admin/integrations'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const TenantsRoute = TenantsRouteImport.update({
@@ -32,6 +34,11 @@ const SigninRoute = SigninRouteImport.update({
 const SignUpRoute = SignUpRouteImport.update({
   id: '/sign-up',
   path: '/sign-up',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -59,6 +66,11 @@ const AdminRulesRoute = AdminRulesRouteImport.update({
   path: '/admin/rules',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIntegrationsRoute = AdminIntegrationsRouteImport.update({
+  id: '/admin/integrations',
+  path: '/admin/integrations',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -67,9 +79,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/integrations': typeof AdminIntegrationsRoute
   '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
   '/admin/': typeof AdminIndexRoute
@@ -78,9 +92,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/integrations': typeof AdminIntegrationsRoute
   '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
   '/admin': typeof AdminIndexRoute
@@ -90,9 +106,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/integrations': typeof AdminIntegrationsRoute
   '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
   '/admin/': typeof AdminIndexRoute
@@ -103,9 +121,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/settings'
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/integrations'
     | '/admin/rules'
     | '/files/$fileId'
     | '/admin/'
@@ -114,9 +134,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/settings'
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/integrations'
     | '/admin/rules'
     | '/files/$fileId'
     | '/admin'
@@ -125,9 +147,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/settings'
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/integrations'
     | '/admin/rules'
     | '/files/$fileId'
     | '/admin/'
@@ -137,9 +161,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  SettingsRoute: typeof SettingsRoute
   SignUpRoute: typeof SignUpRoute
   SigninRoute: typeof SigninRoute
   TenantsRoute: typeof TenantsRoute
+  AdminIntegrationsRoute: typeof AdminIntegrationsRoute
   AdminRulesRoute: typeof AdminRulesRoute
   FilesFileIdRoute: typeof FilesFileIdRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -168,6 +194,13 @@ declare module '@tanstack/react-router' {
       path: '/sign-up'
       fullPath: '/sign-up'
       preLoaderRoute: typeof SignUpRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -205,6 +238,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRulesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/integrations': {
+      id: '/admin/integrations'
+      path: '/admin/integrations'
+      fullPath: '/admin/integrations'
+      preLoaderRoute: typeof AdminIntegrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -217,9 +257,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  SettingsRoute: SettingsRoute,
   SignUpRoute: SignUpRoute,
   SigninRoute: SigninRoute,
   TenantsRoute: TenantsRoute,
+  AdminIntegrationsRoute: AdminIntegrationsRoute,
   AdminRulesRoute: AdminRulesRoute,
   FilesFileIdRoute: FilesFileIdRoute,
   AdminIndexRoute: AdminIndexRoute,

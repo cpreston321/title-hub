@@ -1,32 +1,37 @@
-import { v } from "convex/values"
-import { internalAction } from "./_generated/server"
-import { internal, components } from "./_generated/api"
+import { v } from 'convex/values'
+import { internalAction } from './_generated/server'
+import { internal, components } from './_generated/api'
 
 // HMAC-SHA256 signature over the raw body, hex-encoded. Receivers verify by
 // recomputing with the same secret.
 async function sign(secret: string, body: string): Promise<string> {
   const key = await crypto.subtle.importKey(
-    "raw",
+    'raw',
     new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
+    { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ["sign"],
+    ['sign']
   )
   const sig = await crypto.subtle.sign(
-    "HMAC",
+    'HMAC',
     key,
-    new TextEncoder().encode(body),
+    new TextEncoder().encode(body)
   )
-  return Array.from(new Uint8Array(sig), (b) => b.toString(16).padStart(2, "0")).join("")
+  return Array.from(new Uint8Array(sig), (b) =>
+    b.toString(16).padStart(2, '0')
+  ).join('')
 }
 
 export const dispatchOne = internalAction({
-  args: { deliveryId: v.id("webhookDeliveries") },
+  args: { deliveryId: v.id('webhookDeliveries') },
   handler: async (ctx, { deliveryId }) => {
     // Load the delivery + endpoint via a single inline read.
-    const ctxRead = await ctx.runQuery(internal.webhooksRunner.loadForDispatch, {
-      deliveryId,
-    })
+    const ctxRead = await ctx.runQuery(
+      internal.webhooksRunner.loadForDispatch,
+      {
+        deliveryId,
+      }
+    )
     if (!ctxRead) return
 
     const { url, secret, body, event } = ctxRead
@@ -36,12 +41,12 @@ export const dispatchOne = internalAction({
       const signed = `${timestamp}.${body}`
       const signature = await sign(secret, signed)
       const res = await fetch(url, {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
-          "X-Title-Event": event,
-          "X-Title-Timestamp": timestamp,
-          "X-Title-Signature": `sha256=${signature}`,
+          'Content-Type': 'application/json',
+          'X-Title-Event': event,
+          'X-Title-Timestamp': timestamp,
+          'X-Title-Signature': `sha256=${signature}`,
         },
         body,
       })
@@ -69,10 +74,10 @@ export const dispatchOne = internalAction({
 
 // Internal helper query to gather everything needed for dispatch in a single
 // round trip, without leaking the secret across action boundaries.
-import { internalQuery } from "./_generated/server"
+import { internalQuery } from './_generated/server'
 
 export const loadForDispatch = internalQuery({
-  args: { deliveryId: v.id("webhookDeliveries") },
+  args: { deliveryId: v.id('webhookDeliveries') },
   handler: async (ctx, { deliveryId }) => {
     const d = await ctx.db.get(deliveryId)
     if (!d) return null
