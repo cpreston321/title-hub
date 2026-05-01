@@ -24,14 +24,29 @@ export const Route = createRootRouteWithContext<{
   queryClient: QueryClient
   convexQueryClient: ConvexQueryClient
 }>()({
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "TanStack Start Starter" },
-    ],
-    links: [{ rel: "stylesheet", href: appCss }],
-  }),
+  head: () => {
+    const title = "Title Hub — Title operations, made plain."
+    const description =
+      "One register for every file. Cross-document checks that catch mismatches before closing. Versioned recording rules per county. Multi-tenant by construction — no cross-talk between agencies."
+    return {
+      meta: [
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        { name: "theme-color", content: "#40233f" },
+        { title },
+        { name: "description", content: description },
+        { name: "application-name", content: "Title Hub" },
+        { property: "og:site_name", content: "Title Hub" },
+        { property: "og:type", content: "website" },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { name: "twitter:card", content: "summary" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+      ],
+      links: [{ rel: "stylesheet", href: appCss }],
+    }
+  },
   beforeLoad: async (ctx) => {
     const token = await getAuth()
     if (token) {

@@ -2,9 +2,9 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
+import { ScrollText, Stamp, X } from "lucide-react"
 import {
   Card,
-  CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -12,19 +12,23 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { AppShell } from "@/components/app-shell"
 import { CountyCombobox } from "@/components/county-combobox"
 import { api } from "../../../convex/_generated/api"
 import type { Id } from "../../../convex/_generated/dataModel"
 
 export const Route = createFileRoute("/admin/rules")({
+  head: () => ({
+    meta: [
+      { title: "Recording rules · Title Hub" },
+      {
+        name: "description",
+        content:
+          "Versioned per-county recording rules — page size, margins, fees, and signature requirements.",
+      },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: "/signin" })
@@ -34,16 +38,13 @@ export const Route = createFileRoute("/admin/rules")({
 })
 
 const DOC_TYPES = [
-  "deed",
-  "mortgage",
-  "release",
-  "assignment",
-  "deed_of_trust",
+  { id: "deed", title: "Deeds", roman: "I" },
+  { id: "mortgage", title: "Mortgages", roman: "II" },
+  { id: "release", title: "Releases", roman: "III" },
+  { id: "assignment", title: "Assignments", roman: "IV" },
+  { id: "deed_of_trust", title: "Deeds of Trust", roman: "V" },
 ] as const
-type DocType = (typeof DOC_TYPES)[number]
-
-const formatDocType = (s: string) =>
-  s.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())
+type DocType = (typeof DOC_TYPES)[number]["id"]
 
 function RulesAdminPage() {
   const current = useQuery(convexQuery(api.tenants.current, {}))
@@ -56,7 +57,9 @@ function RulesAdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Recording rules">
-        <p className="text-muted-foreground text-sm">Loading...</p>
+        <p className="text-sm text-muted-foreground">
+          Loading the codex...
+        </p>
       </AppShell>
     )
   }
@@ -96,6 +99,7 @@ function RulesAdminPage() {
   }
 
   const countyList = counties.data ?? []
+  const selectedCounty = countyList.find((c) => c._id === countyId)
 
   return (
     <AppShell
@@ -108,42 +112,138 @@ function RulesAdminPage() {
             <Link to="/admin">← Admin</Link>
           </Button>
           <Button variant="outline" onClick={onSeedPilot} disabled={seeding}>
-            {seeding ? "Seeding..." : "Seed Marion + Hamilton defaults"}
+            {seeding ? "Seeding..." : "Seed Marion + Hamilton"}
           </Button>
         </>
       }
     >
-      <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-8 pb-12">
+        <CodexHeader />
+
         {seedMsg && (
-          <p className="text-muted-foreground text-sm">{seedMsg}</p>
+          <p className="font-numerals rounded-md border border-border/60 bg-card px-3 py-2 text-xs text-muted-foreground">
+            {seedMsg}
+          </p>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>County</CardTitle>
-            <CardDescription>
-              Pick a county to browse versioned rules.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CountyCombobox
-              counties={countyList}
-              value={countyId}
-              onChange={setCountyId}
-              placeholder="Select a county..."
-            />
-          </CardContent>
-        </Card>
-
-      {countyId && (
-        <CountyRulesPanel
-          countyId={countyId as Id<"counties">}
-          authoringMemberRole={current.data.role}
+        <CountyPicker
+          countyList={countyList}
+          countyId={countyId}
+          setCountyId={setCountyId}
+          selectedCountyName={
+            selectedCounty
+              ? `${selectedCounty.name}, ${selectedCounty.stateCode}`
+              : null
+          }
         />
-      )}
+
+        {countyId && (
+          <CountyRulesPanel
+            countyId={countyId as Id<"counties">}
+            authoringMemberRole={current.data.role}
+          />
+        )}
       </div>
     </AppShell>
   )
+}
+
+function CodexHeader() {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
+      <div
+        aria-hidden
+        className="paper-grain pointer-events-none absolute inset-0 opacity-60"
+      />
+      <div className="relative grid grid-cols-1 items-center gap-6 px-7 py-10 md:grid-cols-[auto_1fr] md:px-10">
+        <div className="grid size-20 place-items-center">
+          <div className="relative grid size-20 place-items-center rounded-full ring-1 ring-[#40233f]/15">
+            <div className="brass-foil absolute inset-0 rounded-full opacity-90" />
+            <div className="absolute inset-[3px] rounded-full bg-card" />
+            <ScrollText className="relative size-8 text-[#40233f]" />
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-medium text-[#b78625]">
+            Codex · Liber Recordationis
+          </div>
+          <h1 className="font-display mt-2 text-5xl font-semibold leading-[0.95] tracking-tight text-[#40233f] md:text-6xl">
+            <span>Recording</span> Rules
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Margins, fees, exhibits, notarial requirements — versioned per
+            county and document type. New versions supersede the previous one
+            on their effective date.
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CountyPicker({
+  countyList,
+  countyId,
+  setCountyId,
+  selectedCountyName,
+}: {
+  countyList: ReadonlyArray<{
+    _id: Id<"counties">
+    name: string
+    stateCode: string
+  }>
+  countyId: Id<"counties"> | ""
+  setCountyId: (id: Id<"counties">) => void
+  selectedCountyName: string | null
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-sm ring-1 ring-foreground/5">
+      <div className="flex items-center gap-3 border-b border-border/50 bg-[#fdf6e8] px-6 py-3">
+        <span className="font-display grid size-7 place-items-center rounded-md border border-[#40233f]/20 bg-card text-xs font-semibold text-[#40233f]">
+          I
+        </span>
+        <div className="text-xs font-medium text-[#b78625]">
+          Step one · choose a jurisdiction
+        </div>
+        {selectedCountyName && (
+          <span className="font-numerals ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#e6f3ed] px-2.5 py-1 text-xs text-[#2f5d4b] ring-1 ring-inset ring-[#3f7c64]/35">
+            <span className="size-1 rounded-full bg-[#3f7c64]" />
+            browsing {selectedCountyName}
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-1 gap-4 px-6 py-5 md:grid-cols-[1fr_auto] md:items-center">
+        <div className="min-w-0">
+          <CountyCombobox
+            counties={countyList}
+            value={countyId}
+            onChange={setCountyId}
+            placeholder="Select a county..."
+            className="h-11 text-sm"
+          />
+        </div>
+        <div className="text-xs text-muted-foreground md:text-right">
+          {countyList.length > 0
+            ? `${countyList.length} counties of record`
+            : "Seed a state's counties to begin."}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+type RuleRow = {
+  _id: Id<"countyRecordingRules">
+  docType: string
+  version: number
+  effectiveFrom: number
+  effectiveTo?: number
+  rules: {
+    pageSize?: string
+    margins?: { top: number; bottom: number; left: number; right: number }
+    requiredExhibits: string[]
+    feeSchedule?: { firstPage?: number; additionalPage?: number; salesDisclosureFee?: number }
+  }
 }
 
 function CountyRulesPanel({
@@ -158,47 +258,74 @@ function CountyRulesPanel({
   const [showForm, setShowForm] = useState(false)
 
   const grouped = useMemo(() => {
-    const out: Record<string, typeof list.data> = {}
-    for (const r of list.data ?? []) {
-      ;(out[r.docType] ??= [] as never)
-      out[r.docType]!.push(r)
+    const out: Record<string, RuleRow[]> = {}
+    for (const r of (list.data ?? []) as RuleRow[]) {
+      ;(out[r.docType] ??= []).push(r)
     }
     return out
   }, [list.data])
 
+  const isOwner = authoringMemberRole === "owner"
+
   return (
-    <Card>
-      <CardHeader className="flex-row items-baseline justify-between">
-        <div>
-          <CardTitle>Rules</CardTitle>
-          <CardDescription>
-            Browse versions per doc type. Propose a new one to supersede.
-          </CardDescription>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card/60 px-5 py-4 shadow-sm ring-1 ring-foreground/5">
+        <div className="flex items-center gap-2 overflow-x-auto">
+          {DOC_TYPES.map((d) => {
+            const count = (grouped[d.id] ?? []).length
+            const active = docType === d.id
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setDocType(d.id)}
+                className={`group/tab flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition ${
+                  active
+                    ? "border-[#40233f] bg-[#40233f] text-[#f6e8d9] shadow-sm"
+                    : "border-border bg-card text-muted-foreground hover:border-[#40233f]/40 hover:text-[#40233f]"
+                }`}
+              >
+                <span
+                  className={`text-xs ${
+                    active ? "text-[#f4d48f]" : "text-[#b78625]/80"
+                  }`}
+                >
+                  {d.roman}
+                </span>
+                {d.title}
+                <span
+                  className={`font-numerals rounded-full px-1.5 text-xs tabular-nums ${
+                    active
+                      ? "bg-white/15 text-white/80"
+                      : "bg-muted text-muted-foreground/80"
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            )
+          })}
         </div>
-        <div className="flex items-center gap-2">
-          <Select
-            value={docType}
-            onValueChange={(v) => setDocType(v as DocType)}
+        {isOwner && (
+          <Button
+            onClick={() => setShowForm((s) => !s)}
+            className="gap-2"
           >
-            <SelectTrigger size="sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {DOC_TYPES.map((d) => (
-                <SelectItem key={d} value={d}>
-                  {formatDocType(d)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {authoringMemberRole === "owner" && (
-            <Button onClick={() => setShowForm(!showForm)}>
-              {showForm ? "Cancel" : "Propose new version"}
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+            {showForm ? (
+              <>
+                <X className="size-4" />
+                Cancel amendment
+              </>
+            ) : (
+              <>
+                <Stamp className="size-4" />
+                Propose new version
+              </>
+            )}
+          </Button>
+        )}
+      </div>
+
       {showForm && (
         <PublishRuleForm
           countyId={countyId}
@@ -210,51 +337,178 @@ function CountyRulesPanel({
         />
       )}
 
-      {DOC_TYPES.map((d) => {
-          const versions = grouped[d] ?? []
-          return (
-            <div key={d}>
-              <div className="text-muted-foreground mb-1 text-xs uppercase tracking-wide">
-                {d}
-              </div>
-              {versions.length === 0 ? (
-                <div className="rounded-md border p-3 text-sm text-muted-foreground">
-                  No versions yet.
-                </div>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {versions.map((v) => (
-                    <li
-                      key={v._id}
-                      className="rounded-md border p-3 text-sm"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">v{v.version}</span>
-                        <span className="text-muted-foreground text-xs">
-                          {new Date(v.effectiveFrom).toLocaleDateString()}
-                          {v.effectiveTo
-                            ? ` → ${new Date(v.effectiveTo).toLocaleDateString()}`
-                            : " · active"}
-                        </span>
-                      </div>
-                      <div className="text-muted-foreground mt-1 text-xs">
-                        {v.rules.pageSize ?? "—"} ·{" "}
-                        {v.rules.requiredExhibits.length > 0
-                          ? v.rules.requiredExhibits.join(", ")
-                          : "no exhibits"}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )
-        })}
-      </CardContent>
-    </Card>
+      <DocTypePanel
+        docType={docType}
+        title={DOC_TYPES.find((d) => d.id === docType)!.title}
+        roman={DOC_TYPES.find((d) => d.id === docType)!.roman}
+        versions={grouped[docType] ?? []}
+      />
+    </div>
   )
 }
 
+function DocTypePanel({
+  docType,
+  title,
+  roman,
+  versions,
+}: {
+  docType: DocType
+  title: string
+  roman: string
+  versions: ReadonlyArray<RuleRow>
+}) {
+  const sorted = [...versions].sort((a, b) => b.version - a.version)
+  return (
+    <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
+      <header className="flex items-end justify-between border-b border-border/60 px-7 pb-5 pt-7">
+        <div>
+          <div className="text-xs font-medium text-[#b78625]">
+            Article {roman} · {docType}
+          </div>
+          <h2 className="font-display mt-1.5 text-3xl font-semibold leading-none tracking-tight text-[#40233f]">
+            {title}
+          </h2>
+        </div>
+        <div className="font-numerals rounded-md border border-border/60 bg-[#fdf6e8] px-3 py-1.5 text-xs tabular-nums text-[#40233f]">
+          {sorted.length} version{sorted.length === 1 ? "" : "s"} of record
+        </div>
+      </header>
+
+      {sorted.length === 0 ? (
+        <div className="px-7 py-16 text-center">
+          <div className="text-xl font-semibold text-[#40233f]">
+            No versions of record.
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Propose a new amendment to publish the first version.
+          </p>
+        </div>
+      ) : (
+        <ol className="relative">
+          <div
+            aria-hidden
+            className="absolute left-[5.5rem] top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-border to-transparent"
+          />
+          {sorted.map((v, i) => {
+            const active = !v.effectiveTo
+            return (
+              <li
+                key={v._id}
+                className={`relative grid grid-cols-[5.5rem_auto_1fr] items-start gap-6 px-7 py-6 ${
+                  i < sorted.length - 1 ? "border-b border-border/40" : ""
+                } ${active ? "bg-[#fdf6e8]/60" : ""}`}
+              >
+                <div className="text-right">
+                  <div className="text-xs text-muted-foreground">
+                    Version
+                  </div>
+                  <div
+                    className={`font-display text-4xl font-semibold leading-none tabular-nums ${
+                      active ? "text-[#40233f]" : "text-muted-foreground/70"
+                    }`}
+                  >
+                    {String(v.version).padStart(2, "0")}
+                  </div>
+                </div>
+
+                <div
+                  className={`relative z-10 mt-2 grid size-4 place-items-center rounded-full ${
+                    active
+                      ? "bg-[#40233f] ring-4 ring-[#f8eed7]"
+                      : "bg-muted ring-4 ring-card"
+                  }`}
+                >
+                  {active && (
+                    <span className="size-1.5 rounded-full bg-[#f4d48f]" />
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-baseline gap-3">
+                    <div className="font-display text-lg font-semibold tracking-tight text-[#40233f]">
+                      Effective {new Date(v.effectiveFrom).toLocaleDateString("en-US", { dateStyle: "long" })}
+                    </div>
+                    {active ? (
+                      <span className="font-numerals inline-flex items-center gap-1.5 rounded-full bg-[#e6f3ed] px-2.5 py-0.5 text-xs text-[#2f5d4b] ring-1 ring-inset ring-[#3f7c64]/35">
+                        <span className="size-1 rounded-full bg-[#3f7c64]" />
+                        in force
+                      </span>
+                    ) : (
+                      <span className="font-numerals text-xs text-muted-foreground">
+                        Superseded {new Date(v.effectiveTo!).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <DataCell
+                      label="Page size"
+                      value={v.rules.pageSize ?? "—"}
+                    />
+                    <DataCell
+                      label="Margins (TBLR)"
+                      value={
+                        v.rules.margins
+                          ? `${v.rules.margins.top}·${v.rules.margins.bottom}·${v.rules.margins.left}·${v.rules.margins.right}`
+                          : "—"
+                      }
+                    />
+                    <DataCell
+                      label="First / addl"
+                      value={
+                        v.rules.feeSchedule
+                          ? `$${v.rules.feeSchedule.firstPage ?? 0} / $${v.rules.feeSchedule.additionalPage ?? 0}`
+                          : "—"
+                      }
+                    />
+                    <DataCell
+                      label="SDF"
+                      value={
+                        v.rules.feeSchedule?.salesDisclosureFee !== undefined
+                          ? `$${v.rules.feeSchedule.salesDisclosureFee}`
+                          : "—"
+                      }
+                    />
+                  </div>
+
+                  {v.rules.requiredExhibits.length > 0 && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Exhibits
+                      </span>
+                      {v.rules.requiredExhibits.map((ex) => (
+                        <span
+                          key={ex}
+                          className="font-numerals inline-flex items-center rounded-full border border-border bg-card px-2 py-0.5 text-xs text-[#40233f]"
+                        >
+                          {ex}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </li>
+            )
+          })}
+        </ol>
+      )}
+    </article>
+  )
+}
+
+function DataCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-border/60 bg-card px-3 py-2">
+      <div className="text-xs font-medium text-muted-foreground">
+        {label}
+      </div>
+      <div className="font-numerals mt-0.5 text-sm tabular-nums text-[#40233f]">
+        {value}
+      </div>
+    </div>
+  )
+}
 
 function PublishRuleForm({
   countyId,
@@ -330,89 +584,127 @@ function PublishRuleForm({
     }
   }
 
+  const docLabel = DOC_TYPES.find((d) => d.id === docType)
   return (
     <form
       onSubmit={onSubmit}
-      className="grid gap-2 rounded-md border p-3 text-sm"
+      className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5"
     >
-      <div className="grid grid-cols-2 gap-2">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="rule-page-size" className="text-muted-foreground text-xs">
-            Page size
+      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 bg-[#fdf6e8] px-7 py-4">
+        <div className="flex items-center gap-3">
+          <div className="grid size-10 place-items-center rounded-md border border-[#40233f]/20 bg-card">
+            <Stamp className="size-4 text-[#40233f]" />
+          </div>
+          <div>
+            <div className="text-xs font-medium text-[#b78625]">
+              Draft amendment
+            </div>
+            <div className="font-display text-lg font-semibold tracking-tight text-[#40233f]">
+              Article {docLabel?.roman} · {docLabel?.title}
+            </div>
+          </div>
+        </div>
+        <div className="rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-muted-foreground">
+          {supersedes
+            ? "Will supersede the version currently in force"
+            : "First version of record"}
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 gap-6 px-7 py-6 lg:grid-cols-2">
+        <div className="grid grid-cols-2 gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="rule-page-size"
+              className="text-xs font-medium text-[#40233f]"
+            >
+              Page size
+            </Label>
+            <Input
+              id="rule-page-size"
+              value={pageSize}
+              onChange={(e) => setPageSize(e.target.value)}
+              className="font-numerals"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label
+              htmlFor="rule-effective-date"
+              className="text-xs font-medium text-[#40233f]"
+            >
+              Effective date
+            </Label>
+            <Input
+              id="rule-effective-date"
+              type="date"
+              value={effectiveDate}
+              onChange={(e) => setEffectiveDate(e.target.value)}
+              required
+              className="font-numerals"
+            />
+          </div>
+        </div>
+
+        <fieldset className="rounded-xl border border-border/60 bg-card/60 p-4">
+          <legend className="px-2 text-xs font-medium text-[#40233f]">
+            Margins · inches
+          </legend>
+          <div className="grid grid-cols-4 gap-3">
+            <NumberCell label="Top" value={marginTop} onChange={setMarginTop} />
+            <NumberCell label="Bottom" value={marginBottom} onChange={setMarginBottom} />
+            <NumberCell label="Left" value={marginLeft} onChange={setMarginLeft} />
+            <NumberCell label="Right" value={marginRight} onChange={setMarginRight} />
+          </div>
+        </fieldset>
+
+        <div className="flex flex-col gap-1.5 lg:col-span-2">
+          <Label
+            htmlFor="rule-exhibits"
+            className="text-xs font-medium text-[#40233f]"
+          >
+            Required exhibits — comma separated
           </Label>
           <Input
-            id="rule-page-size"
-            value={pageSize}
-            onChange={(e) => setPageSize(e.target.value)}
+            id="rule-exhibits"
+            value={exhibits}
+            onChange={(e) => setExhibits(e.target.value)}
+            className="font-numerals"
           />
         </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="rule-effective-date" className="text-muted-foreground text-xs">
-            Effective date
-          </Label>
-          <Input
-            id="rule-effective-date"
-            type="date"
-            value={effectiveDate}
-            onChange={(e) => setEffectiveDate(e.target.value)}
-            required
-          />
+
+        <fieldset className="rounded-xl border border-border/60 bg-card/60 p-4 lg:col-span-2">
+          <legend className="px-2 text-xs font-medium text-[#40233f]">
+            Fee schedule · USD
+          </legend>
+          <div className="grid grid-cols-3 gap-3">
+            <NumberCell label="First page" value={firstPage} onChange={setFirstPage} />
+            <NumberCell label="Each addl" value={additionalPage} onChange={setAdditionalPage} />
+            <NumberCell label="SDF" value={salesDisclosureFee} onChange={setSalesDisclosureFee} />
+          </div>
+        </fieldset>
+      </div>
+
+      {error && (
+        <div className="mx-7 mb-4 rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
+          {error}
         </div>
-      </div>
+      )}
 
-      <fieldset className="grid grid-cols-4 gap-2 rounded border p-2">
-        <legend className="text-muted-foreground text-xs">Margins (in)</legend>
-        <NumberCell label="top" value={marginTop} onChange={setMarginTop} />
-        <NumberCell
-          label="bottom"
-          value={marginBottom}
-          onChange={setMarginBottom}
-        />
-        <NumberCell label="left" value={marginLeft} onChange={setMarginLeft} />
-        <NumberCell
-          label="right"
-          value={marginRight}
-          onChange={setMarginRight}
-        />
-      </fieldset>
-
-      <div className="flex flex-col gap-1">
-        <Label htmlFor="rule-exhibits" className="text-muted-foreground text-xs">
-          Required exhibits (comma separated)
-        </Label>
-        <Input
-          id="rule-exhibits"
-          value={exhibits}
-          onChange={(e) => setExhibits(e.target.value)}
-        />
-      </div>
-
-      <fieldset className="grid grid-cols-3 gap-2 rounded border p-2">
-        <legend className="text-muted-foreground text-xs">
-          Fee schedule ($)
-        </legend>
-        <NumberCell label="first page" value={firstPage} onChange={setFirstPage} />
-        <NumberCell
-          label="ea. addl"
-          value={additionalPage}
-          onChange={setAdditionalPage}
-        />
-        <NumberCell
-          label="SDF"
-          value={salesDisclosureFee}
-          onChange={setSalesDisclosureFee}
-        />
-      </fieldset>
-
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onDone}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={pending}>
-          {pending ? "Publishing..." : "Publish version"}
-        </Button>
-      </div>
+      <footer className="flex items-center justify-between border-t border-border/60 bg-[#f9f5ef]/50 px-7 py-4">
+        <div className="text-xs text-muted-foreground">
+          A new version is recorded with full audit trail. The previous version
+          is closed at this date.
+        </div>
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" onClick={onDone}>
+            Discard
+          </Button>
+          <Button type="submit" disabled={pending} className="gap-2">
+            <Stamp className="size-4" />
+            {pending ? "Recording..." : "Publish version"}
+          </Button>
+        </div>
+      </footer>
     </form>
   )
 }
@@ -429,7 +721,10 @@ function NumberCell({
   const id = `numcell-${label.replace(/\s+/g, "-")}`
   return (
     <div className="flex flex-col gap-1">
-      <Label htmlFor={id} className="text-muted-foreground text-xs">
+      <Label
+        htmlFor={id}
+        className="text-xs text-muted-foreground"
+      >
         {label}
       </Label>
       <Input
@@ -439,6 +734,7 @@ function NumberCell({
         min={0}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        className="font-numerals tabular-nums"
       />
     </div>
   )

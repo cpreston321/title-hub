@@ -30,6 +30,20 @@ export const onCreate = internalMutation({
       )
       return
     }
+    if (model === "user") {
+      // Bootstrap rule: the first user to ever sign up becomes a system
+      // admin (the only role that can create organizations). Everyone after
+      // that must be invited into an existing org by an admin.
+      const existing = await ctx.db.query("systemAdmins").first()
+      if (!existing) {
+        await ctx.db.insert("systemAdmins", {
+          betterAuthUserId: doc._id,
+          addedAt: Date.now(),
+          addedBy: "system",
+        })
+      }
+      return
+    }
   },
 })
 

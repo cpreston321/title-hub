@@ -16,6 +16,16 @@ import { authClient } from "@/lib/auth-client"
 import { api } from "../../convex/_generated/api"
 
 export const Route = createFileRoute("/tenants")({
+  head: () => ({
+    meta: [
+      { title: "Workspaces · Title Hub" },
+      {
+        name: "description",
+        content: "Pick a workspace or create a new agency tenant in Title Hub.",
+      },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: "/signin" })
@@ -27,6 +37,8 @@ export const Route = createFileRoute("/tenants")({
 function TenantsPage() {
   const router = useRouter()
   const memberships = useQuery(convexQuery(api.tenants.listMine, {}))
+  const isAdminQ = useQuery(convexQuery(api.tenants.amISystemAdmin, {}))
+  const isSystemAdmin = isAdminQ.data === true
 
   const [slug, setSlug] = useState("")
   const [legalName, setLegalName] = useState("")
@@ -98,36 +110,51 @@ function TenantsPage() {
           </Card>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Create a new organization</CardTitle>
-            <CardDescription>
-              You'll become the owner. NPI access is enabled by default.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onCreate} className="flex flex-col gap-3">
-              <Input
-                placeholder="Slug (e.g. quality-title)"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                required
-                pattern="[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?"
-              />
-              <Input
-                placeholder="Legal name (e.g. Quality Title Insurance LLC)"
-                value={legalName}
-                onChange={(e) => setLegalName(e.target.value)}
-                required
-                minLength={2}
-              />
-              {error && <p className="text-destructive text-sm">{error}</p>}
-              <Button type="submit" disabled={pending}>
-                {pending ? "Creating..." : "Create"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        {isSystemAdmin ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Create a new organization</CardTitle>
+              <CardDescription>
+                You'll become the owner. NPI access is enabled by default.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={onCreate} className="flex flex-col gap-3">
+                <Input
+                  placeholder="Slug (e.g. quality-title)"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                  required
+                  pattern="[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?"
+                />
+                <Input
+                  placeholder="Legal name (e.g. Quality Title Insurance LLC)"
+                  value={legalName}
+                  onChange={(e) => setLegalName(e.target.value)}
+                  required
+                  minLength={2}
+                />
+                {error && <p className="text-destructive text-sm">{error}</p>}
+                <Button type="submit" disabled={pending}>
+                  {pending ? "Creating..." : "Create"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        ) : (
+          list.length === 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Awaiting an invitation</CardTitle>
+                <CardDescription>
+                  Your account is set up, but you haven't been invited to an
+                  organization yet. Ask your administrator to send you an
+                  invitation — you'll be able to sign in here once they do.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )
+        )}
       </div>
     </AppShell>
   )

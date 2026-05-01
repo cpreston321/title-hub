@@ -282,74 +282,11 @@ function client(): Anthropic | null {
 
 const ANTHROPIC_MODEL = "claude-haiku-4-5"
 
-export const extractFromPdf = internalAction({
-  args: {
-    base64Pdf: v.string(),
-    docTypeHint: v.optional(v.string()),
-  },
-  handler: async (_ctx, { base64Pdf, docTypeHint }) => {
-    const c = client()
-    if (!c) {
-      return {
-        payload: mockExtraction(docTypeHint),
-        modelId: "mock",
-        source: "mock" as const,
-        usage: null,
-      }
-    }
-
-    const userText = docTypeHint
-      ? `The user has classified this document as: ${docTypeHint}. Verify and extract per schema. Return JSON only.`
-      : `Extract per the schema. Return JSON only.`
-
-    const response = await c.messages.create({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 4096,
-      system: [
-        {
-          type: "text",
-          text: `Schema version: ${SCHEMA_VERSION}\n\n${SYSTEM_PROMPT}`,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: base64Pdf,
-              },
-            },
-            { type: "text", text: userText },
-          ],
-        },
-      ],
-    })
-
-    const textBlock = response.content.find((b) => b.type === "text")
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("EXTRACTION_NO_TEXT")
-    }
-
-    return {
-      payload: parseExtractionJson(textBlock.text),
-      modelId: response.model,
-      source: "claude" as const,
-      usage: {
-        inputTokens: response.usage.input_tokens,
-        outputTokens: response.usage.output_tokens,
-        cacheReadInputTokens: response.usage.cache_read_input_tokens ?? 0,
-        cacheCreationInputTokens: response.usage.cache_creation_input_tokens ?? 0,
-      },
-    }
-  },
-})
-
-// Glue action: load PDF bytes from _storage, call extractFromPdf, persist.
+// Single-action job: load bytes from _storage, base64 in-action, call
+// Anthropic, persist. Doing everything in one action means the PDF bytes
+// never cross an action boundary — Convex caps Node action arguments at
+// 5 MiB and base64'd PDFs blow past that on title searches and similar
+// large documents.
 export const runJob = internalAction({
   args: {
     extractionId: v.id("documentExtractions"),
@@ -364,16 +301,63 @@ export const runJob = internalAction({
       const bytes = await blob.arrayBuffer()
       const base64 = Buffer.from(bytes).toString("base64")
 
-      const result = await ctx.runAction(
-        internal.extractionsRunner.extractFromPdf,
-        { base64Pdf: base64, docTypeHint },
-      )
+      const c = client()
+      let payload: ExtractionPayload
+      let modelId: string
+      let source: "claude" | "mock"
+
+      if (!c) {
+        payload = mockExtraction(docTypeHint)
+        modelId = "mock"
+        source = "mock"
+      } else {
+        const userText = docTypeHint
+          ? `The user has classified this document as: ${docTypeHint}. Verify and extract per schema. Return JSON only.`
+          : `Extract per the schema. Return JSON only.`
+
+        const response = await c.messages.create({
+          model: ANTHROPIC_MODEL,
+          max_tokens: 4096,
+          system: [
+            {
+              type: "text",
+              text: `Schema version: ${SCHEMA_VERSION}\n\n${SYSTEM_PROMPT}`,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "document",
+                  source: {
+                    type: "base64",
+                    media_type: "application/pdf",
+                    data: base64,
+                  },
+                },
+                { type: "text", text: userText },
+              ],
+            },
+          ],
+        })
+
+        const textBlock = response.content.find((b) => b.type === "text")
+        if (!textBlock || textBlock.type !== "text") {
+          throw new Error("EXTRACTION_NO_TEXT")
+        }
+
+        payload = parseExtractionJson(textBlock.text)
+        modelId = response.model
+        source = "claude"
+      }
 
       await ctx.runMutation(internal.extractions.markSucceeded, {
         extractionId,
-        payload: result.payload,
-        modelId: result.modelId,
-        source: result.source,
+        payload,
+        modelId,
+        source,
       })
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)

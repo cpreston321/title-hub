@@ -7,6 +7,7 @@ import authConfig from "./auth.config"
 import { components, internal } from "./_generated/api"
 import { query } from "./_generated/server"
 import type { DataModel } from "./_generated/dataModel"
+import type { GenericQueryCtx } from "convex/server"
 import authSchema from "./betterAuth/schema"
 import {
   magicLinkEmail,
@@ -87,6 +88,7 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
     triggers: {
       organization: { onCreate: async () => {} },
       member: { onCreate: async () => {} },
+      user: { onCreate: async () => {} },
     },
     authFunctions: triggerRefs,
   },
@@ -131,7 +133,17 @@ export const createAuthOptions = (
     },
     socialProviders: socialProviders(),
     plugins: [
-      organization(),
+      organization({
+        allowUserToCreateOrganization: async (user) => {
+          // Only system admins (currently the very first signed-up user)
+          // may create new organizations. Non-admins must be invited into
+          // an existing org. See convex/authTriggers.ts for bootstrap rule.
+          return await isSystemAdminUserId(
+            ctx as GenericQueryCtx<DataModel>,
+            user.id,
+          )
+        },
+      }),
       magicLink({
         sendMagicLink: async ({ email, url }) => {
           await scheduleEmail(ctx, {
@@ -155,3 +167,18 @@ export const getCurrentUser = query({
     return await authComponent.getAuthUser(ctx)
   },
 })
+
+// True iff the given Better Auth user id is in our `systemAdmins` allowlist.
+// Tolerates mutation contexts as well as queries — both expose `ctx.db`.
+export async function isSystemAdminUserId(
+  ctx: GenericQueryCtx<DataModel>,
+  betterAuthUserId: string,
+): Promise<boolean> {
+  const row = await ctx.db
+    .query("systemAdmins")
+    .withIndex("by_user", (q) =>
+      q.eq("betterAuthUserId", betterAuthUserId),
+    )
+    .unique()
+  return !!row
+}

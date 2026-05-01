@@ -2,12 +2,16 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;0,9..144,800;1,9..144,400;1,9..144,500;1,9..144,600&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
+    --font-heading: var(--font-display);
+    --font-display: 'Fraunces', 'Cormorant Garamond', Georgia, serif;
+    --font-serif: 'Fraunces', 'Cormorant Garamond', Georgia, serif;
     --font-sans: 'Inter Variable', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -136,8 +140,113 @@
     }
   body {
     @apply bg-background text-foreground;
-    }
+    background-image:
+      radial-gradient(circle at 92% -4%, rgba(201, 101, 46, 0.10), transparent 32%),
+      radial-gradient(circle at -4% 6%, rgba(115, 64, 112, 0.10), transparent 28%),
+      linear-gradient(180deg, #fbf8f4 0%, var(--background) 100%);
+    background-attachment: fixed;
+  }
   html {
     @apply font-sans;
     }
+  .font-display {
+    font-family: var(--font-display);
+    font-feature-settings: "ss01", "ss02";
+  }
+  .font-numerals {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "ss01";
+  }
+}
+
+@utility deckle {
+  /* Soft, irregular rule line — like a hand-set printer's rule */
+  background-image: linear-gradient(90deg, transparent, var(--border) 6%, var(--border) 94%, transparent);
+  height: 1px;
+}
+
+@utility rule-double {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  height: 4px;
+}
+
+@utility ledger-rules {
+  /* Horizontal hairlines like an accountant's ledger paper */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 31px,
+    rgba(64, 35, 63, 0.06) 31px,
+    rgba(64, 35, 63, 0.06) 32px
+  );
+}
+
+@utility paper-grain {
+  background-image:
+    radial-gradient(rgba(64,35,63,0.025) 1px, transparent 1px),
+    radial-gradient(rgba(64,35,63,0.02) 1px, transparent 1px);
+  background-size: 6px 6px, 11px 11px;
+  background-position: 0 0, 3px 3px;
+}
+
+@utility brass-foil {
+  background-image: linear-gradient(135deg, #f4d48f 0%, #d6a447 35%, #b78625 60%, #8c6210 100%);
+}
+
+/* Soft pulse used on processing pills and step badges. */
+@keyframes title-hub-soft-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.65; transform: scale(0.96); }
+}
+.tk-soft-pulse {
+  animation: title-hub-soft-pulse 1.6s ease-in-out infinite;
+}
+
+/* Shimmer that sweeps across an element. Pair with `relative overflow-hidden`
+   on the parent and a child element with `tk-shimmer-bar` absolutely
+   positioned. */
+@keyframes title-hub-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+.tk-shimmer-bar {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(244, 212, 143, 0.55) 45%,
+    rgba(183, 134, 37, 0.65) 55%,
+    transparent 100%
+  );
+  animation: title-hub-shimmer 1.8s ease-in-out infinite;
+}
+
+/* Three bouncing dots ("thinking..."). */
+@keyframes title-hub-dot-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.55; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+.tk-dot {
+  animation: title-hub-dot-bounce 1.4s ease-in-out infinite;
+}
+.tk-dot[data-i="1"] { animation-delay: 0.16s; }
+.tk-dot[data-i="2"] { animation-delay: 0.32s; }
+
+/* New-row entrance for live activity feeds. */
+@keyframes title-hub-slide-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.tk-slide-in {
+  animation: title-hub-slide-in 0.35s ease-out both;
+}
+
+/* Numeric tick when a count changes. */
+@keyframes title-hub-count-flash {
+  0% { color: #b78625; }
+  100% { color: inherit; }
+}
+.tk-count-flash {
+  animation: title-hub-count-flash 0.8s ease-out both;
 }

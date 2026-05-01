@@ -3,6 +3,16 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
 import {
+  ScrollText,
+  Plug,
+  Users,
+  Mail,
+  Eye,
+  EyeOff,
+  Send,
+  CheckCircle2,
+} from "lucide-react"
+import {
   Card,
   CardContent,
   CardDescription,
@@ -26,6 +36,17 @@ import { api } from "../../../convex/_generated/api"
 import type { Id } from "../../../convex/_generated/dataModel"
 
 export const Route = createFileRoute("/admin/")({
+  head: () => ({
+    meta: [
+      { title: "Admin · Title Hub" },
+      {
+        name: "description",
+        content:
+          "Workspace administration: members, roles, integrations, and recording rules.",
+      },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: "/signin" })
@@ -40,7 +61,9 @@ function AdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Admin">
-        <p className="text-muted-foreground text-sm">Loading...</p>
+        <p className="text-sm text-muted-foreground">
+          Loading the bureau...
+        </p>
       </AppShell>
     )
   }
@@ -93,19 +116,147 @@ function AdminPage() {
       isAuthenticated
       title="Admin"
       subtitle={`${current.data.legalName} · ${current.data.role}`}
-      actions={
-        <Button asChild variant="outline" size="sm">
-          <Link to="/admin/rules">Recording rules →</Link>
-        </Button>
-      }
     >
-      <div className="flex flex-col gap-6">
-        <MembersPanel />
-        <InvitationsPanel betterAuthOrgId={current.data.betterAuthOrgId} />
+      <div className="flex flex-col gap-8 pb-12">
+        <BureauHeader
+          orgName={current.data.legalName}
+          role={current.data.role}
+        />
+
+        <SubAreas />
+
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+          <div className="lg:col-span-3">
+            <MembersPanel />
+          </div>
+          <div className="lg:col-span-2">
+            <InvitationsPanel betterAuthOrgId={current.data.betterAuthOrgId} />
+          </div>
+        </div>
       </div>
     </AppShell>
   )
 }
+
+function BureauHeader({ orgName, role }: { orgName: string; role: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
+      <div
+        aria-hidden
+        className="paper-grain pointer-events-none absolute inset-0 opacity-60"
+      />
+      <div className="relative grid grid-cols-1 items-center gap-6 px-7 py-10 md:grid-cols-[1fr_auto] md:px-10">
+        <div>
+          <div className="text-xs font-medium text-[#b78625]">
+            Volume IV · Bureau of Records
+          </div>
+          <h1 className="font-display mt-2 text-5xl font-semibold leading-[0.95] tracking-tight text-[#40233f] md:text-6xl">
+            <span>The</span> Administration
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+            Roster and invitations, integration keys, and recording rules. The
+            quiet workshop behind the register.
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-2 text-right">
+          <div className="font-display rounded-md border border-[#40233f]/15 bg-[#fdf6e8] px-4 py-3">
+            <div className="text-xs text-[#b78625]">
+              Acting on behalf of
+            </div>
+            <div className="font-display text-base font-semibold text-[#40233f]">
+              {orgName}
+            </div>
+            <div className="font-numerals mt-0.5 text-xs text-muted-foreground">
+              Office of {role}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SubAreas() {
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <SubAreaTile
+        to="/admin/rules"
+        roman="I"
+        eyebrow="Codex"
+        title="Recording rules"
+        description="Versioned per county and document type. Margins, fees, exhibits, notarial requirements."
+        icon={<ScrollText className="size-5" />}
+      />
+      <SubAreaTile
+        to="/admin/integrations"
+        roman="II"
+        eyebrow="Apparatus"
+        title="Integrations"
+        description="Tokens, webhooks, and third-party services bound to this tenant."
+        icon={<Plug className="size-5" />}
+      />
+    </div>
+  )
+}
+
+function SubAreaTile({
+  to,
+  roman,
+  eyebrow,
+  title,
+  description,
+  icon,
+}: {
+  to: string
+  roman: string
+  eyebrow: string
+  title: string
+  description: string
+  icon: React.ReactNode
+}) {
+  return (
+    <Link
+      to={to}
+      className="group/tile relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card px-6 py-5 shadow-sm ring-1 ring-foreground/5 transition hover:bg-[#fdf6e8] hover:shadow-md"
+    >
+      <div
+        aria-hidden
+        className="font-display absolute -right-4 -top-6 text-[8rem] font-semibold leading-none text-[#40233f]/[0.05] transition group-hover/tile:text-[#40233f]/[0.08]"
+      >
+        {roman}
+      </div>
+      <div className="relative flex items-center gap-3">
+        <div className="grid size-10 place-items-center rounded-xl border border-[#40233f]/15 bg-card text-[#40233f]">
+          {icon}
+        </div>
+        <div>
+          <div className="text-xs font-medium text-[#b78625]">
+            {eyebrow}
+          </div>
+          <div className="font-display text-xl font-semibold tracking-tight text-[#40233f]">
+            {title}
+          </div>
+        </div>
+        <span className="font-numerals ml-auto text-xs text-muted-foreground transition group-hover/tile:translate-x-1 group-hover/tile:text-[#40233f]">
+          Open →
+        </span>
+      </div>
+      <p className="relative mt-3 text-sm leading-relaxed text-muted-foreground">
+        {description}
+      </p>
+    </Link>
+  )
+}
+
+const ROLE_OPTIONS = [
+  { id: "owner", label: "Owner", desc: "All powers" },
+  { id: "admin", label: "Admin", desc: "Manage roster + rules" },
+  { id: "processor", label: "Processor", desc: "Open + work files" },
+  { id: "closer", label: "Closer", desc: "Take files to policy" },
+  { id: "reviewer", label: "Reviewer", desc: "Read + comment" },
+  { id: "readonly", label: "Read-only", desc: "View register" },
+] as const
+type RoleId = (typeof ROLE_OPTIONS)[number]["id"]
 
 function MembersPanel() {
   const members = useQuery(convexQuery(api.tenants.listMembers, {}))
@@ -114,16 +265,7 @@ function MembersPanel() {
   const [error, setError] = useState<string | null>(null)
   const list = members.data ?? []
 
-  const onRoleChange = async (
-    memberId: Id<"tenantMembers">,
-    role:
-      | "owner"
-      | "admin"
-      | "processor"
-      | "closer"
-      | "reviewer"
-      | "readonly",
-  ) => {
+  const onRoleChange = async (memberId: Id<"tenantMembers">, role: RoleId) => {
     try {
       await setRole({ memberId, role })
     } catch (err) {
@@ -143,81 +285,134 @@ function MembersPanel() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Members</CardTitle>
-        <CardDescription>
-          Role drives permissions; NPI gates access to tokenized fields.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-2">
-        {error && <p className="text-destructive text-sm">{error}</p>}
-        {list.length === 0 ? (
-          <div className="text-muted-foreground rounded-md border border-dashed border-border/60 p-3 text-sm">
-            No members.
+    <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
+      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pb-4 pt-6">
+        <div className="flex items-center gap-3">
+          <div className="grid size-9 place-items-center rounded-md border border-[#40233f]/20 bg-[#fdf6e8] text-[#40233f]">
+            <Users className="size-4" />
           </div>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {list.map((m) => (
-              <li
-                key={m._id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 p-3 text-sm"
-              >
+          <div>
+            <div className="text-xs font-medium text-[#b78625]">
+              Section I · Roster
+            </div>
+            <h2 className="font-display text-2xl font-semibold leading-none tracking-tight text-[#40233f]">
+              Members
+            </h2>
+          </div>
+        </div>
+        <div className="font-numerals rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs tabular-nums text-muted-foreground">
+          {list.length} on staff
+        </div>
+      </header>
+
+      {error && (
+        <div className="mx-7 mt-4 rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
+          {error}
+        </div>
+      )}
+
+      {list.length === 0 ? (
+        <div className="px-7 py-16 text-center">
+          <div className="text-xl font-semibold text-[#40233f]">
+            The roster is empty.
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Issue an invitation in the panel beside.
+          </p>
+        </div>
+      ) : (
+        <ol className="paper-grain divide-y divide-border/50">
+          <li className="hidden grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-7 py-2 text-xs text-muted-foreground sm:grid">
+            <span className="text-right">№</span>
+            <span>Member</span>
+            <span>Role</span>
+            <span className="text-right">NPI</span>
+          </li>
+          {list.map((m, i) => (
+            <li
+              key={m._id}
+              className="grid grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-7 py-3 transition hover:bg-[#fdf6e8]/50"
+            >
+              <span className="font-numerals text-right text-xs tabular-nums text-muted-foreground/70">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="relative grid size-9 shrink-0 place-items-center rounded-full ring-1 ring-[#40233f]/15">
+                  <div className="brass-foil absolute inset-0 rounded-full opacity-90" />
+                  <div className="absolute inset-[2px] rounded-full bg-card" />
+                  <span className="font-display relative text-xs font-semibold text-[#40233f]">
+                    {initials(m.email)}
+                  </span>
+                </div>
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{m.email}</div>
-                  <div className="text-muted-foreground text-xs">{m.status}</div>
+                  <div className="font-numerals truncate text-sm font-medium text-[#2e2430]">
+                    {m.email}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {m.status}
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select
-                    value={m.role}
-                    onValueChange={(v) =>
-                      onRoleChange(
-                        m._id as Id<"tenantMembers">,
-                        v as
-                          | "owner"
-                          | "admin"
-                          | "processor"
-                          | "closer"
-                          | "reviewer"
-                          | "readonly",
-                      )
-                    }
-                  >
-                    <SelectTrigger size="sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="owner">Owner</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="processor">Processor</SelectItem>
-                      <SelectItem value="closer">Closer</SelectItem>
-                      <SelectItem value="reviewer">Reviewer</SelectItem>
-                      <SelectItem value="readonly">Read-only</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Label
-                    htmlFor={`npi-${m._id}`}
-                    className="text-muted-foreground gap-1.5 text-xs font-normal"
-                  >
-                    <Checkbox
-                      id={`npi-${m._id}`}
-                      checked={m.canViewNpi}
-                      onCheckedChange={(checked) =>
-                        onNpiChange(
-                          m._id as Id<"tenantMembers">,
-                          checked === true,
-                        )
-                      }
-                    />
-                    NPI
-                  </Label>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+              </div>
+
+              <Select
+                value={m.role}
+                onValueChange={(v) =>
+                  onRoleChange(m._id as Id<"tenantMembers">, v as RoleId)
+                }
+              >
+                <SelectTrigger size="sm" className="font-numerals text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLE_OPTIONS.map((r) => (
+                    <SelectItem key={r.id} value={r.id}>
+                      <span className="flex flex-col items-start">
+                        <span className="text-sm">{r.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {r.desc}
+                        </span>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Label
+                htmlFor={`npi-${m._id}`}
+                className={`group/npi flex cursor-pointer items-center justify-end gap-2 text-xs ${
+                  m.canViewNpi ? "text-[#2f5d4b]" : "text-muted-foreground/70"
+                }`}
+              >
+                {m.canViewNpi ? (
+                  <Eye className="size-3.5" />
+                ) : (
+                  <EyeOff className="size-3.5" />
+                )}
+                <Checkbox
+                  id={`npi-${m._id}`}
+                  checked={m.canViewNpi}
+                  onCheckedChange={(checked) =>
+                    onNpiChange(
+                      m._id as Id<"tenantMembers">,
+                      checked === true,
+                    )
+                  }
+                />
+              </Label>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <footer className="border-t border-border/60 bg-[#f9f5ef]/50 px-7 py-3">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Eye className="size-3.5 text-[#3f7c64]" />
+          NPI clearance gates access to tokenized fields. Owner role is required to
+          edit recording rules.
+        </div>
+      </footer>
+    </article>
   )
 }
 
@@ -253,78 +448,133 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
   const list = invites.data ?? []
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Invitations</CardTitle>
-        <CardDescription>
-          Invite teammates by email. Better Auth handles the verification flow.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <form onSubmit={onInvite} className="flex flex-wrap items-center gap-2">
+    <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
+      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pb-4 pt-6">
+        <div className="flex items-center gap-3">
+          <div className="grid size-9 place-items-center rounded-md border border-[#40233f]/20 bg-[#fdf6e8] text-[#40233f]">
+            <Mail className="size-4" />
+          </div>
+          <div>
+            <div className="text-xs font-medium text-[#b78625]">
+              Section II · Dispatches
+            </div>
+            <h2 className="font-display text-2xl font-semibold leading-none tracking-tight text-[#40233f]">
+              Invitations
+            </h2>
+          </div>
+        </div>
+      </header>
+
+      <form
+        onSubmit={onInvite}
+        className="flex flex-col gap-3 border-b border-border/60 bg-[#fdf6e8]/40 px-7 py-5"
+      >
+        <div className="flex flex-col gap-2">
+          <Label
+            htmlFor="invite-email"
+            className="text-xs font-medium text-[#40233f]"
+          >
+            Address
+          </Label>
           <Input
+            id="invite-email"
             type="email"
             required
-            placeholder="email@example.com"
+            placeholder="recipient@firm.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="max-w-xs"
+            className="font-numerals"
           />
-          <Select
-            value={role}
-            onValueChange={(v) =>
-              setRole(v as "owner" | "admin" | "member")
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="member">Member</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="owner">Owner</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button type="submit" disabled={pending}>
-            {pending ? "Sending..." : "Invite"}
-          </Button>
-          {sentTo && (
-            <span className="text-xs text-[#3f7c64]">Invited {sentTo}</span>
-          )}
-          {error && <span className="text-destructive text-xs">{error}</span>}
-        </form>
-
-        <div className="text-muted-foreground text-xs uppercase tracking-wide">
-          Pending
         </div>
-        {list.length === 0 ? (
-          <div className="text-muted-foreground rounded-md border border-dashed border-border/60 p-3 text-sm">
-            No pending invitations.
+
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs font-medium text-[#40233f]">
+            Capacity
+          </Label>
+          <div className="grid grid-cols-3 gap-1.5 rounded-full bg-card p-1 ring-1 ring-border/60">
+            {(["member", "admin", "owner"] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setRole(r)}
+                className={`rounded-full px-3 py-1.5 text-xs transition ${
+                  role === r
+                    ? "bg-[#40233f] text-[#f6e8d9] shadow-sm"
+                    : "text-muted-foreground hover:text-[#40233f]"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
           </div>
+        </div>
+
+        {error && (
+          <p className="rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
+            {error}
+          </p>
+        )}
+        {sentTo && (
+          <p className="font-numerals flex items-center gap-2 rounded-md border border-[#3f7c64]/30 bg-[#e6f3ed] px-3 py-2 text-xs text-[#2f5d4b]">
+            <CheckCircle2 className="size-3.5" />
+            Dispatched to {sentTo}
+          </p>
+        )}
+
+        <Button type="submit" disabled={pending} className="gap-2 self-start">
+          <Send className="size-4" />
+          {pending ? "Dispatching..." : "Send invitation"}
+        </Button>
+      </form>
+
+      <div className="px-7 py-4">
+        <div className="flex items-baseline justify-between border-b border-border/40 pb-2">
+          <div className="text-xs font-medium text-[#b78625]">
+            Pending dispatches
+          </div>
+          <div className="font-numerals text-xs tabular-nums text-muted-foreground">
+            {list.length}
+          </div>
+        </div>
+
+        {list.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            None awaiting reply.
+          </p>
         ) : (
-          <ul className="flex flex-col gap-1">
+          <ul className="flex flex-col">
             {list.map((i) => (
               <li
                 key={i._id}
-                className="flex items-center justify-between rounded-md border border-border/60 p-3 text-sm"
+                className="flex items-center justify-between gap-3 border-b border-border/40 py-3 last:border-b-0"
               >
-                <div>
-                  <div className="font-medium">{i.email}</div>
-                  <div className="text-muted-foreground text-xs">
+                <div className="min-w-0">
+                  <div className="font-numerals truncate text-sm font-medium text-[#2e2430]">
+                    {i.email}
+                  </div>
+                  <div className="font-numerals text-xs text-muted-foreground">
                     {i.role ?? "member"}
                     {i.expiresAt
                       ? ` · expires ${new Date(i.expiresAt).toLocaleDateString()}`
                       : ""}
                   </div>
                 </div>
-                <span className="text-muted-foreground text-xs">
+                <span className="font-numerals inline-flex items-center gap-1.5 rounded-full bg-[#f8eed7] px-2.5 py-1 text-xs text-[#7a5818] ring-1 ring-inset ring-[#b78625]/40">
+                  <span className="size-1 rounded-full bg-[#b78625]" />
                   {i.status ?? "pending"}
                 </span>
               </li>
             ))}
           </ul>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </article>
   )
+}
+
+function initials(email: string): string {
+  const local = email.split("@")[0] ?? email
+  const parts = local.split(/[._-]+/).filter(Boolean)
+  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
+  return (local.slice(0, 2) || "··").toUpperCase()
 }

@@ -507,6 +507,275 @@ describe("Sprint 4 reconciliation engine", () => {
     ).rejects.toThrow(/DOCUMENT_NOT_INVOLVED/)
   })
 
+  test("resolveWith promotes price_amended to file.purchasePrice", async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    const c1DocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      C1_PAYLOAD,
+    )
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const priceFinding = findings.find(
+      (f: { findingType: string }) => f.findingType === "price_amended",
+    )!
+
+    const result = await alice.asUser.mutation(
+      api.reconciliation.resolveWith,
+      { findingId: priceFinding._id, documentId: c1DocId, value: 233600 },
+    )
+    expect(result.promoted).toEqual({
+      target: "file",
+      id: fileId,
+      fields: ["purchasePrice"],
+    })
+
+    const file = await t.run((ctx) => ctx.db.get(fileId))
+    expect(file?.purchasePrice).toBe(233600)
+  })
+
+  test("resolveWith promotes title_company_change to file.titleCompany", async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    const c1DocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      C1_PAYLOAD,
+    )
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const tcFinding = findings.find(
+      (f: { findingType: string }) =>
+        f.findingType === "title_company_change",
+    )!
+
+    await alice.asUser.mutation(api.reconciliation.resolveWith, {
+      findingId: tcFinding._id,
+      documentId: c1DocId,
+      value: {
+        name: "Quality Title Insurance",
+        phone: "317-780-5700",
+        selectedBy: "seller",
+      },
+    })
+
+    const file = await t.run((ctx) => ctx.db.get(fileId))
+    expect(file?.titleCompany?.name).toBe("Quality Title Insurance")
+    expect(file?.titleCompany?.selectedBy).toBe("seller")
+    expect(file?.titleCompany?.phone).toBe("317-780-5700")
+  })
+
+  test("resolveWith promotes financing_window_change to file.financingApprovalDays", async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    const c1DocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      C1_PAYLOAD,
+    )
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const fwFinding = findings.find(
+      (f: { findingType: string }) =>
+        f.findingType === "financing_window_change",
+    )!
+
+    await alice.asUser.mutation(api.reconciliation.resolveWith, {
+      findingId: fwFinding._id,
+      documentId: c1DocId,
+      value: 25,
+    })
+
+    const file = await t.run((ctx) => ctx.db.get(fileId))
+    expect(file?.financingApprovalDays).toBe(25)
+  })
+
+  test("resolveWith promotes party_name_mismatch to parties.legalName when role uniquely matches", async () => {
+    const { t, alice, fileId } = await setup()
+    // Establish a buyer party on the file so the role match is unique.
+    await alice.asUser.mutation(api.files.addParty, {
+      fileId,
+      partyType: "person",
+      legalName: "M Hicks",
+      role: "buyer",
+    })
+    const paDocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    // Same buyer with a different legal name in a counter offer.
+    const variantPayload = {
+      ...C1_PAYLOAD,
+      parties: [
+        { role: "buyer", legalName: "Michelle K Hicks" },
+        { role: "seller", legalName: "Rene S Kotter", capacity: "AIF" },
+      ],
+    }
+    const c1DocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      variantPayload,
+    )
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const nameFinding = findings.find(
+      (f: { findingType: string; rawDetail: { role?: string } }) =>
+        f.findingType === "party_name_mismatch" && f.rawDetail.role === "buyer",
+    )!
+    expect(nameFinding).toBeDefined()
+    expect(nameFinding.involvedDocumentIds).toEqual(
+      expect.arrayContaining([paDocId, c1DocId]),
+    )
+
+    const result = await alice.asUser.mutation(
+      api.reconciliation.resolveWith,
+      {
+        findingId: nameFinding._id,
+        documentId: c1DocId,
+        value: "Michelle K Hicks",
+      },
+    )
+    expect(result.promoted?.target).toBe("party")
+    expect(result.promoted?.fields).toEqual(["legalName"])
+
+    // The single buyer-role fileParty's underlying party should now carry the
+    // chosen legal name.
+    const updatedParty = await t.run(async (ctx) => {
+      const fps = await ctx.db
+        .query("fileParties")
+        .withIndex("by_tenant_file", (q) =>
+          q.eq("tenantId", nameFinding.tenantId).eq("fileId", fileId),
+        )
+        .collect()
+      const buyer = fps.find((fp) => fp.role === "buyer")
+      return buyer ? ctx.db.get(buyer.partyId) : null
+    })
+    expect(updatedParty?.legalName).toBe("Michelle K Hicks")
+  })
+
+  test("resolveWith does NOT promote party_name_mismatch when the role matches multiple file parties", async () => {
+    const { t, alice, fileId } = await setup()
+    // Two buyer-role parties → ambiguous; promotion must skip without throwing.
+    await alice.asUser.mutation(api.files.addParty, {
+      fileId,
+      partyType: "person",
+      legalName: "First Buyer",
+      role: "buyer",
+    })
+    await alice.asUser.mutation(api.files.addParty, {
+      fileId,
+      partyType: "person",
+      legalName: "Second Buyer",
+      role: "buyer",
+    })
+
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "purchase_agreement",
+      "PA",
+      PA_PAYLOAD,
+    )
+    const c1DocId = await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      "counter_offer",
+      "C1",
+      {
+        ...C1_PAYLOAD,
+        parties: [
+          { role: "buyer", legalName: "Michelle K Hicks" },
+          { role: "seller", legalName: "Rene S Kotter", capacity: "AIF" },
+        ],
+      },
+    )
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const nameFinding = findings.find(
+      (f: { findingType: string; rawDetail: { role?: string } }) =>
+        f.findingType === "party_name_mismatch" && f.rawDetail.role === "buyer",
+    )!
+
+    const result = await alice.asUser.mutation(
+      api.reconciliation.resolveWith,
+      {
+        findingId: nameFinding._id,
+        documentId: c1DocId,
+        value: "Michelle K Hicks",
+      },
+    )
+    expect(result.promoted).toBeNull()
+
+    // Neither buyer party should have been overwritten.
+    const buyerNames = await t.run(async (ctx) => {
+      const fps = await ctx.db
+        .query("fileParties")
+        .withIndex("by_tenant_file", (q) =>
+          q.eq("tenantId", nameFinding.tenantId).eq("fileId", fileId),
+        )
+        .collect()
+      const names = await Promise.all(
+        fps
+          .filter((fp) => fp.role === "buyer")
+          .map(async (fp) => (await ctx.db.get(fp.partyId))?.legalName),
+      )
+      return names
+    })
+    expect(buyerNames.sort()).toEqual(["First Buyer", "Second Buyer"])
+  })
+
   test("resolveWith requires editor role", async () => {
     const { t, alice, fileId } = await setup()
     await attachDocWithExtraction(

@@ -19,6 +19,9 @@ const GLOBAL_TABLES = new Set<string>([
   "underwriterEndorsementCodes",
   "transactionTypes",
   "countyRecordingRules",
+  // Platform-level allowlist: who can create new organizations. Spans
+  // tenants by design — see convex/auth.ts allowUserToCreateOrganization.
+  "systemAdmins",
 ])
 
 type IndexInfo = { indexDescriptor: string; fields: string[] }

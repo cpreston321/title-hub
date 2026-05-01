@@ -31,6 +31,16 @@ type SectionKey = (typeof SECTIONS)[number]
 type SettingsSearch = { section?: SectionKey }
 
 export const Route = createFileRoute("/settings")({
+  head: () => ({
+    meta: [
+      { title: "Settings · Title Hub" },
+      {
+        name: "description",
+        content: "Manage your profile, organizations, and active session.",
+      },
+      { name: "robots", content: "noindex, nofollow" },
+    ],
+  }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: "/signin" })
@@ -178,7 +188,7 @@ function IdentityHero({
           <span className="truncate">{email || "no email"}</span>
           {verified && (
             <span
-              className="ml-1 inline-flex items-center gap-1 rounded-full border border-[#3f7c64]/25 bg-[#3f7c64]/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-[#3f7c64]"
+              className="ml-1 inline-flex items-center gap-1 rounded-full border border-[#3f7c64]/25 bg-[#3f7c64]/10 px-1.5 py-0.5 text-xs font-medium text-[#3f7c64]"
               title="Verified"
             >
               <Check className="size-2.5" />
@@ -187,7 +197,7 @@ function IdentityHero({
           )}
         </div>
         {since && (
-          <div className="text-muted-foreground/70 mt-3 font-serif text-[11px] italic">
+          <div className="text-muted-foreground/70 mt-3 text-xs">
             Member since{" "}
             {since.toLocaleDateString(undefined, {
               month: "long",
@@ -207,18 +217,18 @@ function IdentityHero({
             }}
           />
           <div className="relative">
-            <div className="text-muted-foreground/80 mb-1.5 text-[10px] font-medium uppercase tracking-[0.16em]">
+            <div className="text-muted-foreground/80 mb-1.5 text-xs font-medium">
               Active organization
             </div>
             <div className="flex items-center gap-2.5">
-              <div className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#40233f] text-[10px] font-semibold uppercase tracking-wide text-[#f3d08a] ring-1 ring-[#40233f]/40">
+              <div className="grid size-8 shrink-0 place-items-center rounded-xl bg-[#40233f] text-xs font-semibold text-[#f3d08a] ring-1 ring-[#40233f]/40">
                 {initials(activeOrg.legalName)}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">
                   {activeOrg.legalName}
                 </div>
-                <div className="text-muted-foreground truncate text-[11px]">
+                <div className="text-muted-foreground truncate text-xs">
                   {activeOrg.slug} · <RoleLabel role={activeOrg.role} />
                 </div>
               </div>
@@ -297,7 +307,7 @@ function SettingsNav({
               >
                 {it.label}
               </span>
-              <span className="text-muted-foreground/70 text-[11px]">
+              <span className="text-muted-foreground/70 text-xs">
                 {it.hint}
               </span>
             </span>
@@ -330,7 +340,7 @@ function SectionHeader({
 }) {
   return (
     <header className="mb-8">
-      <div className="text-[#b78625] text-[10px] font-medium uppercase tracking-[0.22em]">
+      <div className="text-[#b78625] text-xs font-medium">
         {eyebrow}
       </div>
       <h2 className="text-[#40233f] mt-1.5 font-serif text-3xl font-semibold tracking-tight">
@@ -433,7 +443,7 @@ function ProfileSection({
             />
             <span
               className={cn(
-                "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide",
+                "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
                 verified
                   ? "border border-[#3f7c64]/25 bg-[#3f7c64]/10 text-[#3f7c64]"
                   : "border border-[#c9652e]/30 bg-[#c9652e]/10 text-[#a4501f]",
@@ -507,7 +517,7 @@ function OrganizationsSection({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-muted-foreground inline-flex items-center gap-2 text-xs">
           <span
-            className="grid size-5 place-items-center rounded-full bg-[#40233f]/[0.06] font-medium text-[11px] text-[#40233f]"
+            className="grid size-5 place-items-center rounded-full bg-[#40233f]/[0.06] font-medium text-xs text-[#40233f]"
             aria-hidden
           >
             {memberships.length}
@@ -571,7 +581,7 @@ function OrganizationsSection({
                     {m.legalName}
                   </div>
                   <div className="text-muted-foreground mt-0.5 inline-flex items-center gap-2 text-xs">
-                    <span className="font-mono text-[11px]">{m.slug}</span>
+                    <span className="font-mono text-xs">{m.slug}</span>
                     <span aria-hidden>·</span>
                     <RolePill role={m.role} />
                   </div>
@@ -732,7 +742,7 @@ function RolePill({ role }: { role: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs font-medium",
         tone.bg,
         tone.text,
         tone.border,

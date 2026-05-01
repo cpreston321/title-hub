@@ -1,11 +1,12 @@
 import { ConvexError, v } from "convex/values"
-import { mutation, query } from "./_generated/server"
+import { internalMutation, mutation, query } from "./_generated/server"
 import type { MutationCtx } from "./_generated/server"
 import { internal } from "./_generated/api"
 import type { Doc, Id } from "./_generated/dataModel"
 import { requireRole, requireTenant, type TenantContext } from "./lib/tenant"
 import { recordAudit } from "./lib/audit"
 import { normalizeLegalName, type NormalizedName } from "./lib/vesting"
+import { fanOutNotification } from "./notifications"
 
 type Severity = "info" | "warn" | "block"
 
@@ -487,20 +488,187 @@ function checkRequiredDocs(
     })
 }
 
-async function clearExistingFindings(
+// Shared core: do the reconciliation work without making any assumption
+// about the caller. The public mutation passes a tenant context (and audits
+// as the user); the internal/auto path passes a synthetic "system" actor.
+async function runReconciliationCore(
   ctx: MutationCtx,
-  tc: TenantContext,
+  tenantId: Id<"tenants">,
   fileId: Id<"files">,
+  actor:
+    | { kind: "user"; tc: TenantContext; trigger: "manual" }
+    | { kind: "system"; trigger: "auto" },
 ) {
-  // Open findings get superseded by a fresh run; resolved/dismissed ones stay
-  // for audit. The simplest mental model for the operator: "rerun = wipe pending."
+  const file = await ctx.db.get(fileId)
+  if (!file || file.tenantId !== tenantId) {
+    throw new ConvexError("FILE_NOT_FOUND")
+  }
+
+  const extractions = await ctx.db
+    .query("documentExtractions")
+    .withIndex("by_tenant_file", (q) =>
+      q.eq("tenantId", tenantId).eq("fileId", fileId),
+    )
+    .take(100)
+
+  const succeeded = extractions.filter(
+    (e) => e.status === "succeeded" && e.payload,
+  )
+
+  const enriched = await Promise.all(
+    succeeded.map(async (e) => {
+      const doc = await ctx.db.get(e.documentId)
+      return doc
+        ? {
+            documentId: e.documentId,
+            uploadedAt: doc.uploadedAt,
+            docType: doc.docType,
+            view: e.payload as ExtractionView,
+          }
+        : null
+    }),
+  )
+  const usable = enriched.filter(
+    (e): e is NonNullable<typeof e> => e !== null,
+  )
+  usable.sort((a, b) => b.uploadedAt - a.uploadedAt) // newest first
+
+  const findings: Pending[] = []
+  comparePrices(usable, findings)
+  compareTitleCompany(usable, findings)
+  compareEarnestMoney(usable, findings)
+  compareClosingDate(usable, findings)
+  compareFinancingWindow(usable, findings)
+  compareParties(usable, findings)
+  compareVesting(usable, findings)
+
+  const uploadedDocTypes = new Set(usable.map((e) => e.docType))
+  await checkRequiredDocs(ctx, file, uploadedDocTypes, findings)
+
+  // The user-triggered path uses the existing "wipe open then re-create"
+  // policy. The auto path uses the same policy by passing the tenant id
+  // through a thin shim.
+  const removed = await clearOpenFindings(ctx, tenantId, fileId)
+
+  const now = Date.now()
+  const insertedIds: Array<Id<"reconciliationFindings">> = []
+  for (const f of findings) {
+    const id = await ctx.db.insert("reconciliationFindings", {
+      tenantId,
+      fileId,
+      findingType: f.findingType,
+      severity: f.severity,
+      message: f.message,
+      involvedDocumentIds: f.involvedDocumentIds,
+      involvedFields: f.involvedFields,
+      rawDetail: f.rawDetail,
+      status: "open",
+      createdAt: now,
+    })
+    insertedIds.push(id)
+
+    await ctx.runMutation(internal.webhooks.enqueue, {
+      tenantId,
+      event: "finding.created",
+      payload: {
+        findingId: id,
+        fileId,
+        findingType: f.findingType,
+        severity: f.severity,
+        message: f.message,
+      },
+    })
+  }
+
+  // Audit: user-triggered records under the member; system-triggered uses a
+  // direct insert with no actor.
+  const counts = {
+    info: findings.filter((f) => f.severity === "info").length,
+    warn: findings.filter((f) => f.severity === "warn").length,
+    block: findings.filter((f) => f.severity === "block").length,
+  }
+
+  // Notify the team about the outcome. We only fan out when there's
+  // something to read about — every reconcile run otherwise spams the
+  // notification feed.
+  const total = counts.info + counts.warn + counts.block
+  if (total > 0) {
+    await fanOutNotification(ctx, tenantId, {
+      kind: "reconciliation.findings",
+      severity: counts.block > 0 ? "block" : counts.warn > 0 ? "warn" : "info",
+      title:
+        counts.block > 0
+          ? `${counts.block} blocker${counts.block === 1 ? "" : "s"} on ${file.fileNumber}`
+          : counts.warn > 0
+            ? `${counts.warn} warning${counts.warn === 1 ? "" : "s"} on ${file.fileNumber}`
+            : `${counts.info} note${counts.info === 1 ? "" : "s"} on ${file.fileNumber}`,
+      body:
+        actor.kind === "system"
+          ? "Reconciliation ran automatically after a new extraction."
+          : "Reconciliation re-run.",
+      fileId,
+      actorMemberId:
+        actor.kind === "user" ? actor.tc.memberId : undefined,
+      actorType: actor.kind,
+    })
+  } else if (actor.kind === "user") {
+    // Manual run with all-clear: still worth telling the user.
+    await fanOutNotification(ctx, tenantId, {
+      kind: "reconciliation.all_clear",
+      severity: "ok",
+      title: `${file.fileNumber} is all clear`,
+      body: "Cross-document checks passed without findings.",
+      fileId,
+      actorMemberId: actor.tc.memberId,
+      actorType: "user",
+    })
+  }
+  if (actor.kind === "user") {
+    await recordAudit(ctx, actor.tc, "reconciliation.run", "file", fileId, {
+      removedOpen: removed,
+      created: insertedIds.length,
+      bySeverity: counts,
+      extractionCount: usable.length,
+      trigger: actor.trigger,
+    })
+  } else {
+    await ctx.db.insert("auditEvents", {
+      tenantId,
+      actorType: "system",
+      action: "reconciliation.run",
+      resourceType: "file",
+      resourceId: fileId,
+      metadata: {
+        removedOpen: removed,
+        created: insertedIds.length,
+        bySeverity: counts,
+        extractionCount: usable.length,
+        trigger: actor.trigger,
+      },
+      occurredAt: Date.now(),
+    })
+  }
+
+  return {
+    findings: insertedIds,
+    counts,
+  }
+}
+
+// Variant of clearExistingFindings that takes raw tenantId so it can be
+// called from both the user-context path and the system-context path.
+async function clearOpenFindings(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  fileId: Id<"files">,
+): Promise<number> {
   let cursor: string | null = null
   let removed = 0
   while (true) {
     const page = await ctx.db
       .query("reconciliationFindings")
       .withIndex("by_tenant_file_status", (q) =>
-        q.eq("tenantId", tc.tenantId).eq("fileId", fileId).eq("status", "open"),
+        q.eq("tenantId", tenantId).eq("fileId", fileId).eq("status", "open"),
       )
       .paginate({ numItems: 100, cursor })
     for (const f of page.page) {
@@ -518,108 +686,27 @@ export const runForFile = mutation({
   handler: async (ctx, { fileId }) => {
     const tc = await requireTenant(ctx)
     requireRole(tc, ...editorRoles)
-
-    const file = await ctx.db.get(fileId)
-    if (!file || file.tenantId !== tc.tenantId) {
-      throw new ConvexError("FILE_NOT_FOUND")
-    }
-
-    const extractions = await ctx.db
-      .query("documentExtractions")
-      .withIndex("by_tenant_file", (q) =>
-        q.eq("tenantId", tc.tenantId).eq("fileId", fileId),
-      )
-      .take(100)
-
-    const succeeded = extractions.filter(
-      (e) => e.status === "succeeded" && e.payload,
-    )
-
-    // Fetch the underlying documents to know docType + uploadedAt for
-    // ordering and required-doc checks.
-    const enriched = await Promise.all(
-      succeeded.map(async (e) => {
-        const doc = await ctx.db.get(e.documentId)
-        return doc
-          ? {
-              documentId: e.documentId,
-              uploadedAt: doc.uploadedAt,
-              docType: doc.docType,
-              view: e.payload as ExtractionView,
-            }
-          : null
-      }),
-    )
-    const usable = enriched.filter(
-      (e): e is NonNullable<typeof e> => e !== null,
-    )
-    usable.sort((a, b) => b.uploadedAt - a.uploadedAt) // newest first
-
-    const findings: Pending[] = []
-    comparePrices(usable, findings)
-    compareTitleCompany(usable, findings)
-    compareEarnestMoney(usable, findings)
-    compareClosingDate(usable, findings)
-    compareFinancingWindow(usable, findings)
-    compareParties(usable, findings)
-    compareVesting(usable, findings)
-
-    const uploadedDocTypes = new Set(usable.map((e) => e.docType))
-    await checkRequiredDocs(ctx, file, uploadedDocTypes, findings)
-
-    const removed = await clearExistingFindings(ctx, tc, fileId)
-
-    const now = Date.now()
-    const insertedIds: Array<Id<"reconciliationFindings">> = []
-    for (const f of findings) {
-      const id = await ctx.db.insert("reconciliationFindings", {
-        tenantId: tc.tenantId,
-        fileId,
-        findingType: f.findingType,
-        severity: f.severity,
-        message: f.message,
-        involvedDocumentIds: f.involvedDocumentIds,
-        involvedFields: f.involvedFields,
-        rawDetail: f.rawDetail,
-        status: "open",
-        createdAt: now,
-      })
-      insertedIds.push(id)
-
-      // Fan out to subscribed webhooks. Best-effort — failures are tracked
-      // in webhookDeliveries, not surfaced to the reconciliation result.
-      await ctx.runMutation(internal.webhooks.enqueue, {
-        tenantId: tc.tenantId,
-        event: "finding.created",
-        payload: {
-          findingId: id,
-          fileId,
-          findingType: f.findingType,
-          severity: f.severity,
-          message: f.message,
-        },
-      })
-    }
-
-    await recordAudit(ctx, tc, "reconciliation.run", "file", fileId, {
-      removedOpen: removed,
-      created: insertedIds.length,
-      bySeverity: {
-        info: findings.filter((f) => f.severity === "info").length,
-        warn: findings.filter((f) => f.severity === "warn").length,
-        block: findings.filter((f) => f.severity === "block").length,
-      },
-      extractionCount: usable.length,
+    return await runReconciliationCore(ctx, tc.tenantId, fileId, {
+      kind: "user",
+      tc,
+      trigger: "manual",
     })
+  },
+})
 
-    return {
-      findings: insertedIds,
-      counts: {
-        info: findings.filter((f) => f.severity === "info").length,
-        warn: findings.filter((f) => f.severity === "warn").length,
-        block: findings.filter((f) => f.severity === "block").length,
-      },
-    }
+// Auto-trigger entry point: scheduled after a successful extraction so
+// reconciliation always reflects the latest set of extracted facts. No
+// auth context — the caller is the platform itself.
+export const runForFileAuto = internalMutation({
+  args: {
+    tenantId: v.id("tenants"),
+    fileId: v.id("files"),
+  },
+  handler: async (ctx, { tenantId, fileId }) => {
+    return await runReconciliationCore(ctx, tenantId, fileId, {
+      kind: "system",
+      trigger: "auto",
+    })
   },
 })
 
@@ -708,7 +795,8 @@ export const setStatus = mutation({
 // Resolve a mismatch by picking which involved document is authoritative.
 // The picked document and the value taken from it are persisted on the
 // finding so the decision survives re-reconciliation runs (which only wipe
-// open findings).
+// open findings). When the finding maps to a known file or party field, the
+// chosen value is also promoted to the file/party as the system of record.
 export const resolveWith = mutation({
   args: {
     findingId: v.id("reconciliationFindings"),
@@ -740,6 +828,8 @@ export const resolveWith = mutation({
       resolvedValue: value,
     })
 
+    const promoted = await promoteToGroundTruth(ctx, tc, finding, value)
+
     await recordAudit(
       ctx,
       tc,
@@ -753,6 +843,7 @@ export const resolveWith = mutation({
         chosenDocType: doc.docType,
         chosenValue: value,
         from: finding.status,
+        promoted: promoted ?? null,
       },
     )
 
@@ -765,9 +856,105 @@ export const resolveWith = mutation({
         findingType: finding.findingType,
         chosenDocumentId: documentId,
         chosenValue: value,
+        promoted: promoted ?? null,
       },
     })
 
-    return { ok: true }
+    return { ok: true, promoted }
   },
 })
+
+type Promotion = {
+  target: "file" | "party"
+  id: string
+  fields: string[]
+}
+
+// Map a resolved finding to the file/party field that should now hold the
+// authoritative value. Returns null when the finding type doesn't have a
+// canonical destination, when the value's shape is wrong for the target, or
+// when ambiguity prevents a safe write (e.g. multiple buyers on a file).
+async function promoteToGroundTruth(
+  ctx: MutationCtx,
+  tc: TenantContext,
+  finding: Doc<"reconciliationFindings">,
+  value: unknown,
+): Promise<Promotion | null> {
+  const fileId = finding.fileId
+  switch (finding.findingType) {
+    case "price_mismatch":
+    case "price_amended":
+      if (typeof value === "number" && Number.isFinite(value)) {
+        await ctx.db.patch(fileId, { purchasePrice: value })
+        return { target: "file", id: fileId, fields: ["purchasePrice"] }
+      }
+      return null
+    case "title_company_change":
+    case "title_company_set":
+      if (value && typeof value === "object") {
+        const obj = value as Record<string, unknown>
+        await ctx.db.patch(fileId, {
+          titleCompany: {
+            name: typeof obj.name === "string" ? obj.name : undefined,
+            phone: typeof obj.phone === "string" ? obj.phone : undefined,
+            selectedBy:
+              typeof obj.selectedBy === "string" ? obj.selectedBy : undefined,
+          },
+        })
+        return { target: "file", id: fileId, fields: ["titleCompany"] }
+      }
+      return null
+    case "earnest_money_refundability_change":
+      if (value && typeof value === "object") {
+        const obj = value as Record<string, unknown>
+        await ctx.db.patch(fileId, {
+          earnestMoney: {
+            amount: typeof obj.amount === "number" ? obj.amount : undefined,
+            refundable:
+              typeof obj.refundable === "boolean" ? obj.refundable : undefined,
+            depositDays:
+              typeof obj.depositDays === "number" ? obj.depositDays : undefined,
+          },
+        })
+        return { target: "file", id: fileId, fields: ["earnestMoney"] }
+      }
+      return null
+    case "closing_date_mismatch":
+      if (typeof value === "string") {
+        const ts = Date.parse(value)
+        if (!Number.isNaN(ts)) {
+          await ctx.db.patch(fileId, { targetCloseDate: ts })
+          return { target: "file", id: fileId, fields: ["targetCloseDate"] }
+        }
+      }
+      return null
+    case "financing_window_change":
+      if (typeof value === "number" && Number.isFinite(value)) {
+        await ctx.db.patch(fileId, { financingApprovalDays: value })
+        return { target: "file", id: fileId, fields: ["financingApprovalDays"] }
+      }
+      return null
+    case "party_name_mismatch": {
+      const rd = (finding.rawDetail ?? {}) as Record<string, unknown>
+      const role = rd.role
+      if (typeof role !== "string" || typeof value !== "string") return null
+      const trimmed = value.trim()
+      if (trimmed === "") return null
+      const fps = await ctx.db
+        .query("fileParties")
+        .withIndex("by_tenant_file", (q) =>
+          q.eq("tenantId", tc.tenantId).eq("fileId", fileId),
+        )
+        .take(50)
+      const matches = fps.filter((fp) => fp.role === role)
+      if (matches.length !== 1) return null
+      const partyId = matches[0].partyId
+      const party = await ctx.db.get(partyId)
+      if (!party || party.tenantId !== tc.tenantId) return null
+      await ctx.db.patch(partyId, { legalName: trimmed })
+      return { target: "party", id: partyId, fields: ["legalName"] }
+    }
+    default:
+      return null
+  }
+}

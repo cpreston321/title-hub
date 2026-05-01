@@ -7,6 +7,7 @@ import {
 import { internal } from "./_generated/api"
 import { requireRole, requireTenant } from "./lib/tenant"
 import { recordAudit } from "./lib/audit"
+import { fanOutNotification } from "./notifications"
 
 // Public: schedule a Claude extraction for a document attached to a file.
 export const run = mutation({
@@ -81,6 +82,27 @@ export const markSucceeded = internalMutation({
       source,
       completedAt: Date.now(),
     })
+
+    // Auto-reconcile: every successful extraction triggers a fresh run so the
+    // file's findings always reflect the latest set of extracted facts. If
+    // multiple docs land at once they each schedule, but the run is idempotent
+    // (wipes existing open findings and re-creates them).
+    await ctx.scheduler.runAfter(0, internal.reconciliation.runForFileAuto, {
+      tenantId: ext.tenantId,
+      fileId: ext.fileId,
+    })
+
+    // Notify the team. Pull doc title + file number for friendly copy.
+    const doc = await ctx.db.get(ext.documentId)
+    const file = await ctx.db.get(ext.fileId)
+    await fanOutNotification(ctx, ext.tenantId, {
+      kind: "extraction.succeeded",
+      severity: "ok",
+      title: `Extracted ${doc?.title ?? doc?.docType ?? "a document"}`,
+      body: file ? `On file ${file.fileNumber}` : undefined,
+      fileId: ext.fileId,
+      actorType: "system",
+    })
   },
 })
 
@@ -96,6 +118,17 @@ export const markFailed = internalMutation({
       status: "failed",
       errorMessage,
       completedAt: Date.now(),
+    })
+
+    const doc = await ctx.db.get(ext.documentId)
+    const file = await ctx.db.get(ext.fileId)
+    await fanOutNotification(ctx, ext.tenantId, {
+      kind: "extraction.failed",
+      severity: "warn",
+      title: `Extraction failed: ${doc?.title ?? doc?.docType ?? "document"}`,
+      body: file ? `On file ${file.fileNumber} — ${errorMessage}` : errorMessage,
+      fileId: ext.fileId,
+      actorType: "system",
     })
   },
 })

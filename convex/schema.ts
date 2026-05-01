@@ -203,6 +203,26 @@ export default defineSchema({
     openedAt: v.number(),
     targetCloseDate: v.optional(v.number()),
     closedAt: v.optional(v.number()),
+    // ── Reconciled ground truth (post-`resolveWith` system of record) ──
+    // Set by reconciliation.resolveWith when a processor picks the
+    // authoritative value. Downstream closing-doc generation reads from
+    // here, not from per-document extractions.
+    purchasePrice: v.optional(v.number()),
+    titleCompany: v.optional(
+      v.object({
+        name: v.optional(v.string()),
+        phone: v.optional(v.string()),
+        selectedBy: v.optional(v.string()),
+      }),
+    ),
+    earnestMoney: v.optional(
+      v.object({
+        amount: v.optional(v.number()),
+        refundable: v.optional(v.boolean()),
+        depositDays: v.optional(v.number()),
+      }),
+    ),
+    financingApprovalDays: v.optional(v.number()),
   })
     .index("by_tenant_filenumber", ["tenantId", "fileNumber"])
     .index("by_tenant_status", ["tenantId", "status"])
@@ -341,6 +361,79 @@ export default defineSchema({
     .index("by_tenant_status", ["tenantId", "status"])
     .index("by_tenant_endpoint", ["tenantId", "endpointId"]),
 
+  // ───── Sprint 6: integrations ────────────────────────────────
+  // One row per connected external system per tenant. `cursor` holds the
+  // adapter's opaque incremental-sync cursor; `inboundSecret` is the HMAC
+  // secret the external system uses to sign webhook callbacks back to us.
+  // Plaintext credentials never live here — `credentialsToken` resolves to
+  // an `npiSecrets` row via the existing tokenization path.
+  integrations: defineTable({
+    tenantId: v.id("tenants"),
+    kind: v.union(
+      v.literal("softpro_360"),
+      v.literal("softpro_standard"),
+      v.literal("qualia"),
+      v.literal("resware"),
+      v.literal("encompass"),
+      v.literal("mock"),
+    ),
+    name: v.string(),
+    status: v.union(
+      v.literal("active"),
+      v.literal("disabled"),
+      v.literal("error"),
+    ),
+    config: v.any(),
+    credentialsToken: v.optional(v.string()),
+    inboundSecret: v.string(),
+    cursor: v.optional(v.string()),
+    lastSyncAt: v.optional(v.number()),
+    lastSyncStatus: v.optional(
+      v.union(v.literal("succeeded"), v.literal("failed")),
+    ),
+    lastError: v.optional(v.string()),
+    filesSyncedTotal: v.number(),
+
+    // Agent-mode fields. Populated by the customer-side agent (Sprint 6
+    // Phase 2) for push-mode integrations like `softpro_standard`. Pull-mode
+    // integrations leave these untouched.
+    agentLastHeartbeatAt: v.optional(v.number()),
+    agentVersion: v.optional(v.string()),
+    agentHostname: v.optional(v.string()),
+    // Opaque cursor the agent uses to track its own DB position (e.g. SQL
+    // Server `rowversion`). Server-side we just store and echo it back.
+    agentWatermark: v.optional(v.string()),
+
+    createdAt: v.number(),
+  })
+    .index("by_tenant", ["tenantId"])
+    .index("by_tenant_kind", ["tenantId", "kind"]),
+
+  // One row per sync attempt. Drives the integration health card and acts as
+  // the audit trail for "what did the last sync actually do."
+  integrationSyncRuns: defineTable({
+    tenantId: v.id("tenants"),
+    integrationId: v.id("integrations"),
+    trigger: v.union(
+      v.literal("manual"),
+      v.literal("webhook"),
+      v.literal("cron"),
+    ),
+    status: v.union(
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+    ),
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    filesProcessed: v.number(),
+    filesUpserted: v.number(),
+    errorCount: v.number(),
+    errorSample: v.optional(v.string()),
+  })
+    .index("by_tenant_integration", ["tenantId", "integrationId"])
+    .index("by_tenant_startedAt", ["tenantId", "startedAt"]),
+
   // ───── Sprint 2: NPI tokenization ─────────────────────────────
   npiSecrets: defineTable({
     tenantId: v.id("tenants"),
@@ -377,4 +470,39 @@ export default defineSchema({
   })
     .index("by_tenant_active", ["tenantId", "status"])
     .index("by_tenant_keyRef", ["tenantId", "keyRef"]),
+
+  // Allowlist of users who can create organizations. The very first user to
+  // sign up (via the user trigger) is auto-inserted here; everyone else must
+  // be added explicitly. Non-admins are restricted to invitation-based
+  // onboarding into existing orgs.
+  systemAdmins: defineTable({
+    betterAuthUserId: v.string(),
+    addedAt: v.number(),
+    addedBy: v.optional(v.string()),    // betterAuthUserId of the granter, or "system"
+  })
+    .index("by_user", ["betterAuthUserId"]),
+
+  // Per-member notification feed. Drives the bell icon in the header.
+  // Created opportunistically off audit events worth surfacing (extraction
+  // succeeded/failed, reconciliation findings, file status changes, etc.).
+  notifications: defineTable({
+    tenantId: v.id("tenants"),
+    memberId: v.id("tenantMembers"),    // recipient
+    kind: v.string(),                   // "extraction.succeeded", etc.
+    title: v.string(),
+    body: v.optional(v.string()),
+    severity: v.optional(v.string()),   // "info" | "warn" | "block" | "ok"
+    fileId: v.optional(v.id("files")),  // primary link target
+    actorMemberId: v.optional(v.id("tenantMembers")),
+    actorType: v.optional(v.string()),
+    occurredAt: v.number(),
+    readAt: v.optional(v.number()),
+  })
+    .index("by_tenant_member_time", ["tenantId", "memberId", "occurredAt"])
+    .index("by_tenant_member_unread", [
+      "tenantId",
+      "memberId",
+      "readAt",
+      "occurredAt",
+    ]),
 })

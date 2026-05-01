@@ -131,6 +131,23 @@ export const provisionMemberFromBetterAuth = internalMutation({
 // Public queries / mutations
 // ─────────────────────────────────────────────────────────────────────
 
+// Whether the current user is a system admin (the only role allowed to
+// create new organizations). UI uses this to gate the "Create org" form.
+export const amISystemAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity) return false
+    const row = await ctx.db
+      .query("systemAdmins")
+      .withIndex("by_user", (q) =>
+        q.eq("betterAuthUserId", identity.subject),
+      )
+      .unique()
+    return !!row
+  },
+})
+
 export const listMine = query({
   args: {},
   handler: async (ctx) => {

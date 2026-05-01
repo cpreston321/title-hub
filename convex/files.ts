@@ -1,7 +1,8 @@
 import { ConvexError, v } from "convex/values"
 import { mutation, query } from "./_generated/server"
-import type { QueryCtx } from "./_generated/server"
+import type { MutationCtx, QueryCtx } from "./_generated/server"
 import type { Doc, Id } from "./_generated/dataModel"
+import { internal } from "./_generated/api"
 import { requireRole, requireTenant } from "./lib/tenant"
 import { recordAudit } from "./lib/audit"
 import { fileStatus, partyType, propertyAddress } from "./schema"
@@ -357,7 +358,128 @@ export const recordDocument = mutation({
       })
     }
 
-    return { docId }
+    // Auto-extract: as soon as the document is recorded against a file, kick
+    // off Claude extraction. Reconciliation needs an extraction per doc, so
+    // doing it implicitly removes a manual step from the workflow.
+    let extractionId: Id<"documentExtractions"> | null = null
+    if (fileId) {
+      extractionId = await scheduleExtractionFor(ctx, tc.tenantId, {
+        documentId: docId,
+        fileId,
+        storageId,
+        docType,
+      })
+      await recordAudit(ctx, tc, "extraction.requested", "file", fileId, {
+        documentId: docId,
+        extractionId,
+        docType,
+        source: "auto",
+      })
+    }
+
+    return { docId, extractionId }
+  },
+})
+
+// Cascade-delete a document: its extractions, the storage blob, and the row.
+// Caller must verify tenant + role before invoking.
+export async function deleteDocumentCascade(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  doc: Doc<"documents">,
+) {
+  const extractions = await ctx.db
+    .query("documentExtractions")
+    .withIndex("by_tenant_document", (q) =>
+      q.eq("tenantId", tenantId).eq("documentId", doc._id),
+    )
+    .collect()
+  for (const e of extractions) await ctx.db.delete(e._id)
+
+  // Best-effort delete of the storage blob; the row goes regardless so an
+  // already-cleaned-up blob doesn't leave a phantom document behind.
+  try {
+    await ctx.storage.delete(doc.storageId)
+  } catch {
+    // ignore
+  }
+
+  await ctx.db.delete(doc._id)
+  return { extractionsRemoved: extractions.length }
+}
+
+// Insert (or replace) a pending extraction row and schedule the runner.
+// Used by both the public upload flow and the CLI seed.
+export async function scheduleExtractionFor(
+  ctx: MutationCtx,
+  tenantId: Id<"tenants">,
+  args: {
+    documentId: Id<"documents">
+    fileId: Id<"files">
+    storageId: Id<"_storage">
+    docType: string
+  },
+): Promise<Id<"documentExtractions">> {
+  const prior = await ctx.db
+    .query("documentExtractions")
+    .withIndex("by_tenant_document", (q) =>
+      q.eq("tenantId", tenantId).eq("documentId", args.documentId),
+    )
+    .unique()
+  if (prior) await ctx.db.delete(prior._id)
+
+  const extractionId = await ctx.db.insert("documentExtractions", {
+    tenantId,
+    fileId: args.fileId,
+    documentId: args.documentId,
+    status: "pending",
+    source: "claude",
+    startedAt: Date.now(),
+  })
+
+  await ctx.scheduler.runAfter(0, internal.extractionsRunner.runJob, {
+    extractionId,
+    storageId: args.storageId,
+    docTypeHint: args.docType,
+  })
+
+  return extractionId
+}
+
+export const deleteDocument = mutation({
+  args: { documentId: v.id("documents") },
+  handler: async (ctx, { documentId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+
+    const doc = await ctx.db.get(documentId)
+    if (!doc || doc.tenantId !== tc.tenantId) {
+      throw new ConvexError("DOCUMENT_NOT_FOUND")
+    }
+
+    const meta = {
+      docType: doc.docType,
+      title: doc.title,
+      sizeBytes: doc.sizeBytes,
+    }
+
+    const result = await deleteDocumentCascade(ctx, tc.tenantId, doc)
+
+    // Audit on the file when there is one so it shows up in the activity feed.
+    if (doc.fileId) {
+      await recordAudit(ctx, tc, "document.deleted", "file", doc.fileId, {
+        documentId,
+        ...meta,
+        extractionsRemoved: result.extractionsRemoved,
+      })
+    } else {
+      await recordAudit(ctx, tc, "document.deleted", "document", documentId, {
+        ...meta,
+        extractionsRemoved: result.extractionsRemoved,
+      })
+    }
+
+    return { ok: true, extractionsRemoved: result.extractionsRemoved }
   },
 })
 
