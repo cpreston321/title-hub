@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react"
-import { ChevronsUpDownIcon } from "lucide-react"
+import { useMemo, useState } from 'react'
+import { ChevronsUpDownIcon } from 'lucide-react'
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import {
   Command,
   CommandEmpty,
@@ -10,16 +10,16 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command"
+} from '@/components/ui/command'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-} from "@/components/ui/popover"
-import type { Id } from "../../convex/_generated/dataModel"
+} from '@/components/ui/popover'
+import type { Id } from '../../convex/_generated/dataModel'
 
 export type CountyOption = {
-  _id: Id<"counties">
+  _id: Id<'counties'>
   name: string
   stateCode: string
 }
@@ -28,13 +28,13 @@ export function CountyCombobox({
   counties,
   value,
   onChange,
-  placeholder = "Select county...",
+  placeholder = 'Select county...',
   className,
   disabled,
 }: {
   counties: ReadonlyArray<CountyOption>
-  value: Id<"counties"> | ""
-  onChange: (id: Id<"counties">) => void
+  value: Id<'counties'> | ''
+  onChange: (id: Id<'counties'>) => void
   placeholder?: string
   className?: string
   disabled?: boolean
@@ -42,7 +42,7 @@ export function CountyCombobox({
   const [open, setOpen] = useState(false)
   const selected = useMemo(
     () => counties.find((c) => c._id === value),
-    [counties, value],
+    [counties, value]
   )
 
   return (
@@ -55,9 +55,9 @@ export function CountyCombobox({
           aria-expanded={open}
           disabled={disabled}
           className={cn(
-            "w-full justify-between font-normal",
-            !selected && "text-muted-foreground",
-            className,
+            'w-full justify-between font-normal',
+            !selected && 'text-muted-foreground',
+            className
           )}
         >
           {selected

@@ -1,34 +1,34 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router"
-import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { convexQuery } from "@convex-dev/react-query"
+import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { convexQuery } from '@convex-dev/react-query'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { AppShell } from "@/components/app-shell"
-import { authClient } from "@/lib/auth-client"
-import { api } from "../../convex/_generated/api"
+} from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { AppShell } from '@/components/app-shell'
+import { authClient } from '@/lib/auth-client'
+import { api } from '../../convex/_generated/api'
 
-export const Route = createFileRoute("/tenants")({
+export const Route = createFileRoute('/tenants')({
   head: () => ({
     meta: [
-      { title: "Workspaces · Title Hub" },
+      { title: 'Workspaces · Title Hub' },
       {
-        name: "description",
-        content: "Pick a workspace or create a new agency tenant in Title Hub.",
+        name: 'description',
+        content: 'Pick a workspace or create a new agency tenant in Title Hub.',
       },
-      { name: "robots", content: "noindex, nofollow" },
+      { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
-      throw redirect({ to: "/signin" })
+      throw redirect({ to: '/signin' })
     }
   },
   component: TenantsPage,
@@ -40,8 +40,8 @@ function TenantsPage() {
   const isAdminQ = useQuery(convexQuery(api.tenants.amISystemAdmin, {}))
   const isSystemAdmin = isAdminQ.data === true
 
-  const [slug, setSlug] = useState("")
-  const [legalName, setLegalName] = useState("")
+  const [slug, setSlug] = useState('')
+  const [legalName, setLegalName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -50,10 +50,10 @@ function TenantsPage() {
       organizationId: betterAuthOrgId,
     })
     if (res.error) {
-      setError(res.error.message ?? "Failed to switch organization")
+      setError(res.error.message ?? 'Failed to switch organization')
       return
     }
-    router.navigate({ to: "/files" })
+    router.navigate({ to: '/files' })
   }
 
   const onCreate = async (e: React.FormEvent) => {
@@ -65,9 +65,9 @@ function TenantsPage() {
         name: legalName,
         slug,
       })
-      if (res.error) throw new Error(res.error.message ?? "Failed to create")
+      if (res.error) throw new Error(res.error.message ?? 'Failed to create')
       // Better Auth sets the new org as active automatically.
-      router.navigate({ to: "/files" })
+      router.navigate({ to: '/files' })
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -97,7 +97,7 @@ function TenantsPage() {
                 >
                   <div>
                     <div className="font-medium">{m.legalName}</div>
-                    <div className="text-muted-foreground text-xs">
+                    <div className="text-xs text-muted-foreground">
                       {m.slug} · {m.role}
                     </div>
                   </div>
@@ -134,9 +134,9 @@ function TenantsPage() {
                   required
                   minLength={2}
                 />
-                {error && <p className="text-destructive text-sm">{error}</p>}
+                {error && <p className="text-sm text-destructive">{error}</p>}
                 <Button type="submit" disabled={pending}>
-                  {pending ? "Creating..." : "Create"}
+                  {pending ? 'Creating...' : 'Create'}
                 </Button>
               </form>
             </CardContent>

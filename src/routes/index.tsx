@@ -1,8 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router"
-import { useEffect, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { convexQuery } from "@convex-dev/react-query"
-import { authClient } from "@/lib/auth-client"
+import { createFileRoute, Link } from '@tanstack/react-router'
+import { useEffect, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { convexQuery } from '@convex-dev/react-query'
+import { authClient } from '@/lib/auth-client'
 import {
   ArrowRight,
   Building2,
@@ -16,26 +16,26 @@ import {
   ScrollText,
   Sparkles,
   Stamp,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { AppShell } from "@/components/app-shell"
-import { api } from "../../convex/_generated/api"
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { AppShell } from '@/components/app-shell'
+import { api } from '../../convex/_generated/api'
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute('/')({
   head: () => {
-    const title = "Title Hub — Title operations, made plain."
+    const title = 'Title Hub — Title operations, made plain.'
     const description =
-      "Title Hub is the file-of-record for title agencies: one register for every file, cross-document checks before closing, and versioned recording rules per county. Multi-tenant by construction."
+      'Title Hub is the file-of-record for title agencies: one register for every file, cross-document checks before closing, and versioned recording rules per county. Multi-tenant by construction.'
     return {
       meta: [
         { title },
-        { name: "description", content: description },
-        { property: "og:title", content: title },
-        { property: "og:description", content: description },
-        { name: "twitter:title", content: title },
-        { name: "twitter:description", content: description },
+        { name: 'description', content: description },
+        { property: 'og:title', content: title },
+        { property: 'og:description', content: description },
+        { name: 'twitter:title', content: title },
+        { name: 'twitter:description', content: description },
       ],
     }
   },
@@ -97,7 +97,7 @@ function MarketingTopNav() {
             <Link to="/signin">Sign in</Link>
           </Button>
           <Button asChild size="sm" className="gap-1.5">
-            <Link to="/signin" search={{ mode: "sign-up" }}>
+            <Link to="/signin" search={{ mode: 'sign-up' }}>
               Request access
               <ArrowRight className="size-3.5" />
             </Link>
@@ -137,7 +137,7 @@ function MarketingHero() {
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline">
-              <Link to="/signin" search={{ mode: "sign-up" }}>
+              <Link to="/signin" search={{ mode: 'sign-up' }}>
                 Request an invitation
               </Link>
             </Button>
@@ -210,10 +210,10 @@ function HeroPreview() {
 
           <ol className="flex flex-col gap-1.5">
             {[
-              { l: "Property", d: true },
-              { l: "Parties", d: true },
-              { l: "Documents", d: true },
-              { l: "Reconcile", d: false },
+              { l: 'Property', d: true },
+              { l: 'Parties', d: true },
+              { l: 'Documents', d: true },
+              { l: 'Reconcile', d: false },
             ].map((s, i) => (
               <li
                 key={s.l}
@@ -222,8 +222,8 @@ function HeroPreview() {
                 <span
                   className={`grid size-6 shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums ${
                     s.d
-                      ? "bg-[#3f7c64] text-white"
-                      : "bg-card text-muted-foreground ring-1 ring-border ring-inset"
+                      ? 'bg-[#3f7c64] text-white'
+                      : 'bg-card text-muted-foreground ring-1 ring-border ring-inset'
                   }`}
                 >
                   {s.d ? <CheckCircle2 className="size-3.5" /> : i + 1}
@@ -233,10 +233,10 @@ function HeroPreview() {
                 </span>
                 <span
                   className={`ml-auto text-xs ${
-                    s.d ? "text-[#2f5d4b]" : "text-muted-foreground"
+                    s.d ? 'text-[#2f5d4b]' : 'text-muted-foreground'
                   }`}
                 >
-                  {s.d ? "done" : "ready to run"}
+                  {s.d ? 'done' : 'ready to run'}
                 </span>
               </li>
             ))}
@@ -256,14 +256,14 @@ function PreviewStat({
   label: string
   value: string
   sub?: string
-  tone?: "plum" | "amber" | "good"
+  tone?: 'plum' | 'amber' | 'good'
 }) {
   const valueClass =
-    tone === "good"
-      ? "text-[#2f5d4b]"
-      : tone === "amber"
-        ? "text-[#7a5818]"
-        : "text-[#40233f]"
+    tone === 'good'
+      ? 'text-[#2f5d4b]'
+      : tone === 'amber'
+        ? 'text-[#7a5818]'
+        : 'text-[#40233f]'
   return (
     <div className="bg-card px-4 py-3">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -360,12 +360,12 @@ function Feature({
 
 function MarketingWorkflow() {
   const steps = [
-    { n: 1, t: "Open the file", d: "File number, county, transaction type." },
-    { n: 2, t: "Add the property", d: "Address, APN, target close date." },
-    { n: 3, t: "Add the parties", d: "Buyer, seller, lender, signers." },
-    { n: 4, t: "Upload + extract", d: "PA, counter offers, commitment." },
-    { n: 5, t: "Reconcile", d: "Resolve every blocker before drafting." },
-    { n: 6, t: "Close it out", d: "Funded, recorded, policy issued." },
+    { n: 1, t: 'Open the file', d: 'File number, county, transaction type.' },
+    { n: 2, t: 'Add the property', d: 'Address, APN, target close date.' },
+    { n: 3, t: 'Add the parties', d: 'Buyer, seller, lender, signers.' },
+    { n: 4, t: 'Upload + extract', d: 'PA, counter offers, commitment.' },
+    { n: 5, t: 'Reconcile', d: 'Resolve every blocker before drafting.' },
+    { n: 6, t: 'Close it out', d: 'Funded, recorded, policy issued.' },
   ]
   return (
     <section id="workflow" className="border-b border-border/60 py-20">
@@ -413,10 +413,10 @@ function MarketingWorkflow() {
             </Link>
           </Button>
           <span className="text-sm text-muted-foreground">
-            or{" "}
+            or{' '}
             <Link
               to="/signin"
-              search={{ mode: "sign-up" }}
+              search={{ mode: 'sign-up' }}
               className="font-medium text-[#40233f] underline underline-offset-2 hover:text-[#593157]"
             >
               request an invitation
@@ -455,8 +455,8 @@ function MarketingFooter() {
   )
 }
 
-export function BrandMark({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
-  const px = size === "sm" ? 36 : size === "lg" ? 64 : 44
+export function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
+  const px = size === 'sm' ? 36 : size === 'lg' ? 64 : 44
   return (
     <div
       className="relative grid shrink-0 place-items-center rounded-full ring-1 ring-[#40233f]/20"
@@ -514,8 +514,8 @@ function NoActiveTenantPanel({
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
-  const [slug, setSlug] = useState("")
-  const [legalName, setLegalName] = useState("")
+  const [slug, setSlug] = useState('')
+  const [legalName, setLegalName] = useState('')
   const [autoActivating, setAutoActivating] = useState(false)
   const [autoActivateTried, setAutoActivateTried] = useState(false)
 
@@ -532,7 +532,7 @@ function NoActiveTenantPanel({
         organizationId: betterAuthOrgId,
       })
       if (res.error) {
-        throw new Error(res.error.message ?? "Failed to switch organization")
+        throw new Error(res.error.message ?? 'Failed to switch organization')
       }
       await onActivated()
     } catch (err) {
@@ -558,7 +558,7 @@ function NoActiveTenantPanel({
         })
         if (res.error) {
           throw new Error(
-            res.error.message ?? "Failed to activate organization"
+            res.error.message ?? 'Failed to activate organization'
           )
         }
         await onActivated()
@@ -579,7 +579,7 @@ function NoActiveTenantPanel({
         name: legalName.trim(),
         slug: slug.trim(),
       })
-      if (res.error) throw new Error(res.error.message ?? "Failed to create")
+      if (res.error) throw new Error(res.error.message ?? 'Failed to create')
       // Better Auth sets the new org active automatically.
       await onActivated()
     } catch (err) {
@@ -599,7 +599,7 @@ function NoActiveTenantPanel({
           <Loader2 className="size-4 animate-spin" />
           {list.length === 1
             ? `Opening ${list[0]!.legalName}...`
-            : "Loading your organizations..."}
+            : 'Loading your organizations...'}
         </div>
       </div>
     )
@@ -704,7 +704,7 @@ function NoActiveTenantPanel({
               </div>
               <div>
                 <div className="text-xs font-semibold text-[#b78625]">
-                  {list.length === 0 ? "Get started" : "Or"}
+                  {list.length === 0 ? 'Get started' : 'Or'}
                 </div>
                 <h2 className="font-display text-xl font-semibold tracking-tight text-[#40233f]">
                   Create a new organization
@@ -762,9 +762,9 @@ function NoActiveTenantPanel({
               </CreateField>
               <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-2">
                 <div className="text-xs text-muted-foreground">
-                  <span className="text-[#b94f58]">*</span> required.{" "}
-                  {!legalName.trim() && "Add a legal name. "}
-                  {!slug.trim() && "Pick a slug."}
+                  <span className="text-[#b94f58]">*</span> required.{' '}
+                  {!legalName.trim() && 'Add a legal name. '}
+                  {!slug.trim() && 'Pick a slug.'}
                 </div>
                 <div className="flex gap-2">
                   {list.length > 0 && (
@@ -851,61 +851,61 @@ function WelcomeOnboarding({ tenant }: { tenant: TenantInfo }) {
 
   const me = meQ.data as { name?: string | null; email?: string | null } | null
   const firstName = (() => {
-    const n = (me?.name ?? "").trim()
+    const n = (me?.name ?? '').trim()
     if (n) return n.split(/\s+/)[0]!
-    const local = (me?.email ?? "").split("@")[0] ?? ""
+    const local = (me?.email ?? '').split('@')[0] ?? ''
     if (!local) return null
     return local.charAt(0).toUpperCase() + local.slice(1)
   })()
 
-  const isAdmin = tenant.role === "owner" || tenant.role === "admin"
+  const isAdmin = tenant.role === 'owner' || tenant.role === 'admin'
   const countyCount = counties.data?.length ?? 0
   const memberCount = members.data?.length ?? 0
 
   const steps: ReadonlyArray<Step> = [
     {
-      id: "tenant",
-      title: "Firm created",
+      id: 'tenant',
+      title: 'Firm created',
       description: tenant.legalName,
       done: true,
     },
     {
-      id: "counties",
-      title: "Add your counties",
+      id: 'counties',
+      title: 'Add your counties',
       description:
         countyCount > 0
-          ? `${countyCount} ${countyCount === 1 ? "county" : "counties"} on file.`
-          : "Seed Indiana counties so files can map to recording rules.",
+          ? `${countyCount} ${countyCount === 1 ? 'county' : 'counties'} on file.`
+          : 'Seed Indiana counties so files can map to recording rules.',
       done: countyCount > 0,
       action: isAdmin
-        ? { kind: "link", to: "/admin/rules", label: "Open recording rules" }
+        ? { kind: 'link', to: '/admin/rules', label: 'Open recording rules' }
         : null,
-      lockedReason: !isAdmin ? "Your administrator handles this." : undefined,
+      lockedReason: !isAdmin ? 'Your administrator handles this.' : undefined,
     },
     {
-      id: "team",
-      title: "Invite your team",
+      id: 'team',
+      title: 'Invite your team',
       description:
         memberCount > 1
           ? `${memberCount} on staff.`
-          : "Bring teammates in so they can work files.",
+          : 'Bring teammates in so they can work files.',
       done: memberCount > 1,
       action: isAdmin
-        ? { kind: "link", to: "/admin", label: "Send invitations" }
+        ? { kind: 'link', to: '/admin', label: 'Send invitations' }
         : null,
-      lockedReason: !isAdmin ? "Your administrator handles this." : undefined,
+      lockedReason: !isAdmin ? 'Your administrator handles this.' : undefined,
     },
     {
-      id: "first-file",
-      title: "Open your first file",
+      id: 'first-file',
+      title: 'Open your first file',
       description:
-        "A file is one transaction — opened, examined, closed, recorded, policied.",
+        'A file is one transaction — opened, examined, closed, recorded, policied.',
       done: false,
       action: {
-        kind: "link",
-        to: "/files",
+        kind: 'link',
+        to: '/files',
         search: { new: true } as const,
-        label: "New file",
+        label: 'New file',
         primary: true,
       },
     },
@@ -918,7 +918,7 @@ function WelcomeOnboarding({ tenant }: { tenant: TenantInfo }) {
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 pb-12">
       <Hero
-        greeting={firstName ? `Welcome, ${firstName}.` : "Welcome."}
+        greeting={firstName ? `Welcome, ${firstName}.` : 'Welcome.'}
         tenant={tenant}
         completed={completed}
         total={total}
@@ -944,7 +944,7 @@ type Step = {
   description: string
   done: boolean
   action?: {
-    kind: "link"
+    kind: 'link'
     to: string
     search?: Record<string, unknown>
     label: string
@@ -981,10 +981,10 @@ function Hero({
             {greeting}
           </h1>
           <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
-            Let's get{" "}
+            Let's get{' '}
             <strong className="font-medium text-[#40233f]">
               {tenant.legalName}
-            </strong>{" "}
+            </strong>{' '}
             up and running. The four steps below cover the basics — most take a
             minute or less. Skip whatever you don't need yet.
           </p>
@@ -995,7 +995,7 @@ function Hero({
             <span>
               <span className="font-numerals text-[#40233f] tabular-nums">
                 {completed}
-              </span>{" "}
+              </span>{' '}
               of {total} done
             </span>
             <span className="font-numerals tabular-nums">{progress}%</span>
@@ -1018,15 +1018,15 @@ function ChecklistRow({ index, step }: { index: number; step: Step }) {
     <li
       className={`group/row flex items-start gap-4 rounded-2xl border bg-card px-5 py-4 shadow-sm ring-1 ring-foreground/5 transition ${
         done
-          ? "border-[#3f7c64]/30"
-          : "border-border/60 hover:border-[#40233f]/40 hover:shadow-md"
+          ? 'border-[#3f7c64]/30'
+          : 'border-border/60 hover:border-[#40233f]/40 hover:shadow-md'
       }`}
     >
       <div
         className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-full ring-2 ring-card ${
           done
-            ? "bg-[#3f7c64] text-white"
-            : "bg-card text-muted-foreground ring-1 ring-border ring-inset"
+            ? 'bg-[#3f7c64] text-white'
+            : 'bg-card text-muted-foreground ring-1 ring-border ring-inset'
         }`}
       >
         {done ? (
@@ -1042,7 +1042,7 @@ function ChecklistRow({ index, step }: { index: number; step: Step }) {
         <div className="flex flex-wrap items-baseline gap-2">
           <h3
             className={`font-display text-lg font-semibold tracking-tight ${
-              done ? "text-[#2f5d4b]" : "text-[#40233f]"
+              done ? 'text-[#2f5d4b]' : 'text-[#40233f]'
             }`}
           >
             {step.title}
@@ -1061,11 +1061,11 @@ function ChecklistRow({ index, step }: { index: number; step: Step }) {
         </p>
       </div>
 
-      {!done && action && action.kind === "link" && (
+      {!done && action && action.kind === 'link' && (
         <Button
           asChild
           size="sm"
-          variant={action.primary ? "default" : "outline"}
+          variant={action.primary ? 'default' : 'outline'}
           className="shrink-0 gap-1.5"
         >
           {action.search ? (
@@ -1178,7 +1178,7 @@ function Dashboard() {
 
   const subtitle = current.data
     ? `${current.data.legalName} · ${current.data.role}`
-    : "Loading..."
+    : 'Loading...'
 
   // New users (active tenant, no files yet) see an onboarding checklist
   // instead of the empty register. Once they open their first file, or
@@ -1188,7 +1188,7 @@ function Dashboard() {
   return (
     <AppShell
       isAuthenticated
-      title={isNewTenant ? "Welcome" : "Dashboard"}
+      title={isNewTenant ? 'Welcome' : 'Dashboard'}
       subtitle={subtitle}
       actions={
         !isNewTenant && (
@@ -1219,7 +1219,7 @@ type FileRow = {
 
 function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
   const open = files.filter(
-    (f) => f.status !== "policied" && f.status !== "cancelled"
+    (f) => f.status !== 'policied' && f.status !== 'cancelled'
   )
   const closingSoon = open
     .filter(
@@ -1229,8 +1229,8 @@ function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
     )
     .sort((a, b) => (a.targetCloseDate ?? 0) - (b.targetCloseDate ?? 0))
     .slice(0, 5)
-  const cancelled = files.filter((f) => f.status === "cancelled").length
-  const inExam = open.filter((f) => f.status === "in_exam").length
+  const cancelled = files.filter((f) => f.status === 'cancelled').length
+  const inExam = open.filter((f) => f.status === 'in_exam').length
 
   const today = new Date()
   const issueNo = String(
@@ -1238,7 +1238,7 @@ function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
       (today.getTime() - new Date(today.getFullYear(), 0, 1).getTime()) /
         (7 * 24 * 3600 * 1000)
     ) + 1
-  ).padStart(2, "0")
+  ).padStart(2, '0')
 
   return (
     <div className="flex flex-col gap-10 pb-12">
@@ -1318,7 +1318,7 @@ function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
                       className="group/row grid grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 px-7 py-3 transition hover:bg-[#f9f1e5]"
                     >
                       <span className="font-numerals text-right text-xs text-muted-foreground/70 tabular-nums">
-                        {String(i + 1).padStart(3, "0")}
+                        {String(i + 1).padStart(3, '0')}
                       </span>
                       <div className="min-w-0">
                         <div className="font-numerals truncate text-sm font-medium tracking-tight text-[#2e2430] group-hover/row:text-[#40233f]">
@@ -1329,10 +1329,10 @@ function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
                         </div>
                       </div>
                       <div className="font-numerals text-xs text-muted-foreground tabular-nums">
-                        {new Date(f.openedAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "2-digit",
-                          year: "2-digit",
+                        {new Date(f.openedAt).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: '2-digit',
+                          year: '2-digit',
                         })}
                       </div>
                       <div className="font-numerals text-xsr text-muted-foreground">
@@ -1390,7 +1390,7 @@ function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
                       </div>
                     </div>
                     <span className="font-numerals text-xs text-white/40 tabular-nums">
-                      {String(i + 1).padStart(2, "0")}
+                      {String(i + 1).padStart(2, '0')}
                     </span>
                   </li>
                 ))}
@@ -1418,14 +1418,14 @@ function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
 
 type DashActor =
   | {
-      kind: "member"
+      kind: 'member'
       memberId: string
       email: string
       name: string | null
       role: string
     }
-  | { kind: "system" }
-  | { kind: "unknown"; type: string }
+  | { kind: 'system' }
+  | { kind: 'unknown'; type: string }
 
 type DashEvent = {
   _id: string
@@ -1438,32 +1438,32 @@ type DashEvent = {
 }
 
 const DASH_VERBS: Record<string, string> = {
-  "file.created": "opened a file",
-  "file.status_changed": "changed a file's status",
-  "file.party_added": "added a party",
-  "file.party_removed": "removed a party",
-  "file.updated": "updated a file",
-  "document.uploaded": "uploaded a document",
-  "document.deleted": "deleted a document",
-  "documents.deduped": "removed duplicate docs",
-  "extraction.requested": "started an extraction",
-  "extraction.succeeded": "finished an extraction",
-  "extraction.failed": "extraction failed",
-  "reconciliation.run": "ran reconciliation",
-  "reconciliation.finding_resolved": "resolved a finding",
-  "reconciliation.finding_acknowledged": "acknowledged a finding",
-  "reconciliation.finding_dismissed": "dismissed a finding",
-  "secret.issued": "issued a tokenized secret",
-  "secret.revealed": "revealed a tokenized secret",
+  'file.created': 'opened a file',
+  'file.status_changed': "changed a file's status",
+  'file.party_added': 'added a party',
+  'file.party_removed': 'removed a party',
+  'file.updated': 'updated a file',
+  'document.uploaded': 'uploaded a document',
+  'document.deleted': 'deleted a document',
+  'documents.deduped': 'removed duplicate docs',
+  'extraction.requested': 'started an extraction',
+  'extraction.succeeded': 'finished an extraction',
+  'extraction.failed': 'extraction failed',
+  'reconciliation.run': 'ran reconciliation',
+  'reconciliation.finding_resolved': 'resolved a finding',
+  'reconciliation.finding_acknowledged': 'acknowledged a finding',
+  'reconciliation.finding_dismissed': 'dismissed a finding',
+  'secret.issued': 'issued a tokenized secret',
+  'secret.revealed': 'revealed a tokenized secret',
 }
 
 function describeDashAction(action: string): string {
   return (
     DASH_VERBS[action] ??
     action
-      .split(".")
+      .split('.')
       .pop()!
-      .replace(/_/g, " ")
+      .replace(/_/g, ' ')
       .replace(/^./, (c) => c.toLowerCase())
   )
 }
@@ -1471,28 +1471,28 @@ function describeDashAction(action: string): string {
 function dashActionDetail(e: DashEvent): string | null {
   const md = (e.metadata ?? {}) as Record<string, unknown>
   switch (e.action) {
-    case "file.status_changed":
+    case 'file.status_changed':
       if (md.from && md.to) return `${md.from} → ${md.to}`
       return null
-    case "file.party_added":
-    case "file.party_removed":
-      if (typeof md.legalName === "string") return String(md.legalName)
+    case 'file.party_added':
+    case 'file.party_removed':
+      if (typeof md.legalName === 'string') return String(md.legalName)
       return null
-    case "document.uploaded":
-    case "document.deleted":
-    case "extraction.requested":
-      if (typeof md.docType === "string") return md.docType.replace(/_/g, " ")
+    case 'document.uploaded':
+    case 'document.deleted':
+    case 'extraction.requested':
+      if (typeof md.docType === 'string') return md.docType.replace(/_/g, ' ')
       return null
-    case "reconciliation.run":
-      if (md.bySeverity && typeof md.bySeverity === "object") {
+    case 'reconciliation.run':
+      if (md.bySeverity && typeof md.bySeverity === 'object') {
         const s = md.bySeverity as Record<string, number>
         const total = (s.block ?? 0) + (s.warn ?? 0) + (s.info ?? 0)
-        if (total === 0) return "all clear"
+        if (total === 0) return 'all clear'
         const parts: string[] = []
-        if (s.block) parts.push(`${s.block} blocker${s.block === 1 ? "" : "s"}`)
-        if (s.warn) parts.push(`${s.warn} warning${s.warn === 1 ? "" : "s"}`)
+        if (s.block) parts.push(`${s.block} blocker${s.block === 1 ? '' : 's'}`)
+        if (s.warn) parts.push(`${s.warn} warning${s.warn === 1 ? '' : 's'}`)
         if (s.info) parts.push(`${s.info} info`)
-        return parts.join(" · ")
+        return parts.join(' · ')
       }
       return null
     default:
@@ -1553,15 +1553,15 @@ function ActivityFeedRow({ event }: { event: DashEvent }) {
   const detail = dashActionDetail(event)
   const actor = event.actor
   const actorLabel =
-    actor?.kind === "member"
+    actor?.kind === 'member'
       ? actor.name && actor.name.trim().length > 0
         ? actor.name
         : actor.email
-      : actor?.kind === "system"
-        ? "System"
-        : "Unknown"
+      : actor?.kind === 'system'
+        ? 'System'
+        : 'Unknown'
 
-  const isFile = event.resourceType === "file"
+  const isFile = event.resourceType === 'file'
   const Wrapper = ({ children }: { children: React.ReactNode }) =>
     isFile ? (
       <Link
@@ -1581,11 +1581,11 @@ function ActivityFeedRow({ event }: { event: DashEvent }) {
         <FeedAvatar actor={actor} />
         <div className="min-w-0 flex-1">
           <div className="text-sm leading-snug text-[#2e2430]">
-            <span className="font-medium text-[#40233f]">{actorLabel}</span>{" "}
+            <span className="font-medium text-[#40233f]">{actorLabel}</span>{' '}
             <span className="text-muted-foreground">{verb}</span>
             {detail && (
               <>
-                {" — "}
+                {' — '}
                 <span className="text-foreground/80">{detail}</span>
               </>
             )}
@@ -1600,30 +1600,30 @@ function ActivityFeedRow({ event }: { event: DashEvent }) {
 }
 
 function FeedAvatar({ actor }: { actor?: DashActor }) {
-  if (actor?.kind === "system") {
+  if (actor?.kind === 'system') {
     return (
       <div className="grid size-7 shrink-0 place-items-center rounded-full bg-[#40233f] text-[#f4d48f] ring-4 ring-card">
         <Sparkles className="size-3" />
       </div>
     )
   }
-  if (actor?.kind === "member") {
-    const name = (actor.name ?? "").trim()
+  if (actor?.kind === 'member') {
+    const name = (actor.name ?? '').trim()
     const seed = name || actor.email
     const parts = name
       ? name
           .split(/\s+/)
           .slice(0, 2)
           .map((p) => p[0])
-          .join("")
+          .join('')
       : (() => {
-          const local = (actor.email.split("@")[0] ?? "").split(/[._-]+/)
-          return (local[0]?.[0] ?? "") + (local[1]?.[0] ?? "")
+          const local = (actor.email.split('@')[0] ?? '').split(/[._-]+/)
+          return (local[0]?.[0] ?? '') + (local[1]?.[0] ?? '')
         })()
     void seed
     return (
       <div className="grid size-7 shrink-0 place-items-center rounded-full border border-[#40233f]/15 bg-[#fdf6e8] text-xs font-semibold text-[#40233f] ring-4 ring-card">
-        {(parts || "··").toUpperCase()}
+        {(parts || '··').toUpperCase()}
       </div>
     )
   }
@@ -1636,9 +1636,9 @@ function FeedAvatar({ actor }: { actor?: DashActor }) {
 
 function timeAgo(ts: number): string {
   const diff = Date.now() - ts
-  if (diff < 0) return "just now"
+  if (diff < 0) return 'just now'
   const sec = Math.floor(diff / 1000)
-  if (sec < 5) return "just now"
+  if (sec < 5) return 'just now'
   if (sec < 60) return `${sec}s ago`
   const min = Math.floor(sec / 60)
   if (min < 60) return `${min}m ago`
@@ -1646,9 +1646,9 @@ function timeAgo(ts: number): string {
   if (hr < 24) return `${hr}h ago`
   const d = Math.floor(hr / 24)
   if (d < 7) return `${d}d ago`
-  return new Date(ts).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
+  return new Date(ts).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
   })
 }
 
@@ -1696,7 +1696,7 @@ function Masthead({
             Files of record
           </div>
           <div className="font-numerals text-3xl font-semibold text-[#40233f] tabular-nums md:text-4xl">
-            {String(totalFiles).padStart(4, "0")}
+            {String(totalFiles).padStart(4, '0')}
           </div>
           <div className="mt-1 text-xs text-muted-foreground">
             since inception
@@ -1716,24 +1716,24 @@ function Plaque({
   label: string
   value: number
   caption?: string
-  accent: "plum" | "sky" | "ochre" | "muted"
+  accent: 'plum' | 'sky' | 'ochre' | 'muted'
 }) {
   const accentClass =
-    accent === "plum"
-      ? "text-[#40233f]"
-      : accent === "sky"
-        ? "text-[#3f668f]"
-        : accent === "ochre"
-          ? "text-[#c9652e]"
-          : "text-muted-foreground/80"
+    accent === 'plum'
+      ? 'text-[#40233f]'
+      : accent === 'sky'
+        ? 'text-[#3f668f]'
+        : accent === 'ochre'
+          ? 'text-[#c9652e]'
+          : 'text-muted-foreground/80'
   const dotClass =
-    accent === "plum"
-      ? "bg-[#593157]"
-      : accent === "sky"
-        ? "bg-[#3f668f]"
-        : accent === "ochre"
-          ? "bg-[#c9652e]"
-          : "bg-muted-foreground/40"
+    accent === 'plum'
+      ? 'bg-[#593157]'
+      : accent === 'sky'
+        ? 'bg-[#3f668f]'
+        : accent === 'ochre'
+          ? 'bg-[#c9652e]'
+          : 'bg-muted-foreground/40'
 
   return (
     <div className="group/plaque relative bg-card px-6 py-7 transition hover:bg-[#fdfaf3]">
@@ -1744,7 +1744,7 @@ function Plaque({
       <div
         className={`mt-3 font-display text-[3.25rem] leading-[0.9] font-semibold tracking-tight tabular-nums ${accentClass}`}
       >
-        {String(value).padStart(2, "0")}
+        {String(value).padStart(2, '0')}
       </div>
       {caption && (
         <div className="mt-3 text-xs leading-snug text-muted-foreground/80">
@@ -1761,50 +1761,50 @@ function Plaque({
 
 function StatusStamp({ status }: { status: string }) {
   const tone =
-    status === "policied"
+    status === 'policied'
       ? {
-          ring: "ring-[#3f7c64]/40",
-          text: "text-[#2f5d4b]",
-          bg: "bg-[#e6f3ed]",
+          ring: 'ring-[#3f7c64]/40',
+          text: 'text-[#2f5d4b]',
+          bg: 'bg-[#e6f3ed]',
         }
-      : status === "closing"
+      : status === 'closing'
         ? {
-            ring: "ring-[#b78625]/45",
-            text: "text-[#7a5818]",
-            bg: "bg-[#f8eed7]",
+            ring: 'ring-[#b78625]/45',
+            text: 'text-[#7a5818]',
+            bg: 'bg-[#f8eed7]',
           }
-        : status === "cleared"
+        : status === 'cleared'
           ? {
-              ring: "ring-[#3f668f]/40",
-              text: "text-[#2c4a6b]",
-              bg: "bg-[#e8f0f8]",
+              ring: 'ring-[#3f668f]/40',
+              text: 'text-[#2c4a6b]',
+              bg: 'bg-[#e8f0f8]',
             }
-          : status === "in_exam"
+          : status === 'in_exam'
             ? {
-                ring: "ring-[#593157]/35",
-                text: "text-[#40233f]",
-                bg: "bg-[#f2e7f1]",
+                ring: 'ring-[#593157]/35',
+                text: 'text-[#40233f]',
+                bg: 'bg-[#f2e7f1]',
               }
-            : status === "cancelled"
+            : status === 'cancelled'
               ? {
-                  ring: "ring-[#b94f58]/45",
-                  text: "text-[#8a3942]",
-                  bg: "bg-[#fdecee]",
+                  ring: 'ring-[#b94f58]/45',
+                  text: 'text-[#8a3942]',
+                  bg: 'bg-[#fdecee]',
                 }
               : {
-                  ring: "ring-border",
-                  text: "text-muted-foreground",
-                  bg: "bg-muted",
+                  ring: 'ring-border',
+                  text: 'text-muted-foreground',
+                  bg: 'bg-muted',
                 }
 
-  const label = status.replace(/_/g, " ")
+  const label = status.replace(/_/g, ' ')
 
   return (
     <span
       className={`font-numerals inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-inset ${tone.ring} ${tone.text} ${tone.bg}`}
     >
       <span
-        className={`size-1 rounded-full ${tone.text.replace("text", "bg")}`}
+        className={`size-1 rounded-full ${tone.text.replace('text', 'bg')}`}
       />
       {label}
     </span>
@@ -1820,46 +1820,19 @@ function DayStub({ timestamp }: { timestamp: number }) {
     <div className="relative grid w-14 shrink-0 place-items-center">
       <div
         className={`flex w-full flex-col items-center rounded-md border border-white/15 bg-white/5 py-1 ${
-          overdue ? "border-[#c9652e]/60 bg-[#c9652e]/10" : ""
-        } ${today ? "border-[#f4d48f]/60 bg-[#f4d48f]/10" : ""}`}
+          overdue ? 'border-[#c9652e]/60 bg-[#c9652e]/10' : ''
+        } ${today ? 'border-[#f4d48f]/60 bg-[#f4d48f]/10' : ''}`}
       >
         <div className="text-[8px] text-white/50">
-          {d.toLocaleString("en-US", { month: "short" })}
+          {d.toLocaleString('en-US', { month: 'short' })}
         </div>
         <div className="font-display text-2xl leading-none font-semibold text-white">
           {d.getDate()}
         </div>
       </div>
       <div className="font-numerals mt-1 text-xs text-white/45 tabular-nums">
-        {overdue ? `${Math.abs(days)}d ago` : today ? "today" : `in ${days}d`}
+        {overdue ? `${Math.abs(days)}d ago` : today ? 'today' : `in ${days}d`}
       </div>
-    </div>
-  )
-}
-
-function Colophon({
-  numeral,
-  heading,
-  body,
-}: {
-  numeral: string
-  heading: string
-  body: string
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card/60 px-6 py-6 ring-1 ring-foreground/5">
-      <div className="absolute -top-3 -right-2 font-display text-[5rem] leading-none font-semibold text-[#40233f]/[0.06]">
-        {numeral}
-      </div>
-      <div className="text-xs font-medium text-[#b78625]">
-        Section {numeral}
-      </div>
-      <h3 className="mt-1.5 font-display text-xl font-semibold tracking-tight text-[#40233f]">
-        {heading}
-      </h3>
-      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-        {body}
-      </p>
     </div>
   )
 }
@@ -1896,9 +1869,9 @@ function Monogram() {
 }
 
 function longDate(d: Date) {
-  return d.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
+  return d.toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
   })
 }

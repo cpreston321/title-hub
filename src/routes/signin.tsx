@@ -1,5 +1,5 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
-import { useState } from "react"
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 import {
   ArrowLeft,
   CheckCircle2,
@@ -9,43 +9,47 @@ import {
   Mail,
   ShieldCheck,
   Sparkles,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { authClient } from "@/lib/auth-client"
-import { BrandMark } from "./index"
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { authClient } from '@/lib/auth-client'
+import { BrandMark } from './index'
 
-type AuthErrorShape = { message?: string | null; status?: number | null; code?: string | null }
+type AuthErrorShape = {
+  message?: string | null
+  status?: number | null
+  code?: string | null
+}
 type FriendlyError = {
   title: string
   body: string
-  suggestion?: "magic" | "signup" | "signin"
+  suggestion?: 'magic' | 'signup' | 'signin'
 }
 
 function friendlyAuthError(
   raw: unknown,
-  context: "sign-in" | "sign-up" | "magic" | "oauth",
+  context: 'sign-in' | 'sign-up' | 'magic' | 'oauth'
 ): FriendlyError {
-  const e = (raw && typeof raw === "object" ? raw : {}) as AuthErrorShape
-  const msg = (e.message ?? "").toString()
+  const e = (raw && typeof raw === 'object' ? raw : {}) as AuthErrorShape
+  const msg = (e.message ?? '').toString()
   const lower = msg.toLowerCase()
   const status = e.status ?? 0
-  const code = (e.code ?? "").toString().toLowerCase()
+  const code = (e.code ?? '').toString().toLowerCase()
 
   // Account already exists when signing up.
   if (
-    context === "sign-up" &&
-    (lower.includes("already") ||
-      lower.includes("exists") ||
-      code.includes("user_already_exists") ||
+    context === 'sign-up' &&
+    (lower.includes('already') ||
+      lower.includes('exists') ||
+      code.includes('user_already_exists') ||
       status === 409 ||
       status === 422)
   ) {
     return {
-      title: "An account with that email already exists.",
+      title: 'An account with that email already exists.',
       body: "Try signing in instead, or use a sign-in link if you've forgotten your password.",
-      suggestion: "signin",
+      suggestion: 'signin',
     }
   }
 
@@ -53,118 +57,119 @@ function friendlyAuthError(
   // adapter sometimes wraps it in a 500 "HTTPError". Treat both as bad
   // credentials for the sign-in flow because that's the overwhelming cause.
   if (
-    context === "sign-in" &&
+    context === 'sign-in' &&
     (status === 401 ||
       status === 500 ||
-      lower.includes("invalid") ||
-      lower.includes("password") ||
-      lower === "httperror")
+      lower.includes('invalid') ||
+      lower.includes('password') ||
+      lower === 'httperror')
   ) {
     return {
       title: "That email and password didn't match an account.",
       body: "Double-check the spelling, send yourself a one-time sign-in link, or create a new account if you haven't yet.",
-      suggestion: "magic",
+      suggestion: 'magic',
     }
   }
 
-  if (lower.includes("rate") || status === 429) {
+  if (lower.includes('rate') || status === 429) {
     return {
-      title: "Too many attempts.",
-      body: "Wait a minute and try again, or request a sign-in link.",
-      suggestion: "magic",
+      title: 'Too many attempts.',
+      body: 'Wait a minute and try again, or request a sign-in link.',
+      suggestion: 'magic',
     }
   }
 
-  if (lower.includes("network") || lower.includes("failed to fetch")) {
+  if (lower.includes('network') || lower.includes('failed to fetch')) {
     return {
       title: "We couldn't reach the server.",
-      body: "Check your connection and try again.",
+      body: 'Check your connection and try again.',
     }
   }
 
   if (
-    context === "magic" &&
-    (lower.includes("not found") || lower.includes("no user") || status === 404)
+    context === 'magic' &&
+    (lower.includes('not found') || lower.includes('no user') || status === 404)
   ) {
     return {
-      title: "No account uses that email.",
-      body: "Sign up first, then we can send you a magic link.",
-      suggestion: "signup",
+      title: 'No account uses that email.',
+      body: 'Sign up first, then we can send you a magic link.',
+      suggestion: 'signup',
     }
   }
 
   // Fallback. Show whatever the server said but keep it composed.
   return {
     title:
-      context === "sign-up"
+      context === 'sign-up'
         ? "We couldn't create your account."
-        : context === "magic"
+        : context === 'magic'
           ? "We couldn't send your sign-in link."
-          : context === "oauth"
+          : context === 'oauth'
             ? "We couldn't sign you in with that provider."
             : "We couldn't sign you in.",
     body:
-      msg && lower !== "httperror"
+      msg && lower !== 'httperror'
         ? msg
-        : "Something went wrong on our side. Try again, or use one of the alternates below.",
+        : 'Something went wrong on our side. Try again, or use one of the alternates below.',
   }
 }
 
-type SignInSearch = { mode?: "sign-in" | "sign-up" }
+type SignInSearch = { mode?: 'sign-in' | 'sign-up' }
 
-export const Route = createFileRoute("/signin")({
+export const Route = createFileRoute('/signin')({
   head: () => {
-    const title = "Sign in · Title Hub"
+    const title = 'Sign in · Title Hub'
     const description =
-      "Sign in to Title Hub to manage files, documents, and cross-document reconciliation."
+      'Sign in to Title Hub to manage files, documents, and cross-document reconciliation.'
     return {
       meta: [
         { title },
-        { name: "description", content: description },
-        { property: "og:title", content: title },
-        { property: "og:description", content: description },
-        { name: "twitter:title", content: title },
-        { name: "twitter:description", content: description },
+        { name: 'description', content: description },
+        { property: 'og:title', content: title },
+        { property: 'og:description', content: description },
+        { name: 'twitter:title', content: title },
+        { name: 'twitter:description', content: description },
       ],
     }
   },
   component: SignInPage,
   validateSearch: (raw): SignInSearch => {
     const m = (raw as Record<string, unknown>).mode
-    return m === "sign-up" || m === "sign-in" ? { mode: m } : {}
+    return m === 'sign-up' || m === 'sign-in' ? { mode: m } : {}
   },
 })
 
 function SignInPage() {
   const navigate = useNavigate()
   const search = Route.useSearch() as SignInSearch
-  const [mode, setMode] = useState<"sign-in" | "sign-up">(
-    search.mode === "sign-up" ? "sign-up" : "sign-in",
+  const [mode, setMode] = useState<'sign-in' | 'sign-up'>(
+    search.mode === 'sign-up' ? 'sign-up' : 'sign-in'
   )
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [name, setName] = useState("")
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
   const [error, setError] = useState<FriendlyError | null>(null)
   const [pending, setPending] = useState<
-    null | "primary" | "magic" | "google" | "microsoft"
+    null | 'primary' | 'magic' | 'google' | 'microsoft'
   >(null)
   const [magicSent, setMagicSent] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setPending("primary")
+    setPending('primary')
     setError(null)
-    const ctx: "sign-in" | "sign-up" = mode === "sign-up" ? "sign-up" : "sign-in"
+    const ctx: 'sign-in' | 'sign-up' =
+      mode === 'sign-up' ? 'sign-up' : 'sign-in'
     try {
       const res =
-        mode === "sign-up"
+        mode === 'sign-up'
           ? await authClient.signUp.email({ email, password, name })
           : await authClient.signIn.email({ email, password })
       if (res.error) {
         setError(friendlyAuthError(res.error, ctx))
         return
       }
-      navigate({ to: "/" })
+      navigate({ to: '/' })
     } catch (err) {
       setError(friendlyAuthError(err, ctx))
     } finally {
@@ -175,49 +180,49 @@ function SignInPage() {
   const sendMagicLink = async () => {
     if (!email.trim()) {
       setError({
-        title: "Enter your email first.",
+        title: 'Enter your email first.',
         body: "We'll send a one-time link to that address.",
       })
       return
     }
-    setPending("magic")
+    setPending('magic')
     setError(null)
     try {
       const res = await authClient.signIn.magicLink({
         email,
-        callbackURL: "/",
+        callbackURL: '/',
       })
       if (res.error) {
-        setError(friendlyAuthError(res.error, "magic"))
+        setError(friendlyAuthError(res.error, 'magic'))
         return
       }
       setMagicSent(true)
     } catch (err) {
-      setError(friendlyAuthError(err, "magic"))
+      setError(friendlyAuthError(err, 'magic'))
     } finally {
       setPending(null)
     }
   }
 
-  const oauth = async (provider: "google" | "microsoft") => {
+  const oauth = async (provider: 'google' | 'microsoft') => {
     setPending(provider)
     setError(null)
     try {
       const res = await authClient.signIn.social({
         provider,
-        callbackURL: "/",
+        callbackURL: '/',
       })
       if (res.error) {
-        setError(friendlyAuthError(res.error, "oauth"))
+        setError(friendlyAuthError(res.error, 'oauth'))
       }
     } catch (err) {
-      setError(friendlyAuthError(err, "oauth"))
+      setError(friendlyAuthError(err, 'oauth'))
     } finally {
       setPending(null)
     }
   }
 
-  const isSignUp = mode === "sign-up"
+  const isSignUp = mode === 'sign-up'
   const primaryDisabled =
     pending !== null ||
     !email.trim() ||
@@ -249,21 +254,24 @@ function SignInPage() {
 
               <div className="mt-2 lg:mt-0">
                 <div className="text-xs font-semibold text-[#b78625]">
-                  {isSignUp ? "New here" : "Welcome back"}
+                  {isSignUp ? 'New here' : 'Welcome back'}
                 </div>
-                <h1 className="font-display mt-1 text-4xl font-semibold leading-tight tracking-tight text-[#40233f]">
-                  {isSignUp ? "Create your account" : "Sign in to Title Hub"}
+                <h1 className="mt-1 font-display text-4xl leading-tight font-semibold tracking-tight text-[#40233f]">
+                  {isSignUp ? 'Create your account' : 'Sign in to Title Hub'}
                 </h1>
                 <p className="mt-2 text-sm text-muted-foreground">
                   {isSignUp
                     ? "Set up your login. We'll add you to your tenant once your invitation is approved."
-                    : "Use your email and password, a one-time link, or your work account."}
+                    : 'Use your email and password, a one-time link, or your work account.'}
                 </p>
               </div>
 
               <ModeTabs mode={mode} setMode={setMode} disabled={busy} />
 
-              <form onSubmit={handleSubmit} className="mt-5 flex flex-col gap-3">
+              <form
+                onSubmit={handleSubmit}
+                className="mt-5 flex flex-col gap-3"
+              >
                 {isSignUp && (
                   <Field label="Full name" htmlFor="signin-name" required>
                     <Input
@@ -291,7 +299,7 @@ function SignInPage() {
                   label="Password"
                   htmlFor="signin-password"
                   required
-                  hint={isSignUp ? "At least 8 characters." : undefined}
+                  hint={isSignUp ? 'At least 8 characters.' : undefined}
                 >
                   <Input
                     id="signin-password"
@@ -302,7 +310,7 @@ function SignInPage() {
                     required
                     minLength={8}
                     autoComplete={
-                      isSignUp ? "new-password" : "current-password"
+                      isSignUp ? 'new-password' : 'current-password'
                     }
                   />
                 </Field>
@@ -322,7 +330,7 @@ function SignInPage() {
                   <p className="flex items-start gap-2 rounded-md border border-[#3f7c64]/30 bg-[#e6f3ed] px-3 py-2 text-sm text-[#2f5d4b]">
                     <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
                     <span>
-                      Magic link sent. Check{" "}
+                      Magic link sent. Check{' '}
                       <span className="font-medium">{email}</span> — the link
                       lasts 10 minutes.
                     </span>
@@ -335,14 +343,14 @@ function SignInPage() {
                   disabled={primaryDisabled}
                   className="mt-1 gap-2"
                 >
-                  {pending === "primary" ? (
+                  {pending === 'primary' ? (
                     <>
                       <Loader2 className="size-4 animate-spin" />
-                      {isSignUp ? "Creating..." : "Signing in..."}
+                      {isSignUp ? 'Creating...' : 'Signing in...'}
                     </>
                   ) : (
                     <>
-                      {isSignUp ? "Create account" : "Sign in"}
+                      {isSignUp ? 'Create account' : 'Sign in'}
                       <ChevronRight className="size-4" />
                     </>
                   )}
@@ -355,21 +363,21 @@ function SignInPage() {
                 <AltButton
                   onClick={sendMagicLink}
                   disabled={busy || !email.trim()}
-                  loading={pending === "magic"}
+                  loading={pending === 'magic'}
                   icon={<Mail className="size-4" />}
                   label="Email me a sign-in link"
                 />
                 <AltButton
-                  onClick={() => oauth("google")}
+                  onClick={() => oauth('google')}
                   disabled={busy}
-                  loading={pending === "google"}
+                  loading={pending === 'google'}
                   icon={<GoogleMark />}
                   label="Continue with Google"
                 />
                 <AltButton
-                  onClick={() => oauth("microsoft")}
+                  onClick={() => oauth('microsoft')}
                   disabled={busy}
-                  loading={pending === "microsoft"}
+                  loading={pending === 'microsoft'}
                   icon={<MicrosoftMark />}
                   label="Continue with Microsoft"
                 />
@@ -378,13 +386,13 @@ function SignInPage() {
               <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
                 <button
                   type="button"
-                  onClick={() => setMode(isSignUp ? "sign-in" : "sign-up")}
+                  onClick={() => setMode(isSignUp ? 'sign-in' : 'sign-up')}
                   disabled={busy}
                   className="font-medium text-[#40233f] underline underline-offset-2 transition hover:text-[#593157] disabled:opacity-50"
                 >
                   {isSignUp
-                    ? "Already have an account? Sign in"
-                    : "Need an account? Sign up"}
+                    ? 'Already have an account? Sign in'
+                    : 'Need an account? Sign up'}
                 </button>
                 <span className="inline-flex items-center gap-1.5 text-xs">
                   <ShieldCheck className="size-3.5 text-[#3f7c64]" />
@@ -395,8 +403,8 @@ function SignInPage() {
           </div>
 
           <div className="border-t border-border/60 bg-card/40 px-6 py-4 text-xs text-muted-foreground">
-            By continuing you agree to operate within your tenant's policies
-            and the audit trail attached to every action.
+            By continuing you agree to operate within your tenant's policies and
+            the audit trail attached to every action.
           </div>
         </div>
       </div>
@@ -412,7 +420,7 @@ function BrandPanel() {
         className="pointer-events-none absolute inset-0 opacity-30"
         style={{
           backgroundImage:
-            "radial-gradient(circle at 30% 20%, rgba(244, 212, 143, 0.18), transparent 45%), radial-gradient(circle at 80% 80%, rgba(115, 64, 112, 0.45), transparent 55%)",
+            'radial-gradient(circle at 30% 20%, rgba(244, 212, 143, 0.18), transparent 45%), radial-gradient(circle at 80% 80%, rgba(115, 64, 112, 0.45), transparent 55%)',
         }}
       />
       <div
@@ -420,7 +428,7 @@ function BrandPanel() {
         className="pointer-events-none absolute inset-0 opacity-20"
         style={{
           backgroundImage:
-            "repeating-linear-gradient(to bottom, transparent 0, transparent 31px, rgba(246, 232, 217, 0.06) 31px, rgba(246, 232, 217, 0.06) 32px)",
+            'repeating-linear-gradient(to bottom, transparent 0, transparent 31px, rgba(246, 232, 217, 0.06) 31px, rgba(246, 232, 217, 0.06) 32px)',
         }}
       />
 
@@ -438,11 +446,11 @@ function BrandPanel() {
         </Link>
 
         <div className="mt-auto">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-[#f4d48f] ring-1 ring-inset ring-[#f4d48f]/30">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-[#f4d48f] ring-1 ring-[#f4d48f]/30 ring-inset">
             <Sparkles className="size-3.5" />
             Pilot · invite only
           </div>
-          <h2 className="font-display mt-5 max-w-md text-4xl font-semibold leading-[1.05] tracking-tight text-white md:text-5xl">
+          <h2 className="mt-5 max-w-md font-display text-4xl leading-[1.05] font-semibold tracking-tight text-white md:text-5xl">
             Title operations,
             <br />
             made plain.
@@ -454,10 +462,10 @@ function BrandPanel() {
 
           <ul className="mt-8 grid gap-3 text-sm text-white/85">
             {[
-              "Audit trail per file",
-              "NPI tokenized and gated by role",
-              "Reconciliation surfaces blockers before drafting",
-              "Recording rules versioned per county",
+              'Audit trail per file',
+              'NPI tokenized and gated by role',
+              'Reconciliation surfaces blockers before drafting',
+              'Recording rules versioned per county',
             ].map((line) => (
               <li key={line} className="flex items-start gap-2.5">
                 <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#f4d48f]" />
@@ -480,8 +488,8 @@ function ModeTabs({
   setMode,
   disabled,
 }: {
-  mode: "sign-in" | "sign-up"
-  setMode: (m: "sign-in" | "sign-up") => void
+  mode: 'sign-in' | 'sign-up'
+  setMode: (m: 'sign-in' | 'sign-up') => void
   disabled?: boolean
 }) {
   return (
@@ -489,7 +497,7 @@ function ModeTabs({
       role="tablist"
       className="mt-6 inline-flex items-center gap-1 rounded-full bg-card p-1 ring-1 ring-border/70"
     >
-      {(["sign-in", "sign-up"] as const).map((m) => {
+      {(['sign-in', 'sign-up'] as const).map((m) => {
         const selected = mode === m
         return (
           <button
@@ -501,11 +509,11 @@ function ModeTabs({
             onClick={() => setMode(m)}
             className={`rounded-full px-4 py-1.5 text-sm transition ${
               selected
-                ? "bg-[#40233f] text-[#f6e8d9] shadow-sm"
-                : "text-muted-foreground hover:text-[#40233f]"
+                ? 'bg-[#40233f] text-[#f6e8d9] shadow-sm'
+                : 'text-muted-foreground hover:text-[#40233f]'
             } disabled:opacity-50`}
           >
-            {m === "sign-in" ? "Sign in" : "Sign up"}
+            {m === 'sign-in' ? 'Sign in' : 'Sign up'}
           </button>
         )
       })}
@@ -565,7 +573,7 @@ function ErrorCallout({
   error: FriendlyError
   busy: boolean
   onSendMagicLink: () => void
-  onSwitchMode: (target: "sign-in" | "sign-up") => void
+  onSwitchMode: (target: 'sign-in' | 'sign-up') => void
 }) {
   return (
     <div
@@ -575,13 +583,13 @@ function ErrorCallout({
       <div className="flex items-start gap-2">
         <CircleAlert className="mt-0.5 size-4 shrink-0" />
         <div className="min-w-0 flex-1">
-          <div className="font-medium leading-snug">{error.title}</div>
+          <div className="leading-snug font-medium">{error.title}</div>
           <div className="mt-0.5 text-[#8a3942]/85">{error.body}</div>
         </div>
       </div>
       {error.suggestion && (
         <div className="flex flex-wrap gap-2 pl-6">
-          {error.suggestion === "magic" && (
+          {error.suggestion === 'magic' && (
             <button
               type="button"
               onClick={onSendMagicLink}
@@ -592,19 +600,19 @@ function ErrorCallout({
               Send me a sign-in link
             </button>
           )}
-          {error.suggestion === "signup" && (
+          {error.suggestion === 'signup' && (
             <button
               type="button"
-              onClick={() => onSwitchMode("sign-up")}
+              onClick={() => onSwitchMode('sign-up')}
               className="inline-flex items-center gap-1.5 rounded-full bg-[#40233f] px-3 py-1 text-xs font-medium text-[#f6e8d9] transition hover:bg-[#593157]"
             >
               Create an account
             </button>
           )}
-          {error.suggestion === "signin" && (
+          {error.suggestion === 'signin' && (
             <button
               type="button"
-              onClick={() => onSwitchMode("sign-in")}
+              onClick={() => onSwitchMode('sign-in')}
               className="inline-flex items-center gap-1.5 rounded-full bg-[#40233f] px-3 py-1 text-xs font-medium text-[#f6e8d9] transition hover:bg-[#593157]"
             >
               Switch to sign in

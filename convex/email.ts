@@ -1,11 +1,10 @@
-"use node"
+'use node'
 
-import { v } from "convex/values"
-import { Resend } from "resend"
-import { internalAction } from "./_generated/server"
+import { v } from 'convex/values'
+import { Resend } from 'resend'
+import { internalAction } from './_generated/server'
 
-const FROM =
-  process.env.RESEND_FROM_EMAIL ?? "Title Ops <noreply@example.com>"
+const FROM = process.env.RESEND_FROM_EMAIL ?? 'Title Ops <noreply@example.com>'
 
 let cached: Resend | null = null
 function client(): Resend | null {
@@ -28,9 +27,9 @@ export const send = internalAction({
     if (!resend) {
       // No-op fallback so local dev / tests don't require RESEND_API_KEY.
       console.warn(
-        `[email] RESEND_API_KEY not set; would have sent to=${to} subject=${subject}`,
+        `[email] RESEND_API_KEY not set; would have sent to=${to} subject=${subject}`
       )
-      return { ok: false, reason: "RESEND_API_KEY_MISSING" as const }
+      return { ok: false, reason: 'RESEND_API_KEY_MISSING' as const }
     }
     const { data, error } = await resend.emails.send({
       from: FROM,
@@ -40,8 +39,8 @@ export const send = internalAction({
       text,
     })
     if (error) {
-      console.error("[email] resend send failed", error)
-      throw new Error(error.message ?? "RESEND_SEND_FAILED")
+      console.error('[email] resend send failed', error)
+      throw new Error(error.message ?? 'RESEND_SEND_FAILED')
     }
     return { ok: true, id: data?.id ?? null }
   },
@@ -49,7 +48,7 @@ export const send = internalAction({
 
 export function verificationEmail(url: string) {
   return {
-    subject: "Verify your email",
+    subject: 'Verify your email',
     html: `<p>Click to verify your email address:</p><p><a href="${url}">Verify email</a></p>`,
     text: `Verify your email: ${url}`,
   }
@@ -57,7 +56,7 @@ export function verificationEmail(url: string) {
 
 export function passwordResetEmail(url: string) {
   return {
-    subject: "Reset your password",
+    subject: 'Reset your password',
     html: `<p>Click to reset your password:</p><p><a href="${url}">Reset password</a></p>`,
     text: `Reset your password: ${url}`,
   }
@@ -65,7 +64,7 @@ export function passwordResetEmail(url: string) {
 
 export function magicLinkEmail(url: string) {
   return {
-    subject: "Your sign-in link",
+    subject: 'Your sign-in link',
     html: `<p>Click to sign in:</p><p><a href="${url}">Sign in</a></p>`,
     text: `Sign in: ${url}`,
   }

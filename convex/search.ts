@@ -1,9 +1,9 @@
-import { v } from "convex/values"
-import { internalMutation, query } from "./_generated/server"
-import type { QueryCtx } from "./_generated/server"
-import type { TenantContext } from "./lib/tenant"
-import { requireTenant } from "./lib/tenant"
-import { buildFileSearchText } from "./files"
+import { v } from 'convex/values'
+import { internalMutation, query } from './_generated/server'
+import type { QueryCtx } from './_generated/server'
+import type { TenantContext } from './lib/tenant'
+import { requireTenant } from './lib/tenant'
+import { buildFileSearchText } from './files'
 
 const MAX_Q = 80
 const PER_GROUP = 5
@@ -28,21 +28,21 @@ export const global = query({
 
     const [fileMatches, partyMatches, findingMatches] = await Promise.all([
       ctx.db
-        .query("files")
-        .withSearchIndex("search_text", (s) =>
-          s.search("searchText", trimmed).eq("tenantId", tc.tenantId),
+        .query('files')
+        .withSearchIndex('search_text', (s) =>
+          s.search('searchText', trimmed).eq('tenantId', tc.tenantId)
         )
         .take(PER_GROUP),
       ctx.db
-        .query("parties")
-        .withSearchIndex("search_legalname", (s) =>
-          s.search("legalName", trimmed).eq("tenantId", tc.tenantId),
+        .query('parties')
+        .withSearchIndex('search_legalname', (s) =>
+          s.search('legalName', trimmed).eq('tenantId', tc.tenantId)
         )
         .take(PER_GROUP),
       ctx.db
-        .query("reconciliationFindings")
-        .withSearchIndex("search_message", (s) =>
-          s.search("message", trimmed).eq("tenantId", tc.tenantId),
+        .query('reconciliationFindings')
+        .withSearchIndex('search_message', (s) =>
+          s.search('message', trimmed).eq('tenantId', tc.tenantId)
         )
         .take(PER_GROUP),
     ])
@@ -50,9 +50,9 @@ export const global = query({
     const parties = await Promise.all(
       partyMatches.map(async (p) => {
         const fp = await ctx.db
-          .query("fileParties")
-          .withIndex("by_tenant_party", (qb) =>
-            qb.eq("tenantId", tc.tenantId).eq("partyId", p._id),
+          .query('fileParties')
+          .withIndex('by_tenant_party', (qb) =>
+            qb.eq('tenantId', tc.tenantId).eq('partyId', p._id)
           )
           .first()
         const file = fp ? await ctx.db.get(fp.fileId) : null
@@ -63,7 +63,7 @@ export const global = query({
           fileId: file?._id ?? null,
           fileNumber: file?.fileNumber ?? null,
         }
-      }),
+      })
     )
 
     const findings = await Promise.all(
@@ -78,7 +78,7 @@ export const global = query({
           message: f.message,
           status: f.status,
         }
-      }),
+      })
     )
 
     return {
@@ -101,14 +101,14 @@ export const global = query({
 export const backfillFileSearchText = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const files = await ctx.db.query("files").collect()
+    const files = await ctx.db.query('files').collect()
     const countyCache = new Map<string, string>()
     let updated = 0
     for (const f of files) {
       let countyName = countyCache.get(f.countyId)
       if (countyName === undefined) {
         const county = await ctx.db.get(f.countyId)
-        countyName = county?.name ?? ""
+        countyName = county?.name ?? ''
         countyCache.set(f.countyId, countyName)
       }
       const next = buildFileSearchText(f, countyName || null)

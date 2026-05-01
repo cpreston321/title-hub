@@ -1,8 +1,8 @@
-import { v } from "convex/values"
-import { internalAction } from "./_generated/server"
-import { internal } from "./_generated/api"
-import { getAdapter, isMockEnv } from "./integrations/registry"
-import type { FileSnapshot } from "./integrations/types"
+import { v } from 'convex/values'
+import { internalAction } from './_generated/server'
+import { internal } from './_generated/api'
+import { getAdapter, isMockEnv } from './integrations/registry'
+import type { FileSnapshot } from './integrations/types'
 
 // Bounded per-run upsert budget. Keeps a single sync run inside Convex's
 // per-action limits even when the adapter returns thousands of changed
@@ -11,7 +11,7 @@ import type { FileSnapshot } from "./integrations/types"
 const MAX_FILES_PER_RUN = 200
 
 export const runSync = internalAction({
-  args: { runId: v.id("integrationSyncRuns") },
+  args: { runId: v.id('integrationSyncRuns') },
   handler: async (ctx, { runId }) => {
     const loaded = await ctx.runQuery(internal.integrations._loadForRun, {
       runId,
@@ -23,7 +23,7 @@ export const runSync = internalAction({
     // Push-mode integrations don't run a server-side sync. Data arrives
     // via the agent endpoints; `runSync` here is a no-op that records the
     // attempt so the dashboard can flag misconfigured triggers.
-    if (adapter.mode === "push") {
+    if (adapter.mode === 'push') {
       await ctx.runMutation(internal.integrations._markRunFinished, {
         runId,
         success: false,
@@ -31,7 +31,7 @@ export const runSync = internalAction({
         filesUpserted: 0,
         errorCount: 1,
         errorSample:
-          "push-mode integration — data arrives via agent push, not server pull",
+          'push-mode integration — data arrives via agent push, not server pull',
         nextCursor: null,
       })
       return
@@ -62,7 +62,11 @@ export const runSync = internalAction({
 
     try {
       const since = loaded.lastSyncAt ?? 0
-      const list = await adapter.listChangedSince(adapterCtx, since, loaded.cursor)
+      const list = await adapter.listChangedSince(
+        adapterCtx,
+        since,
+        loaded.cursor
+      )
       nextCursor = list.nextCursor
 
       const ids = list.externalIds.slice(0, MAX_FILES_PER_RUN)
@@ -88,7 +92,7 @@ export const runSync = internalAction({
               tenantId: loaded.tenantId,
               integrationKind: loaded.kind,
               snapshot,
-            },
+            }
           )) as { fileId: string; inserted: boolean }
           if (upsert.inserted) filesUpserted++
         } catch (err) {

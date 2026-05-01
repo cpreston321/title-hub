@@ -1,7 +1,7 @@
-import type { MutationCtx } from "../_generated/server"
-import type { TenantContext } from "./tenant"
+import type { MutationCtx } from '../_generated/server'
+import type { TenantContext } from './tenant'
 
-export type ActorType = "user" | "api_key" | "system" | "webhook"
+export type ActorType = 'user' | 'api_key' | 'system' | 'webhook'
 
 export async function recordAudit(
   ctx: MutationCtx,
@@ -10,9 +10,9 @@ export async function recordAudit(
   resourceType: string,
   resourceId: string,
   metadata: Record<string, unknown> = {},
-  actorType: ActorType = "user",
+  actorType: ActorType = 'user'
 ) {
-  await ctx.db.insert("auditEvents", {
+  await ctx.db.insert('auditEvents', {
     tenantId: tc.tenantId,
     actorMemberId: tc.memberId,
     actorType,

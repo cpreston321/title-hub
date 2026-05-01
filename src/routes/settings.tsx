@@ -4,10 +4,10 @@ import {
   redirect,
   useNavigate,
   useRouter,
-} from "@tanstack/react-router"
-import { useEffect, useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { convexQuery } from "@convex-dev/react-query"
+} from '@tanstack/react-router'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { convexQuery } from '@convex-dev/react-query'
 import {
   Building2,
   Check,
@@ -16,39 +16,39 @@ import {
   LogOut,
   Mail,
   ShieldCheck,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { AppShell } from "@/components/app-shell"
-import { authClient } from "@/lib/auth-client"
-import { cn } from "@/lib/utils"
-import { api } from "../../convex/_generated/api"
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { AppShell } from '@/components/app-shell'
+import { authClient } from '@/lib/auth-client'
+import { cn } from '@/lib/utils'
+import { api } from '../../convex/_generated/api'
 
-const SECTIONS = ["profile", "organizations", "session"] as const
+const SECTIONS = ['profile', 'organizations', 'session'] as const
 type SectionKey = (typeof SECTIONS)[number]
 
 type SettingsSearch = { section?: SectionKey }
 
-export const Route = createFileRoute("/settings")({
+export const Route = createFileRoute('/settings')({
   head: () => ({
     meta: [
-      { title: "Settings · Title Hub" },
+      { title: 'Settings · Title Hub' },
       {
-        name: "description",
-        content: "Manage your profile, organizations, and active session.",
+        name: 'description',
+        content: 'Manage your profile, organizations, and active session.',
       },
-      { name: "robots", content: "noindex, nofollow" },
+      { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
-      throw redirect({ to: "/signin" })
+      throw redirect({ to: '/signin' })
     }
   },
   validateSearch: (raw): SettingsSearch => {
     const v = (raw as Record<string, unknown>).section
-    return typeof v === "string" && (SECTIONS as readonly string[]).includes(v)
+    return typeof v === 'string' && (SECTIONS as readonly string[]).includes(v)
       ? { section: v as SectionKey }
       : {}
   },
@@ -67,7 +67,7 @@ function SettingsPage() {
   const router = useRouter()
   const navigate = useNavigate()
   const search = Route.useSearch() as SettingsSearch
-  const section: SectionKey = search.section ?? "profile"
+  const section: SectionKey = search.section ?? 'profile'
 
   const session = authClient.useSession()
   const memberships = useQuery(convexQuery(api.tenants.listMine, {}))
@@ -87,19 +87,23 @@ function SettingsPage() {
 
   const onSignOut = async () => {
     await authClient.signOut()
-    router.navigate({ to: "/signin" })
+    router.navigate({ to: '/signin' })
   }
 
   const goto = (s: SectionKey) =>
-    navigate({ to: "/settings", search: s === "profile" ? {} : { section: s } })
+    navigate({ to: '/settings', search: s === 'profile' ? {} : { section: s } })
 
   return (
-    <AppShell isAuthenticated title="Settings" subtitle="Account, organizations, and session.">
+    <AppShell
+      isAuthenticated
+      title="Settings"
+      subtitle="Account, organizations, and session."
+    >
       <div className="grid gap-10 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <IdentityHero
-            name={user?.name ?? ""}
-            email={user?.email ?? ""}
+            name={user?.name ?? ''}
+            email={user?.email ?? ''}
             verified={user?.emailVerified ?? false}
             memberSince={user?.createdAt}
             activeOrg={activeOrg}
@@ -108,21 +112,21 @@ function SettingsPage() {
         </aside>
 
         <main className="min-w-0">
-          {section === "profile" && (
+          {section === 'profile' && (
             <ProfileSection
-              name={user?.name ?? ""}
-              email={user?.email ?? ""}
+              name={user?.name ?? ''}
+              email={user?.email ?? ''}
               verified={user?.emailVerified ?? false}
               loading={session.isPending}
             />
           )}
-          {section === "organizations" && (
+          {section === 'organizations' && (
             <OrganizationsSection
               memberships={list}
               activeTenantId={activeTenantId}
             />
           )}
-          {section === "session" && <SessionSection onSignOut={onSignOut} />}
+          {section === 'session' && <SessionSection onSignOut={onSignOut} />}
         </main>
       </div>
     </AppShell>
@@ -144,16 +148,16 @@ function IdentityHero({
   memberSince?: string | number | Date
   activeOrg: Membership | null
 }) {
-  const monogram = useMemo(() => initials(name || email || "?"), [name, email])
+  const monogram = useMemo(() => initials(name || email || '?'), [name, email])
   const since = memberSince ? new Date(memberSince) : null
 
   return (
     <div className="relative mb-6 overflow-hidden rounded-3xl border border-border/60 bg-card/70 p-6 shadow-[0_1px_0_rgba(0,0,0,0.02),0_24px_48px_-32px_rgba(64,35,63,0.25)]">
       <div
-        className="pointer-events-none absolute -right-16 -top-20 size-48 rounded-full opacity-70 blur-3xl"
+        className="pointer-events-none absolute -top-20 -right-16 size-48 rounded-full opacity-70 blur-3xl"
         style={{
           background:
-            "radial-gradient(closest-side, rgba(183,134,37,0.35), transparent 70%)",
+            'radial-gradient(closest-side, rgba(183,134,37,0.35), transparent 70%)',
         }}
         aria-hidden
       />
@@ -161,7 +165,7 @@ function IdentityHero({
         className="pointer-events-none absolute inset-x-0 top-0 h-px"
         style={{
           background:
-            "linear-gradient(90deg, transparent, rgba(64,35,63,0.35), transparent)",
+            'linear-gradient(90deg, transparent, rgba(64,35,63,0.35), transparent)',
         }}
         aria-hidden
       />
@@ -172,20 +176,20 @@ function IdentityHero({
             className="absolute -inset-2 rounded-full opacity-60 blur-xl"
             style={{
               background:
-                "radial-gradient(closest-side, rgba(183,134,37,0.45), transparent 70%)",
+                'radial-gradient(closest-side, rgba(183,134,37,0.45), transparent 70%)',
             }}
             aria-hidden
           />
-          <div className="relative grid size-16 place-items-center rounded-full bg-gradient-to-br from-[#f3d08a] via-[#d6a447] to-[#8c6210] font-serif text-2xl font-semibold text-[#40233f] ring-1 ring-[#40233f]/15 shadow-inner">
+          <div className="relative grid size-16 place-items-center rounded-full bg-gradient-to-br from-[#f3d08a] via-[#d6a447] to-[#8c6210] font-serif text-2xl font-semibold text-[#40233f] shadow-inner ring-1 ring-[#40233f]/15">
             {monogram || <CircleUserRound className="size-7" />}
           </div>
         </div>
         <div className="mt-4 font-serif text-xl font-semibold tracking-tight text-[#40233f]">
-          {name || "—"}
+          {name || '—'}
         </div>
-        <div className="text-muted-foreground mt-1 inline-flex items-center gap-1.5 text-xs">
+        <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
           <Mail className="size-3" />
-          <span className="truncate">{email || "no email"}</span>
+          <span className="truncate">{email || 'no email'}</span>
           {verified && (
             <span
               className="ml-1 inline-flex items-center gap-1 rounded-full border border-[#3f7c64]/25 bg-[#3f7c64]/10 px-1.5 py-0.5 text-xs font-medium text-[#3f7c64]"
@@ -197,11 +201,11 @@ function IdentityHero({
           )}
         </div>
         {since && (
-          <div className="text-muted-foreground/70 mt-3 text-xs">
-            Member since{" "}
+          <div className="mt-3 text-xs text-muted-foreground/70">
+            Member since{' '}
             {since.toLocaleDateString(undefined, {
-              month: "long",
-              year: "numeric",
+              month: 'long',
+              year: 'numeric',
             })}
           </div>
         )}
@@ -213,11 +217,11 @@ function IdentityHero({
             className="my-5 h-px"
             style={{
               background:
-                "linear-gradient(90deg, transparent, rgba(64,35,63,0.18), transparent)",
+                'linear-gradient(90deg, transparent, rgba(64,35,63,0.18), transparent)',
             }}
           />
           <div className="relative">
-            <div className="text-muted-foreground/80 mb-1.5 text-xs font-medium">
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground/80">
               Active organization
             </div>
             <div className="flex items-center gap-2.5">
@@ -228,7 +232,7 @@ function IdentityHero({
                 <div className="truncate text-sm font-medium">
                   {activeOrg.legalName}
                 </div>
-                <div className="text-muted-foreground truncate text-xs">
+                <div className="truncate text-xs text-muted-foreground">
                   {activeOrg.slug} · <RoleLabel role={activeOrg.role} />
                 </div>
               </div>
@@ -254,22 +258,22 @@ function SettingsNav({
     hint: string
   }> = [
     {
-      key: "profile",
-      label: "Profile",
+      key: 'profile',
+      label: 'Profile',
       icon: <CircleUserRound className="size-4" />,
-      hint: "Name, email",
+      hint: 'Name, email',
     },
     {
-      key: "organizations",
-      label: "Organizations",
+      key: 'organizations',
+      label: 'Organizations',
       icon: <Building2 className="size-4" />,
-      hint: "Switch · roles",
+      hint: 'Switch · roles',
     },
     {
-      key: "session",
-      label: "Session",
+      key: 'session',
+      label: 'Session',
       icon: <KeyRound className="size-4" />,
-      hint: "Sign out",
+      hint: 'Sign out',
     },
   ]
   return (
@@ -282,18 +286,18 @@ function SettingsNav({
             type="button"
             variant="ghost"
             onClick={() => onSelect(it.key)}
-            aria-current={active ? "page" : undefined}
+            aria-current={active ? 'page' : undefined}
             className={cn(
-              "group/navitem relative h-auto w-full justify-start gap-3 whitespace-normal rounded-2xl px-4 py-2.5 text-left font-normal transition-all",
+              'group/navitem relative h-auto w-full justify-start gap-3 rounded-2xl px-4 py-2.5 text-left font-normal whitespace-normal transition-all',
               active
-                ? "bg-[#40233f]/[0.10] text-foreground shadow-[inset_0_0_0_1px_rgba(64,35,63,0.08)] hover:bg-[#40233f]/[0.12]"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                ? 'bg-[#40233f]/[0.10] text-foreground shadow-[inset_0_0_0_1px_rgba(64,35,63,0.08)] hover:bg-[#40233f]/[0.12]'
+                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
             )}
           >
             <span
               className={cn(
-                "flex size-4 shrink-0 items-center justify-center transition-colors",
-                active ? "text-[#b78625]" : "",
+                'flex size-4 shrink-0 items-center justify-center transition-colors',
+                active ? 'text-[#b78625]' : ''
               )}
             >
               {it.icon}
@@ -301,22 +305,22 @@ function SettingsNav({
             <span className="flex flex-1 flex-col leading-tight">
               <span
                 className={cn(
-                  "text-sm transition-colors",
-                  active ? "font-medium text-foreground" : "font-medium",
+                  'text-sm transition-colors',
+                  active ? 'font-medium text-foreground' : 'font-medium'
                 )}
               >
                 {it.label}
               </span>
-              <span className="text-muted-foreground/70 text-xs">
+              <span className="text-xs text-muted-foreground/70">
                 {it.hint}
               </span>
             </span>
             <span
               className={cn(
-                "ml-auto size-1.5 shrink-0 rounded-full transition-all",
+                'ml-auto size-1.5 shrink-0 rounded-full transition-all',
                 active
-                  ? "bg-[#b78625] shadow-[0_0_0_3px_rgba(183,134,37,0.18)]"
-                  : "bg-transparent",
+                  ? 'bg-[#b78625] shadow-[0_0_0_3px_rgba(183,134,37,0.18)]'
+                  : 'bg-transparent'
               )}
               aria-hidden
             />
@@ -340,21 +344,19 @@ function SectionHeader({
 }) {
   return (
     <header className="mb-8">
-      <div className="text-[#b78625] text-xs font-medium">
-        {eyebrow}
-      </div>
-      <h2 className="text-[#40233f] mt-1.5 font-serif text-3xl font-semibold tracking-tight">
+      <div className="text-xs font-medium text-[#b78625]">{eyebrow}</div>
+      <h2 className="mt-1.5 font-serif text-3xl font-semibold tracking-tight text-[#40233f]">
         {title}
       </h2>
       <div
         className="mt-3 h-px w-12"
         style={{
           background:
-            "linear-gradient(90deg, #b78625 0%, rgba(183,134,37,0.1) 100%)",
+            'linear-gradient(90deg, #b78625 0%, rgba(183,134,37,0.1) 100%)',
         }}
       />
       {description && (
-        <p className="text-muted-foreground mt-4 max-w-prose text-sm leading-relaxed">
+        <p className="mt-4 max-w-prose text-sm leading-relaxed text-muted-foreground">
           {description}
         </p>
       )}
@@ -430,8 +432,8 @@ function ProfileSection({
           label="Email"
           hint={
             verified
-              ? "Verified. Used for sign-in, magic links, and notifications."
-              : "Unverified. Check your inbox for a confirmation."
+              ? 'Verified. Used for sign-in, magic links, and notifications.'
+              : 'Unverified. Check your inbox for a confirmation.'
           }
         >
           <div className="flex items-center gap-2">
@@ -443,14 +445,14 @@ function ProfileSection({
             />
             <span
               className={cn(
-                "inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                'inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium',
                 verified
-                  ? "border border-[#3f7c64]/25 bg-[#3f7c64]/10 text-[#3f7c64]"
-                  : "border border-[#c9652e]/30 bg-[#c9652e]/10 text-[#a4501f]",
+                  ? 'border border-[#3f7c64]/25 bg-[#3f7c64]/10 text-[#3f7c64]'
+                  : 'border border-[#c9652e]/30 bg-[#c9652e]/10 text-[#a4501f]'
               )}
             >
               {verified ? <ShieldCheck className="size-3" /> : null}
-              {verified ? "Verified" : "Unverified"}
+              {verified ? 'Verified' : 'Unverified'}
             </span>
           </div>
         </FieldRow>
@@ -458,21 +460,17 @@ function ProfileSection({
         <Divider />
 
         <div className="flex items-center justify-between gap-3">
-          <div className="text-muted-foreground text-xs">
+          <div className="text-xs text-muted-foreground">
             {error && <span className="text-destructive">{error}</span>}
-            {saved && !error && (
-              <span className="text-[#3f7c64]">Saved.</span>
-            )}
-            {!error && !saved && dirty && (
-              <span>Unsaved changes.</span>
-            )}
+            {saved && !error && <span className="text-[#3f7c64]">Saved.</span>}
+            {!error && !saved && dirty && <span>Unsaved changes.</span>}
           </div>
           <Button
             type="submit"
             disabled={pending || !dirty || !draft.trim()}
             className="rounded-xl"
           >
-            {pending ? "Saving..." : "Save changes"}
+            {pending ? 'Saving...' : 'Save changes'}
           </Button>
         </div>
       </form>
@@ -498,7 +496,7 @@ function OrganizationsSection({
         organizationId: orgId,
       })
       if (res.error)
-        throw new Error(res.error.message ?? "Failed to switch organization.")
+        throw new Error(res.error.message ?? 'Failed to switch organization.')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -515,23 +513,16 @@ function OrganizationsSection({
       />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-muted-foreground inline-flex items-center gap-2 text-xs">
+        <div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
           <span
-            className="grid size-5 place-items-center rounded-full bg-[#40233f]/[0.06] font-medium text-xs text-[#40233f]"
+            className="grid size-5 place-items-center rounded-full bg-[#40233f]/[0.06] text-xs font-medium text-[#40233f]"
             aria-hidden
           >
             {memberships.length}
           </span>
-          <span>
-            {memberships.length === 1 ? "membership" : "memberships"}
-          </span>
+          <span>{memberships.length === 1 ? 'membership' : 'memberships'}</span>
         </div>
-        <Button
-          asChild
-          variant="outline"
-          size="sm"
-          className="rounded-xl"
-        >
+        <Button asChild variant="outline" size="sm" className="rounded-xl">
           <Link to="/tenants">+ New organization</Link>
         </Button>
       </div>
@@ -550,7 +541,7 @@ function OrganizationsSection({
           <div className="mt-3 font-serif text-lg text-[#40233f]">
             No organizations yet
           </div>
-          <p className="text-muted-foreground mx-auto mt-1 max-w-sm text-sm">
+          <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
             Create your first organization to start opening files and inviting
             teammates.
           </p>
@@ -566,12 +557,12 @@ function OrganizationsSection({
               <li
                 key={m.tenantId}
                 className={cn(
-                  "group/orgrow relative flex flex-wrap items-center gap-4 rounded-2xl border bg-card/60 px-4 py-3 transition-all",
+                  'group/orgrow relative flex flex-wrap items-center gap-4 rounded-2xl border bg-card/60 px-4 py-3 transition-all',
                   isActive
-                    ? "border-[#40233f]/15 bg-[#40233f]/[0.04] shadow-[inset_0_0_0_1px_rgba(64,35,63,0.06)]"
-                    : "border-border/60 hover:border-border hover:shadow-[0_1px_0_rgba(0,0,0,0.02),0_18px_36px_-28px_rgba(64,35,63,0.18)]",
+                    ? 'border-[#40233f]/15 bg-[#40233f]/[0.04] shadow-[inset_0_0_0_1px_rgba(64,35,63,0.06)]'
+                    : 'border-border/60 hover:border-border hover:shadow-[0_1px_0_rgba(0,0,0,0.02),0_18px_36px_-28px_rgba(64,35,63,0.18)]'
                 )}
-                aria-current={isActive ? "true" : undefined}
+                aria-current={isActive ? 'true' : undefined}
               >
                 <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#40233f] font-serif text-sm font-semibold text-[#f3d08a] ring-1 ring-[#40233f]/40">
                   {initials(m.legalName)}
@@ -580,7 +571,7 @@ function OrganizationsSection({
                   <div className="truncate font-medium text-[#40233f]">
                     {m.legalName}
                   </div>
-                  <div className="text-muted-foreground mt-0.5 inline-flex items-center gap-2 text-xs">
+                  <div className="mt-0.5 inline-flex items-center gap-2 text-xs text-muted-foreground">
                     <span className="font-mono text-xs">{m.slug}</span>
                     <span aria-hidden>·</span>
                     <RolePill role={m.role} />
@@ -594,11 +585,11 @@ function OrganizationsSection({
                     disabled={pending !== null}
                     className="rounded-xl"
                   >
-                    {pending === m.betterAuthOrgId ? "Switching..." : "Switch"}
+                    {pending === m.betterAuthOrgId ? 'Switching...' : 'Switch'}
                   </Button>
                 ) : (
                   <span
-                    className="ml-auto mr-2 size-1.5 shrink-0 rounded-full bg-[#b78625] shadow-[0_0_0_3px_rgba(183,134,37,0.18)]"
+                    className="mr-2 ml-auto size-1.5 shrink-0 rounded-full bg-[#b78625] shadow-[0_0_0_3px_rgba(183,134,37,0.18)]"
                     aria-label="Active organization"
                     title="Active organization"
                   />
@@ -629,7 +620,7 @@ function SessionSection({ onSignOut }: { onSignOut: () => void }) {
             </div>
             <div>
               <div className="font-medium">This device</div>
-              <div className="text-muted-foreground text-xs">
+              <div className="text-xs text-muted-foreground">
                 Active session backed by a Better Auth bearer token in this
                 browser.
               </div>
@@ -649,7 +640,7 @@ function SessionSection({ onSignOut }: { onSignOut: () => void }) {
             className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive"
           >
             <LogOut className="size-4" />
-            {pending ? "Signing out..." : "Sign out"}
+            {pending ? 'Signing out...' : 'Sign out'}
           </Button>
         </div>
       </div>
@@ -671,9 +662,9 @@ function FieldRow({
   return (
     <div className="grid items-start gap-3 sm:grid-cols-[200px_minmax(0,1fr)] sm:gap-8">
       <div className="pt-2">
-        <Label className="text-foreground text-sm font-medium">{label}</Label>
+        <Label className="text-sm font-medium text-foreground">{label}</Label>
         {hint && (
-          <p className="text-muted-foreground mt-1 max-w-[18rem] text-xs leading-relaxed">
+          <p className="mt-1 max-w-[18rem] text-xs leading-relaxed text-muted-foreground">
             {hint}
           </p>
         )}
@@ -689,7 +680,7 @@ function Divider() {
       className="h-px"
       style={{
         background:
-          "linear-gradient(90deg, transparent, rgba(64,35,63,0.12) 20%, rgba(64,35,63,0.12) 80%, transparent)",
+          'linear-gradient(90deg, transparent, rgba(64,35,63,0.12) 20%, rgba(64,35,63,0.12) 80%, transparent)',
       }}
     />
   )
@@ -700,40 +691,40 @@ const ROLE_TONE: Record<
   { bg: string; text: string; border: string; label: string }
 > = {
   owner: {
-    bg: "bg-[#40233f]/[0.08]",
-    text: "text-[#40233f]",
-    border: "border-[#40233f]/25",
-    label: "Owner",
+    bg: 'bg-[#40233f]/[0.08]',
+    text: 'text-[#40233f]',
+    border: 'border-[#40233f]/25',
+    label: 'Owner',
   },
   admin: {
-    bg: "bg-[#3f668f]/10",
-    text: "text-[#3f668f]",
-    border: "border-[#3f668f]/25",
-    label: "Admin",
+    bg: 'bg-[#3f668f]/10',
+    text: 'text-[#3f668f]',
+    border: 'border-[#3f668f]/25',
+    label: 'Admin',
   },
   processor: {
-    bg: "bg-[#3f7c64]/10",
-    text: "text-[#3f7c64]",
-    border: "border-[#3f7c64]/25",
-    label: "Processor",
+    bg: 'bg-[#3f7c64]/10',
+    text: 'text-[#3f7c64]',
+    border: 'border-[#3f7c64]/25',
+    label: 'Processor',
   },
   closer: {
-    bg: "bg-[#c9652e]/10",
-    text: "text-[#a4501f]",
-    border: "border-[#c9652e]/30",
-    label: "Closer",
+    bg: 'bg-[#c9652e]/10',
+    text: 'text-[#a4501f]',
+    border: 'border-[#c9652e]/30',
+    label: 'Closer',
   },
   reviewer: {
-    bg: "bg-muted",
-    text: "text-foreground",
-    border: "border-border",
-    label: "Reviewer",
+    bg: 'bg-muted',
+    text: 'text-foreground',
+    border: 'border-border',
+    label: 'Reviewer',
   },
   readonly: {
-    bg: "bg-muted",
-    text: "text-muted-foreground",
-    border: "border-border",
-    label: "Read-only",
+    bg: 'bg-muted',
+    text: 'text-muted-foreground',
+    border: 'border-border',
+    label: 'Read-only',
   },
 }
 
@@ -742,10 +733,10 @@ function RolePill({ role }: { role: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs font-medium",
+        'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs font-medium',
         tone.bg,
         tone.text,
-        tone.border,
+        tone.border
       )}
     >
       {tone.label}
@@ -762,6 +753,6 @@ function initials(name: string): string {
   return parts
     .map((p) => p[0])
     .filter(Boolean)
-    .join("")
+    .join('')
     .toUpperCase()
 }

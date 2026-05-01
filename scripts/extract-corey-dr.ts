@@ -1,21 +1,21 @@
 /**
  * Live extraction smoke test — runs the same Claude extraction the Convex
- * action does, but standalone against the PA + counter-offer PDFs in
- * data/. Useful for verifying live output matches the mock fixtures.
+ * action does, but standalone against the PA + counter-offer PDFs in data/.
+ * Useful for verifying live output matches the mock fixtures.
  *
  * Requirements:
- *   - ANTHROPIC_API_KEY set in your shell (NOT the Convex env, since this
- *     runs locally — `export ANTHROPIC_API_KEY=sk-ant-...`)
  *
- * Usage:
- *   bun scripts/extract-corey-dr.ts
- *   bun scripts/extract-corey-dr.ts --doc pa     # only the PA
- *   bun scripts/extract-corey-dr.ts --doc c1     # only the counter offer
+ * - ANTHROPIC_API_KEY set in your shell (NOT the Convex env, since this runs
+ *   locally — `export ANTHROPIC_API_KEY=sk-ant-...`)
+ *
+ * Usage: bun scripts/extract-corey-dr.ts bun scripts/extract-corey-dr.ts --doc
+ * pa # only the PA bun scripts/extract-corey-dr.ts --doc c1 # only the counter
+ * offer
  */
 
-import Anthropic from "@anthropic-ai/sdk"
-import { readFileSync } from "node:fs"
-import { resolve } from "node:path"
+import Anthropic from '@anthropic-ai/sdk'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 const SYSTEM_PROMPT = `You extract structured fields from US real-estate transaction documents: purchase agreements, counter offers, title commitments, title search reports, closing disclosures, deeds, and seller's disclosures.
 
@@ -68,13 +68,16 @@ Conventions:
 - Do not invent values. If you cannot read a field with confidence, omit it.`
 
 const FIXTURES = {
-  pa: { path: "data/PA - 3324 Corey Dr.pdf", docTypeHint: "purchase_agreement" },
-  c1: { path: "data/C1 - 3324 Corey Dr.pdf", docTypeHint: "counter_offer" },
+  pa: {
+    path: 'data/PA - 3324 Corey Dr.pdf',
+    docTypeHint: 'purchase_agreement',
+  },
+  c1: { path: 'data/C1 - 3324 Corey Dr.pdf', docTypeHint: 'counter_offer' },
 } as const
 
 function parseExtractionJson(raw: string): unknown {
   const trimmed = raw.trim()
-  if (trimmed.startsWith("{")) {
+  if (trimmed.startsWith('{')) {
     try {
       return JSON.parse(trimmed)
     } catch {
@@ -89,7 +92,7 @@ function parseExtractionJson(raw: string): unknown {
       /* fall through */
     }
   }
-  const start = trimmed.indexOf("{")
+  const start = trimmed.indexOf('{')
   if (start >= 0) {
     let depth = 0
     let inString = false
@@ -98,7 +101,7 @@ function parseExtractionJson(raw: string): unknown {
       const ch = trimmed[i]
       if (inString) {
         if (escaped) escaped = false
-        else if (ch === "\\") escaped = true
+        else if (ch === '\\') escaped = true
         else if (ch === '"') inString = false
         continue
       }
@@ -106,8 +109,8 @@ function parseExtractionJson(raw: string): unknown {
         inString = true
         continue
       }
-      if (ch === "{") depth++
-      else if (ch === "}") {
+      if (ch === '{') depth++
+      else if (ch === '}') {
         depth--
         if (depth === 0) {
           return JSON.parse(trimmed.slice(start, i + 1))
@@ -115,43 +118,43 @@ function parseExtractionJson(raw: string): unknown {
       }
     }
   }
-  throw new Error("No JSON object found in model response")
+  throw new Error('No JSON object found in model response')
 }
 
 async function extract(client: Anthropic, fixture: keyof typeof FIXTURES) {
   const { path, docTypeHint } = FIXTURES[fixture]
   const absPath = resolve(process.cwd(), path)
   const bytes = readFileSync(absPath)
-  const base64 = bytes.toString("base64")
+  const base64 = bytes.toString('base64')
 
   console.log(`\n=== ${fixture.toUpperCase()} (${path}) ===`)
   console.log(`bytes: ${bytes.length}, hint: ${docTypeHint}`)
 
   const start = Date.now()
   const response = await client.messages.create({
-    model: "claude-haiku-4-5",
+    model: 'claude-haiku-4-5',
     max_tokens: 4096,
     system: [
       {
-        type: "text",
+        type: 'text',
         text: SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
+        cache_control: { type: 'ephemeral' },
       },
     ],
     messages: [
       {
-        role: "user",
+        role: 'user',
         content: [
           {
-            type: "document",
+            type: 'document',
             source: {
-              type: "base64",
-              media_type: "application/pdf",
+              type: 'base64',
+              media_type: 'application/pdf',
               data: base64,
             },
           },
           {
-            type: "text",
+            type: 'text',
             text: `The user has classified this document as: ${docTypeHint}. Verify and extract per schema. Return JSON only.`,
           },
         ],
@@ -160,9 +163,9 @@ async function extract(client: Anthropic, fixture: keyof typeof FIXTURES) {
   })
   const elapsed = Date.now() - start
 
-  const textBlock = response.content.find((b) => b.type === "text")
-  if (!textBlock || textBlock.type !== "text") {
-    console.error("No text block in response")
+  const textBlock = response.content.find((b) => b.type === 'text')
+  if (!textBlock || textBlock.type !== 'text') {
+    console.error('No text block in response')
     return
   }
 
@@ -170,16 +173,16 @@ async function extract(client: Anthropic, fixture: keyof typeof FIXTURES) {
   console.log(
     `usage: in=${response.usage.input_tokens} out=${response.usage.output_tokens} ` +
       `cache_read=${response.usage.cache_read_input_tokens ?? 0} ` +
-      `cache_create=${response.usage.cache_creation_input_tokens ?? 0}`,
+      `cache_create=${response.usage.cache_creation_input_tokens ?? 0}`
   )
 
   try {
     const parsed = parseExtractionJson(textBlock.text)
-    console.log("\nExtracted JSON:\n")
+    console.log('\nExtracted JSON:\n')
     console.log(JSON.stringify(parsed, null, 2))
   } catch (err) {
-    console.error("Failed to parse JSON:", err)
-    console.log("\nRaw model output:\n")
+    console.error('Failed to parse JSON:', err)
+    console.log('\nRaw model output:\n')
     console.log(textBlock.text)
   }
 }
@@ -188,22 +191,24 @@ async function main() {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
     console.error(
-      "ANTHROPIC_API_KEY is not set in your shell environment. " +
-        "This script runs locally, not in Convex — set it in your terminal:\n" +
-        "  export ANTHROPIC_API_KEY=sk-ant-...",
+      'ANTHROPIC_API_KEY is not set in your shell environment. ' +
+        'This script runs locally, not in Convex — set it in your terminal:\n' +
+        '  export ANTHROPIC_API_KEY=sk-ant-...'
     )
     process.exit(1)
   }
 
   const client = new Anthropic({ apiKey })
   const args = process.argv.slice(2)
-  const docFlag = args.indexOf("--doc")
+  const docFlag = args.indexOf('--doc')
   const target =
-    docFlag >= 0 && args[docFlag + 1] ? (args[docFlag + 1] as keyof typeof FIXTURES) : "all"
+    docFlag >= 0 && args[docFlag + 1]
+      ? (args[docFlag + 1] as keyof typeof FIXTURES)
+      : 'all'
 
-  if (target === "all" || target === ("all" as typeof target)) {
-    await extract(client, "pa")
-    await extract(client, "c1")
+  if (target === 'all' || target === ('all' as typeof target)) {
+    await extract(client, 'pa')
+    await extract(client, 'c1')
   } else if (target in FIXTURES) {
     await extract(client, target)
   } else {
@@ -213,6 +218,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("Fatal:", err)
+  console.error('Fatal:', err)
   process.exit(1)
 })

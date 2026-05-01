@@ -5,15 +5,15 @@
  * node_modules/@convex-dev/better-auth/src/component/schema.ts plus the
  * organization plugin tables. Regenerate with:
  *
- *   bunx --bun @better-auth/cli generate \
- *     --config convex/betterAuth/auth.ts \
- *     --output convex/betterAuth/schema.ts
+ * bunx --bun @better-auth/cli generate\
+ * --config convex/betterAuth/auth.ts\
+ * --output convex/betterAuth/schema.ts
  *
  * Hand-edits to indexes survive regeneration only if you preserve the
  * leading-comment block; otherwise re-apply them.
  */
-import { defineSchema, defineTable } from "convex/server"
-import { v } from "convex/values"
+import { defineSchema, defineTable } from 'convex/server'
+import { v } from 'convex/values'
 
 export const tables = {
   user: defineTable({
@@ -31,11 +31,11 @@ export const tables = {
     phoneNumberVerified: v.optional(v.union(v.null(), v.boolean())),
     userId: v.optional(v.union(v.null(), v.string())),
   })
-    .index("email_name", ["email", "name"])
-    .index("name", ["name"])
-    .index("userId", ["userId"])
-    .index("username", ["username"])
-    .index("phoneNumber", ["phoneNumber"]),
+    .index('email_name', ['email', 'name'])
+    .index('name', ['name'])
+    .index('userId', ['userId'])
+    .index('username', ['username'])
+    .index('phoneNumber', ['phoneNumber']),
 
   session: defineTable({
     expiresAt: v.number(),
@@ -47,12 +47,12 @@ export const tables = {
     userId: v.string(),
     activeOrganizationId: v.optional(v.union(v.null(), v.string())),
   })
-    .index("expiresAt", ["expiresAt"])
-    .index("expiresAt_userId", ["expiresAt", "userId"])
-    .index("token", ["token"])
-    .index("userId", ["userId"])
-    .index("userId_expiresAt", ["userId", "expiresAt"])
-    .index("activeOrganizationId", ["activeOrganizationId"]),
+    .index('expiresAt', ['expiresAt'])
+    .index('expiresAt_userId', ['expiresAt', 'userId'])
+    .index('token', ['token'])
+    .index('userId', ['userId'])
+    .index('userId_expiresAt', ['userId', 'expiresAt'])
+    .index('activeOrganizationId', ['activeOrganizationId']),
 
   account: defineTable({
     accountId: v.string(),
@@ -68,10 +68,10 @@ export const tables = {
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("accountId", ["accountId"])
-    .index("accountId_providerId", ["accountId", "providerId"])
-    .index("providerId_userId", ["providerId", "userId"])
-    .index("userId", ["userId"]),
+    .index('accountId', ['accountId'])
+    .index('accountId_providerId', ['accountId', 'providerId'])
+    .index('providerId_userId', ['providerId', 'userId'])
+    .index('userId', ['userId']),
 
   verification: defineTable({
     identifier: v.string(),
@@ -80,15 +80,15 @@ export const tables = {
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("expiresAt", ["expiresAt"])
-    .index("identifier", ["identifier"]),
+    .index('expiresAt', ['expiresAt'])
+    .index('identifier', ['identifier']),
 
   twoFactor: defineTable({
     secret: v.string(),
     backupCodes: v.string(),
     userId: v.string(),
     verified: v.optional(v.union(v.null(), v.boolean())),
-  }).index("userId", ["userId"]),
+  }).index('userId', ['userId']),
 
   jwks: defineTable({
     publicKey: v.string(),
@@ -101,7 +101,7 @@ export const tables = {
     key: v.string(),
     count: v.number(),
     lastRequest: v.number(),
-  }).index("key", ["key"]),
+  }).index('key', ['key']),
 
   // ───── Organization plugin tables ────────────────────────────
   organization: defineTable({
@@ -112,8 +112,8 @@ export const tables = {
     createdAt: v.number(),
     updatedAt: v.optional(v.union(v.null(), v.number())),
   })
-    .index("slug", ["slug"])
-    .index("name", ["name"]),
+    .index('slug', ['slug'])
+    .index('name', ['name']),
 
   member: defineTable({
     organizationId: v.string(),
@@ -122,9 +122,9 @@ export const tables = {
     createdAt: v.number(),
     updatedAt: v.optional(v.union(v.null(), v.number())),
   })
-    .index("organizationId", ["organizationId"])
-    .index("userId", ["userId"])
-    .index("organizationId_userId", ["organizationId", "userId"]),
+    .index('organizationId', ['organizationId'])
+    .index('userId', ['userId'])
+    .index('organizationId_userId', ['organizationId', 'userId']),
 
   invitation: defineTable({
     email: v.optional(v.union(v.null(), v.string())),
@@ -137,8 +137,14 @@ export const tables = {
     createdAt: v.optional(v.union(v.null(), v.number())),
     updatedAt: v.optional(v.union(v.null(), v.number())),
   })
-    .index("organizationId", ["organizationId"])
-    .index("email", ["email"]),
+    .index('organizationId', ['organizationId'])
+    .index('organizationId_status', ['organizationId', 'status'])
+    .index('email', ['email'])
+    .index('email_organizationId_status', [
+      'email',
+      'organizationId',
+      'status',
+    ]),
 }
 
 const schema = defineSchema(tables)

@@ -54,21 +54,22 @@ Pricing model: a base platform fee plus per-file usage. This aligns our revenue 
 **Why this.** The eight workstreams in our internal deck are universal pain. Vesting reconciliation, intake data loss, tribal knowledge, recording readiness, fraud controls — every agency in every state has these problems. The deck wasn't written for one company; it was written for the industry.
 
 **Why now.** Three converging factors:
-- *Industry tech budgets are opening up.* Underwriter leadership is publicly committing to technology as their 2026 strategy.
-- *AI is at a useful capability threshold.* Modern LLMs are reliable enough to extract structured data from purchase agreements, vesting forms, and lender packages with confidence-scored output a human can review. Two years ago they weren't.
-- *No incumbent has the wedge.* SoftPro and Qualia are platforms, not AI workflow layers. We don't compete with them; we sit alongside them and make their data useful.
+
+- _Industry tech budgets are opening up._ Underwriter leadership is publicly committing to technology as their 2026 strategy.
+- _AI is at a useful capability threshold._ Modern LLMs are reliable enough to extract structured data from purchase agreements, vesting forms, and lender packages with confidence-scored output a human can review. Two years ago they weren't.
+- _No incumbent has the wedge._ SoftPro and Qualia are platforms, not AI workflow layers. We don't compete with them; we sit alongside them and make their data useful.
 
 ---
 
 ## 4. The market
 
-| | |
-|---|---|
-| **U.S. title insurance industry annual premiums (2025)** | ~$17B+ |
-| **ALTA member organizations (agencies, abstracters, attorneys)** | 6,000+ |
-| **Top-4 underwriter market share** | ~65% |
-| **Estimated active title agencies (sellable accounts)** | 6,000–9,000 |
-| **Average annual files per mid-market agency (estimated)** | 1,500–5,000 |
+|                                                                  |             |
+| ---------------------------------------------------------------- | ----------- |
+| **U.S. title insurance industry annual premiums (2025)**         | ~$17B+      |
+| **ALTA member organizations (agencies, abstracters, attorneys)** | 6,000+      |
+| **Top-4 underwriter market share**                               | ~65%        |
+| **Estimated active title agencies (sellable accounts)**          | 6,000–9,000 |
+| **Average annual files per mid-market agency (estimated)**       | 1,500–5,000 |
 
 **Serviceable obtainable market (5-year view, illustrative):**
 At a blended price of ~$15K/year per agency (platform + usage), 500 agencies = ~$7.5M ARR. 1,500 agencies = ~$22M ARR. The largest agencies and underwriter-tier deals carry 5–10× that ACV, so the upper end of the band is materially higher.
@@ -109,6 +110,7 @@ The phasing is deliberate: ship the most universal, lowest-configuration capabil
 ## 7. Team and capital
 
 **Founding team needed for Phase 1 (months 1–6):**
+
 - 1 founding/CTO-level engineer (multi-tenant architecture, integrations)
 - 1 full-stack engineer (product surfaces)
 - 1 product/design hybrid (workflow design, UX)
@@ -116,11 +118,13 @@ The phasing is deliberate: ship the most universal, lowest-configuration capabil
 - 0.25 founder time (sales, partnerships) — first sales is founder sales
 
 **Phase 2 (months 7–12) adds:**
+
 - 1 integrations engineer
 - 1 customer success / implementation lead
 - 1 sales lead with title industry relationships
 
 **Capital required:**
+
 - Phase 1 budget: approximately $600K–$900K (team + cloud + compliance + tooling). The wide band is honest; final number depends on hiring market and on whether we self-fund engineering from existing operations versus hiring net-new.
 - Phase 2 budget: approximately $1.5M–$2.0M, by which point we should have $150K+ in ARR and a credible path to seed/Series A if external capital makes sense.
 - Phase 3 budget depends on the underwriter conversation — if a partnership lands, we accelerate; if not, we extend Phase 2 patterns into more states.
@@ -133,12 +137,12 @@ The phasing is deliberate: ship the most universal, lowest-configuration capabil
 
 Per-file pricing in the industry typically lands in the $5–25/file range depending on capability. We model around a blended ~$15K/agency/year ACV in early years, rising as we add capabilities and as customer file volumes grow.
 
-| Year | Customers | Avg ACV | ARR | Notes |
-|---|---|---|---|---|
-| End of Y1 | 5–10 | $15K | $75–150K | Direct founder sales, regional |
-| End of Y2 | 50 | $20K | ~$1M | Multi-state; underwriter pilot |
-| End of Y3 | 200 | $25K | ~$5M | Underwriter partnership active |
-| End of Y5 | 750 | $30K | ~$22M | Multi-product, mid-market depth |
+| Year      | Customers | Avg ACV | ARR      | Notes                           |
+| --------- | --------- | ------- | -------- | ------------------------------- |
+| End of Y1 | 5–10      | $15K    | $75–150K | Direct founder sales, regional  |
+| End of Y2 | 50        | $20K    | ~$1M     | Multi-state; underwriter pilot  |
+| End of Y3 | 200       | $25K    | ~$5M     | Underwriter partnership active  |
+| End of Y5 | 750       | $30K    | ~$22M    | Multi-product, mid-market depth |
 
 Gross margin on a Convex + Better Auth + AWS stack should run 80%+ at scale. CAC is modest by SaaS standards because the industry buys peer-to-peer and through underwriters, not through paid acquisition. The economics point to a healthy vertical SaaS profile — not a winner-take-all consumer outcome, but a durable, profitable category leader within a defined industry.
 
@@ -159,9 +163,9 @@ These are estimates. They will be wrong. The point of the model is to confirm th
 
 **Risks we're not worried about:**
 
-- *Product-market fit.* We have it. Two agencies are using this daily.
-- *Convex/TanStack stack risk.* These are production-grade, SOC 2 + HIPAA, used by serious teams. Real, but bounded.
-- *Talent.* TypeScript-end-to-end on a popular stack means we can hire from a wide pool.
+- _Product-market fit._ We have it. Two agencies are using this daily.
+- _Convex/TanStack stack risk._ These are production-grade, SOC 2 + HIPAA, used by serious teams. Real, but bounded.
+- _Talent._ TypeScript-end-to-end on a popular stack means we can hire from a wide pool.
 
 ---
 
@@ -174,9 +178,10 @@ Three decisions:
 3. **Approve the customer relationship.** Easy Title and Quality Title become the platform's first two production tenants on commercial terms (a friendly rate, but real contracts). This is essential for clean accounting, clean references, and proof that even our friendliest customers are paying customers.
 
 **Decision points after that:**
-- *Month 6 go/no-go:* are we live with 3 paying agencies, with the wedge feature working in production? If yes, fund Phase 2. If no, regroup or wind down.
-- *Month 12 go/no-go:* are we at $150K+ ARR with a credible path to $1M? If yes, evaluate raising external capital to accelerate Phase 3.
-- *Month 18 underwriter checkpoint:* is at least one underwriter partnership in motion? If not, what's the alternative growth lever?
+
+- _Month 6 go/no-go:_ are we live with 3 paying agencies, with the wedge feature working in production? If yes, fund Phase 2. If no, regroup or wind down.
+- _Month 12 go/no-go:_ are we at $150K+ ARR with a credible path to $1M? If yes, evaluate raising external capital to accelerate Phase 3.
+- _Month 18 underwriter checkpoint:_ is at least one underwriter partnership in motion? If not, what's the alternative growth lever?
 
 ---
 
@@ -192,4 +197,5 @@ The areas where your judgment matters most:
 We've prepared a detailed technical design document for the engineering team and a phased product plan; both are available for any depth questions you have. This memo is intentionally short. We'd rather answer your questions live than over-write the case on paper.
 
 ---
-*End of memo.*
+
+_End of memo._

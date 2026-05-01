@@ -1,19 +1,15 @@
-import { betterAuth, type BetterAuthOptions } from "better-auth/minimal"
-import { magicLink } from "better-auth/plugins/magic-link"
-import { organization } from "better-auth/plugins/organization"
-import { createClient, type GenericCtx } from "@convex-dev/better-auth"
-import { convex } from "@convex-dev/better-auth/plugins"
-import authConfig from "./auth.config"
-import { components, internal } from "./_generated/api"
-import { query } from "./_generated/server"
-import type { DataModel } from "./_generated/dataModel"
-import type { GenericQueryCtx } from "convex/server"
-import authSchema from "./betterAuth/schema"
-import {
-  magicLinkEmail,
-  passwordResetEmail,
-  verificationEmail,
-} from "./email"
+import { betterAuth, type BetterAuthOptions } from 'better-auth/minimal'
+import { magicLink } from 'better-auth/plugins/magic-link'
+import { organization } from 'better-auth/plugins/organization'
+import { createClient, type GenericCtx } from '@convex-dev/better-auth'
+import { convex } from '@convex-dev/better-auth/plugins'
+import authConfig from './auth.config'
+import { components, internal } from './_generated/api'
+import { query } from './_generated/server'
+import type { DataModel } from './_generated/dataModel'
+import type { GenericQueryCtx } from 'convex/server'
+import authSchema from './betterAuth/schema'
+import { magicLinkEmail, passwordResetEmail, verificationEmail } from './email'
 
 const siteUrl = process.env.SITE_URL!
 
@@ -25,14 +21,14 @@ const env = (key: string) => {
 function socialProviders() {
   const out: Record<string, { clientId: string; clientSecret: string }> = {}
 
-  const googleId = env("GOOGLE_CLIENT_ID")
-  const googleSecret = env("GOOGLE_CLIENT_SECRET")
+  const googleId = env('GOOGLE_CLIENT_ID')
+  const googleSecret = env('GOOGLE_CLIENT_SECRET')
   if (googleId && googleSecret) {
     out.google = { clientId: googleId, clientSecret: googleSecret }
   }
 
-  const msId = env("MICROSOFT_CLIENT_ID")
-  const msSecret = env("MICROSOFT_CLIENT_SECRET")
+  const msId = env('MICROSOFT_CLIENT_ID')
+  const msSecret = env('MICROSOFT_CLIENT_SECRET')
   if (msId && msSecret) {
     out.microsoft = { clientId: msId, clientSecret: msSecret }
   }
@@ -46,14 +42,16 @@ function scheduleEmail(ctx: GenericCtx<DataModel>, args: EmailArgs) {
   const maybeScheduler = (ctx as { scheduler?: { runAfter: Function } })
     .scheduler
   if (!maybeScheduler) {
-    console.warn("[auth] cannot send email from query context")
+    console.warn('[auth] cannot send email from query context')
     return
   }
-  return (maybeScheduler.runAfter as (
-    ms: number,
-    ref: typeof internal.email.send,
-    args: EmailArgs,
-  ) => Promise<unknown>)(0, internal.email.send, args)
+  return (
+    maybeScheduler.runAfter as (
+      ms: number,
+      ref: typeof internal.email.send,
+      args: EmailArgs
+    ) => Promise<unknown>
+  )(0, internal.email.send, args)
 }
 
 // Provisioning is done in `convex/authTriggers.ts` which dispatches by model.
@@ -61,19 +59,19 @@ function scheduleEmail(ctx: GenericCtx<DataModel>, args: EmailArgs) {
 // needs the FunctionReference shapes to infer the component's type, but those
 // shapes transitively reference back through _generated/api.
 const triggerRefs = internal.authTriggers as unknown as {
-  onCreate: import("convex/server").FunctionReference<
-    "mutation",
-    "internal",
+  onCreate: import('convex/server').FunctionReference<
+    'mutation',
+    'internal',
     { doc: unknown; model: string }
   >
-  onUpdate: import("convex/server").FunctionReference<
-    "mutation",
-    "internal",
+  onUpdate: import('convex/server').FunctionReference<
+    'mutation',
+    'internal',
     { newDoc: unknown; oldDoc: unknown; model: string }
   >
-  onDelete: import("convex/server").FunctionReference<
-    "mutation",
-    "internal",
+  onDelete: import('convex/server').FunctionReference<
+    'mutation',
+    'internal',
     { doc: unknown; model: string }
   >
 }
@@ -91,11 +89,11 @@ export const authComponent = createClient<DataModel, typeof authSchema>(
       user: { onCreate: async () => {} },
     },
     authFunctions: triggerRefs,
-  },
+  }
 )
 
 export const createAuthOptions = (
-  ctx: GenericCtx<DataModel>,
+  ctx: GenericCtx<DataModel>
 ): BetterAuthOptions => {
   return {
     baseURL: siteUrl,
@@ -140,7 +138,7 @@ export const createAuthOptions = (
           // an existing org. See convex/authTriggers.ts for bootstrap rule.
           return await isSystemAdminUserId(
             ctx as GenericQueryCtx<DataModel>,
-            user.id,
+            user.id
           )
         },
       }),
@@ -172,13 +170,11 @@ export const getCurrentUser = query({
 // Tolerates mutation contexts as well as queries — both expose `ctx.db`.
 export async function isSystemAdminUserId(
   ctx: GenericQueryCtx<DataModel>,
-  betterAuthUserId: string,
+  betterAuthUserId: string
 ): Promise<boolean> {
   const row = await ctx.db
-    .query("systemAdmins")
-    .withIndex("by_user", (q) =>
-      q.eq("betterAuthUserId", betterAuthUserId),
-    )
+    .query('systemAdmins')
+    .withIndex('by_user', (q) => q.eq('betterAuthUserId', betterAuthUserId))
     .unique()
   return !!row
 }

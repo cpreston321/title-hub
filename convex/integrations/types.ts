@@ -14,17 +14,17 @@
 // for customers running Standard without 360 — DB read, watched-folder
 // export, or the older COM API. Different transport, different adapter.
 export type IntegrationKind =
-  | "softpro_360"
-  | "softpro_standard"
-  | "qualia"
-  | "resware"
-  | "encompass"
-  | "mock"
+  | 'softpro_360'
+  | 'softpro_standard'
+  | 'qualia'
+  | 'resware'
+  | 'encompass'
+  | 'mock'
 
 export type FileSnapshotParty = {
   role: string
   legalName: string
-  partyType: "person" | "entity" | "trust" | "estate"
+  partyType: 'person' | 'entity' | 'trust' | 'estate'
   capacity?: string
 }
 
@@ -78,7 +78,7 @@ export type ListChangedResult = {
 // "push" — a customer-side agent posts FileSnapshots to our agent
 //   endpoints. Adapter methods are not invoked by the runner. SoftPro
 //   Standard direct lives here.
-export type IntegrationMode = "pull" | "push"
+export type IntegrationMode = 'pull' | 'push'
 
 export interface Adapter {
   kind: IntegrationKind
@@ -86,7 +86,7 @@ export interface Adapter {
   // Cheap round-trip to verify creds + reachability. Never throws — adapters
   // surface failures via { ok: false, detail }.
   testConnection: (
-    ctx: AdapterContext,
+    ctx: AdapterContext
   ) => Promise<{ ok: boolean; detail?: string }>
   // Returns external file ids changed since the given timestamp. Adapters
   // may use either `since` or the prior `cursor`; the runner persists
@@ -94,11 +94,8 @@ export interface Adapter {
   listChangedSince: (
     ctx: AdapterContext,
     since: number,
-    cursor: string | null,
+    cursor: string | null
   ) => Promise<ListChangedResult>
   // Pulls a single file's full snapshot.
-  fetchFile: (
-    ctx: AdapterContext,
-    externalId: string,
-  ) => Promise<FileSnapshot>
+  fetchFile: (ctx: AdapterContext, externalId: string) => Promise<FileSnapshot>
 }

@@ -1,16 +1,17 @@
-import { ConvexError, v } from "convex/values"
-import { internalMutation, mutation, query } from "./_generated/server"
-import type { MutationCtx } from "./_generated/server"
-import { internal } from "./_generated/api"
-import type { Doc, Id } from "./_generated/dataModel"
-import { requireRole, requireTenant, type TenantContext } from "./lib/tenant"
-import { recordAudit } from "./lib/audit"
-import { normalizeLegalName, type NormalizedName } from "./lib/vesting"
-import { fanOutNotification } from "./notifications"
+import { ConvexError, v } from 'convex/values'
+import { internalMutation, mutation, query } from './_generated/server'
+import type { MutationCtx } from './_generated/server'
+import { internal } from './_generated/api'
+import type { Doc, Id } from './_generated/dataModel'
+import { requireRole, requireTenant, type TenantContext } from './lib/tenant'
+import { recordAudit } from './lib/audit'
+import { normalizeLegalName, type NormalizedName } from './lib/vesting'
+import { fanOutNotification } from './notifications'
+import { autoPromoteFileStatus } from './files'
 
-type Severity = "info" | "warn" | "block"
+type Severity = 'info' | 'warn' | 'block'
 
-const editorRoles = ["owner", "admin", "processor"] as const
+const editorRoles = ['owner', 'admin', 'processor'] as const
 
 // Shape of the LLM extraction payload we read from documentExtractions.payload.
 // Mirrors the schema in convex/extractionsRunner.ts. Kept loose (no validator)
@@ -43,25 +44,35 @@ type Pending = {
   findingType: string
   severity: Severity
   message: string
-  involvedDocumentIds: Array<Id<"documents">>
+  involvedDocumentIds: Array<Id<'documents'>>
   involvedFields: string[]
   rawDetail: Record<string, unknown>
 }
 
-const norm = (s?: string) =>
-  (s ?? "").trim().toLowerCase().replace(/\s+/g, " ")
+const norm = (s?: string) => (s ?? '').trim().toLowerCase().replace(/\s+/g, ' ')
 
 function pickLatestPrice(
-  extractions: Array<{ documentId: Id<"documents">; view: ExtractionView; uploadedAt: number }>,
-): { price: number; documentId: Id<"documents"> } | null {
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>
+): { price: number; documentId: Id<'documents'> } | null {
   // Counter offers supersede purchase agreements; otherwise newest by uploadedAt.
   const byKind = (k: string) =>
-    extractions.find((e) => e.view.documentKind === k && e.view.financial?.purchasePrice !== undefined)
-  const counter = byKind("counter_offer")
+    extractions.find(
+      (e) =>
+        e.view.documentKind === k &&
+        e.view.financial?.purchasePrice !== undefined
+    )
+  const counter = byKind('counter_offer')
   if (counter?.view.financial?.purchasePrice !== undefined) {
-    return { price: counter.view.financial.purchasePrice, documentId: counter.documentId }
+    return {
+      price: counter.view.financial.purchasePrice,
+      documentId: counter.documentId,
+    }
   }
-  const pa = byKind("purchase_agreement")
+  const pa = byKind('purchase_agreement')
   if (pa?.view.financial?.purchasePrice !== undefined) {
     return { price: pa.view.financial.purchasePrice, documentId: pa.documentId }
   }
@@ -69,33 +80,37 @@ function pickLatestPrice(
 }
 
 function comparePrices(
-  extractions: Array<{ documentId: Id<"documents">; view: ExtractionView; uploadedAt: number }>,
-  out: Pending[],
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  out: Pending[]
 ) {
   const withPrice = extractions.filter(
-    (e) => e.view.financial?.purchasePrice !== undefined,
+    (e) => e.view.financial?.purchasePrice !== undefined
   )
   if (withPrice.length < 2) return
   const distinct = new Set(
-    withPrice.map((e) => e.view.financial!.purchasePrice as number),
+    withPrice.map((e) => e.view.financial!.purchasePrice as number)
   )
   if (distinct.size <= 1) return
 
-  const pa = withPrice.find((e) => e.view.documentKind === "purchase_agreement")
-  const co = withPrice.find((e) => e.view.documentKind === "counter_offer")
+  const pa = withPrice.find((e) => e.view.documentKind === 'purchase_agreement')
+  const co = withPrice.find((e) => e.view.documentKind === 'counter_offer')
   const isAmendment = !!pa && !!co
   const latest = pickLatestPrice(withPrice)
 
   out.push({
-    findingType: isAmendment ? "price_amended" : "price_mismatch",
-    severity: isAmendment ? "warn" : "block",
+    findingType: isAmendment ? 'price_amended' : 'price_mismatch',
+    severity: isAmendment ? 'warn' : 'block',
     message: isAmendment
       ? `Counter offer amends the purchase price. Confirm $${
-          latest?.price.toLocaleString() ?? "?"
+          latest?.price.toLocaleString() ?? '?'
         } is the agreed-on amount before generating closing docs.`
       : `Purchase price differs across documents — closing docs may pull the wrong number.`,
     involvedDocumentIds: withPrice.map((e) => e.documentId),
-    involvedFields: ["financial.purchasePrice"],
+    involvedFields: ['financial.purchasePrice'],
     rawDetail: {
       values: withPrice.map((e) => ({
         documentId: e.documentId,
@@ -108,8 +123,12 @@ function comparePrices(
 }
 
 function compareTitleCompany(
-  extractions: Array<{ documentId: Id<"documents">; view: ExtractionView; uploadedAt: number }>,
-  out: Pending[],
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  out: Pending[]
 ) {
   const named = extractions.filter((e) => e.view.titleCompany?.name)
   if (named.length === 0) return
@@ -117,11 +136,11 @@ function compareTitleCompany(
   const distinct = new Set(named.map((e) => norm(e.view.titleCompany!.name)))
   if (distinct.size > 1) {
     out.push({
-      findingType: "title_company_change",
-      severity: "warn",
+      findingType: 'title_company_change',
+      severity: 'warn',
       message: `Title company changes across documents. The amended pick controls — verify before ordering search.`,
       involvedDocumentIds: named.map((e) => e.documentId),
-      involvedFields: ["titleCompany.name"],
+      involvedFields: ['titleCompany.name'],
       rawDetail: {
         values: named.map((e) => ({
           documentId: e.documentId,
@@ -136,21 +155,25 @@ function compareTitleCompany(
   // Single title company across docs — surface as info so the user sees it
   // wired up correctly.
   out.push({
-    findingType: "title_company_set",
-    severity: "info",
+    findingType: 'title_company_set',
+    severity: 'info',
     message: `Title company on file: ${named[0].view.titleCompany!.name}.`,
     involvedDocumentIds: named.map((e) => e.documentId),
-    involvedFields: ["titleCompany.name"],
+    involvedFields: ['titleCompany.name'],
     rawDetail: { titleCompany: named[0].view.titleCompany },
   })
 }
 
 function compareEarnestMoney(
-  extractions: Array<{ documentId: Id<"documents">; view: ExtractionView; uploadedAt: number }>,
-  out: Pending[],
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  out: Pending[]
 ) {
   const withEm = extractions.filter(
-    (e) => e.view.financial?.earnestMoney !== undefined,
+    (e) => e.view.financial?.earnestMoney !== undefined
   )
   if (withEm.length < 2) return
   const refundabilities = withEm
@@ -159,12 +182,12 @@ function compareEarnestMoney(
   const set = new Set(refundabilities)
   if (set.size > 1) {
     out.push({
-      findingType: "earnest_money_refundability_change",
-      severity: "block",
+      findingType: 'earnest_money_refundability_change',
+      severity: 'block',
       message:
-        "Earnest money refundability changes across documents. Mishandling here is a frequent cause of EM disputes — confirm with both parties in writing.",
+        'Earnest money refundability changes across documents. Mishandling here is a frequent cause of EM disputes — confirm with both parties in writing.',
       involvedDocumentIds: withEm.map((e) => e.documentId),
-      involvedFields: ["financial.earnestMoney.refundable"],
+      involvedFields: ['financial.earnestMoney.refundable'],
       rawDetail: {
         values: withEm.map((e) => ({
           documentId: e.documentId,
@@ -177,19 +200,23 @@ function compareEarnestMoney(
 }
 
 function compareClosingDate(
-  extractions: Array<{ documentId: Id<"documents">; view: ExtractionView; uploadedAt: number }>,
-  out: Pending[],
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  out: Pending[]
 ) {
   const withDate = extractions.filter((e) => e.view.dates?.closingDate)
   if (withDate.length < 2) return
   const distinct = new Set(withDate.map((e) => e.view.dates!.closingDate))
   if (distinct.size > 1) {
     out.push({
-      findingType: "closing_date_mismatch",
-      severity: "warn",
-      message: "Closing date differs across documents.",
+      findingType: 'closing_date_mismatch',
+      severity: 'warn',
+      message: 'Closing date differs across documents.',
       involvedDocumentIds: withDate.map((e) => e.documentId),
-      involvedFields: ["dates.closingDate"],
+      involvedFields: ['dates.closingDate'],
       rawDetail: {
         values: withDate.map((e) => ({
           documentId: e.documentId,
@@ -202,24 +229,28 @@ function compareClosingDate(
 }
 
 function compareFinancingWindow(
-  extractions: Array<{ documentId: Id<"documents">; view: ExtractionView; uploadedAt: number }>,
-  out: Pending[],
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  out: Pending[]
 ) {
   const withDays = extractions.filter(
-    (e) => typeof e.view.dates?.financingApprovalDays === "number",
+    (e) => typeof e.view.dates?.financingApprovalDays === 'number'
   )
   if (withDays.length < 2) return
   const distinct = new Set(
-    withDays.map((e) => e.view.dates!.financingApprovalDays),
+    withDays.map((e) => e.view.dates!.financingApprovalDays)
   )
   if (distinct.size > 1) {
     out.push({
-      findingType: "financing_window_change",
-      severity: "warn",
+      findingType: 'financing_window_change',
+      severity: 'warn',
       message:
-        "Financing approval window changes across documents. The shorter deadline likely controls — make sure the lender knows.",
+        'Financing approval window changes across documents. The shorter deadline likely controls — make sure the lender knows.',
       involvedDocumentIds: withDays.map((e) => e.documentId),
-      involvedFields: ["dates.financingApprovalDays"],
+      involvedFields: ['dates.financingApprovalDays'],
       rawDetail: {
         values: withDays.map((e) => ({
           documentId: e.documentId,
@@ -232,20 +263,33 @@ function compareFinancingWindow(
 }
 
 function compareParties(
-  extractions: Array<{ documentId: Id<"documents">; view: ExtractionView; uploadedAt: number }>,
-  out: Pending[],
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  out: Pending[]
 ) {
   // Detect party legal-name disagreements per role across documents.
   type Key = string
-  const byRole: Record<Key, Map<string, Array<{ documentId: Id<"documents">; documentKind?: string; legalName: string }>>> = {}
+  const byRole: Record<
+    Key,
+    Map<
+      string,
+      Array<{
+        documentId: Id<'documents'>
+        documentKind?: string
+        legalName: string
+      }>
+    >
+  > = {}
   for (const e of extractions) {
     for (const p of e.view.parties ?? []) {
       if (!p.role || !p.legalName) continue
       const role = p.role
       const bucket = (byRole[role] ??= new Map())
       const key = norm(p.legalName)
-      const arr =
-        bucket.get(key) ?? (bucket.set(key, []), bucket.get(key)!)
+      const arr = bucket.get(key) ?? (bucket.set(key, []), bucket.get(key)!)
       arr.push({
         documentId: e.documentId,
         documentKind: e.view.documentKind,
@@ -257,11 +301,11 @@ function compareParties(
     if (bucket.size > 1) {
       const flat = Array.from(bucket.values()).flat()
       out.push({
-        findingType: "party_name_mismatch",
-        severity: "warn",
+        findingType: 'party_name_mismatch',
+        severity: 'warn',
         message: `${role} legal name differs across documents. Vesting must match the deed exactly — confirm spelling, capacity, and signing order.`,
         involvedDocumentIds: flat.map((f) => f.documentId),
-        involvedFields: ["parties.legalName"],
+        involvedFields: ['parties.legalName'],
         rawDetail: { role, names: Array.from(bucket.keys()), perDoc: flat },
       })
     }
@@ -271,14 +315,14 @@ function compareParties(
 // Sprint 5: vesting + authority. Run per-document and across documents.
 function compareVesting(
   extractions: Array<{
-    documentId: Id<"documents">
+    documentId: Id<'documents'>
     view: ExtractionView
     uploadedAt: number
   }>,
-  out: Pending[],
+  out: Pending[]
 ) {
   type Annotated = {
-    documentId: Id<"documents">
+    documentId: Id<'documents'>
     documentKind?: string
     role?: string
     raw: string
@@ -305,41 +349,41 @@ function compareVesting(
 
     // Per-document: trust without trustee, estate without executor
     const trustOrEstateParties = annotated.filter(
-      (a) => a.norm.isTrust || a.norm.isEstate,
+      (a) => a.norm.isTrust || a.norm.isEstate
     )
     if (trustOrEstateParties.length > 0) {
       const hasTrustee = annotated.some(
         (a) =>
-          a.norm.capacity === "trustee" ||
-          a.norm.capacity === "successor_trustee" ||
-          a.extracted === "trustee" ||
-          a.extracted === "successor_trustee",
+          a.norm.capacity === 'trustee' ||
+          a.norm.capacity === 'successor_trustee' ||
+          a.extracted === 'trustee' ||
+          a.extracted === 'successor_trustee'
       )
       const hasExecutor = annotated.some(
         (a) =>
-          a.norm.capacity === "executor" ||
-          a.norm.capacity === "personal_representative" ||
-          a.extracted === "executor" ||
-          a.extracted === "personal_representative",
+          a.norm.capacity === 'executor' ||
+          a.norm.capacity === 'personal_representative' ||
+          a.extracted === 'executor' ||
+          a.extracted === 'personal_representative'
       )
       for (const t of trustOrEstateParties) {
         if (t.norm.isTrust && !hasTrustee) {
           out.push({
-            findingType: "trust_without_trustee",
-            severity: "block",
+            findingType: 'trust_without_trustee',
+            severity: 'block',
             message: `Trust "${t.raw}" appears without a trustee in the same document. The trustee must sign on behalf of the trust.`,
             involvedDocumentIds: [t.documentId],
-            involvedFields: ["parties"],
+            involvedFields: ['parties'],
             rawDetail: { trust: t.raw, documentKind: t.documentKind },
           })
         }
         if (t.norm.isEstate && !hasExecutor) {
           out.push({
-            findingType: "estate_without_executor",
-            severity: "block",
+            findingType: 'estate_without_executor',
+            severity: 'block',
             message: `Estate "${t.raw}" appears without an executor or personal representative. Probate authority is required.`,
             involvedDocumentIds: [t.documentId],
-            involvedFields: ["parties"],
+            involvedFields: ['parties'],
             rawDetail: { estate: t.raw, documentKind: t.documentKind },
           })
         }
@@ -349,21 +393,21 @@ function compareVesting(
     // Per-document: joint vesting unclear (2+ buyers/sellers, no vesting form
     // expressed). LLM payloads don't carry vesting form yet, so we proxy it
     // by checking whether the legal name string contains a recognized form.
-    const buyers = annotated.filter((a) => a.role === "buyer")
-    const sellers = annotated.filter((a) => a.role === "seller")
+    const buyers = annotated.filter((a) => a.role === 'buyer')
+    const sellers = annotated.filter((a) => a.role === 'seller')
     for (const group of [buyers, sellers]) {
       if (group.length < 2) continue
       const role = group[0].role!
       const anyHasForm = group.some((a) =>
-        /\b(JTROS|JTWROS|TIC|TBE|TENANT|COMMUNITY)\b/i.test(a.raw),
+        /\b(JTROS|JTWROS|TIC|TBE|TENANT|COMMUNITY)\b/i.test(a.raw)
       )
       if (!anyHasForm) {
         out.push({
-          findingType: "joint_vesting_unclear",
-          severity: "warn",
+          findingType: 'joint_vesting_unclear',
+          severity: 'warn',
           message: `Multiple ${role}s on this document with no vesting form (JTROS/TIC/TBE) — confirm before drafting the deed.`,
           involvedDocumentIds: group.map((g) => g.documentId),
-          involvedFields: ["parties"],
+          involvedFields: ['parties'],
           rawDetail: {
             role,
             names: group.map((g) => g.raw),
@@ -378,18 +422,18 @@ function compareVesting(
   // Cross-document and aggregate flags
   const poaParties = all.filter(
     (a) =>
-      a.norm.capacity === "AIF" ||
-      a.norm.capacity === "POA" ||
-      a.extracted === "AIF" ||
-      a.extracted === "POA",
+      a.norm.capacity === 'AIF' ||
+      a.norm.capacity === 'POA' ||
+      a.extracted === 'AIF' ||
+      a.extracted === 'POA'
   )
   if (poaParties.length > 0) {
     out.push({
-      findingType: "poa_present",
-      severity: "warn",
+      findingType: 'poa_present',
+      severity: 'warn',
       message: `Power of attorney signing detected (${poaParties[0].raw}). The POA instrument must be recorded with or before the deed.`,
       involvedDocumentIds: [...new Set(poaParties.map((p) => p.documentId))],
-      involvedFields: ["parties.capacity"],
+      involvedFields: ['parties.capacity'],
       rawDetail: {
         signers: poaParties.map((p) => ({
           name: p.raw,
@@ -402,16 +446,19 @@ function compareVesting(
 
   const decedentParties = all.filter(
     (a) =>
-      a.norm.capacity === "decedent" || a.extracted === "decedent" ||
-      a.norm.isEstate,
+      a.norm.capacity === 'decedent' ||
+      a.extracted === 'decedent' ||
+      a.norm.isEstate
   )
   if (decedentParties.length > 0) {
     out.push({
-      findingType: "decedent_indicator",
-      severity: "warn",
+      findingType: 'decedent_indicator',
+      severity: 'warn',
       message: `Decedent or estate context detected. Confirm probate status, certified death certificate, and chain of title before clearing.`,
-      involvedDocumentIds: [...new Set(decedentParties.map((p) => p.documentId))],
-      involvedFields: ["parties"],
+      involvedDocumentIds: [
+        ...new Set(decedentParties.map((p) => p.documentId)),
+      ],
+      involvedFields: ['parties'],
       rawDetail: {
         parties: decedentParties.map((p) => ({
           name: p.raw,
@@ -425,7 +472,7 @@ function compareVesting(
   type CapBucket = Map<
     string,
     Array<{
-      documentId: Id<"documents">
+      documentId: Id<'documents'>
       documentKind?: string
       capacity?: string
     }>
@@ -433,7 +480,7 @@ function compareVesting(
   const byPersonKey: CapBucket = new Map()
   for (const a of all) {
     if (!a.norm.isPerson || !a.norm.surname) continue
-    const key = `${a.norm.surname}|${a.norm.given ?? ""}`
+    const key = `${a.norm.surname}|${a.norm.given ?? ''}`
     const arr = byPersonKey.get(key) ?? []
     arr.push({
       documentId: a.documentId,
@@ -444,14 +491,16 @@ function compareVesting(
   }
   for (const [key, entries] of byPersonKey.entries()) {
     if (entries.length < 2) continue
-    const distinctCapacities = new Set(entries.map((e) => e.capacity ?? "_none"))
+    const distinctCapacities = new Set(
+      entries.map((e) => e.capacity ?? '_none')
+    )
     if (distinctCapacities.size > 1) {
       out.push({
-        findingType: "party_capacity_mismatch",
-        severity: "block",
-        message: `Same signer (${key.replace("|", " ")}) appears with different capacities across documents. Vesting and authority must match the deed.`,
+        findingType: 'party_capacity_mismatch',
+        severity: 'block',
+        message: `Same signer (${key.replace('|', ' ')}) appears with different capacities across documents. Vesting and authority must match the deed.`,
         involvedDocumentIds: entries.map((e) => e.documentId),
-        involvedFields: ["parties.capacity"],
+        involvedFields: ['parties.capacity'],
         rawDetail: { signer: key, entries },
       })
     }
@@ -460,23 +509,23 @@ function compareVesting(
 
 function checkRequiredDocs(
   ctx: MutationCtx,
-  file: Doc<"files">,
+  file: Doc<'files'>,
   uploadedDocTypes: Set<string>,
-  out: Pending[],
+  out: Pending[]
 ): Promise<void> {
   // Looking up the transactionType row to read requiredDocs.
   return ctx.db
-    .query("transactionTypes")
-    .withIndex("by_code", (q) => q.eq("code", file.transactionType))
+    .query('transactionTypes')
+    .withIndex('by_code', (q) => q.eq('code', file.transactionType))
     .unique()
     .then((tt) => {
       if (!tt) return
       const missing = tt.requiredDocs.filter((d) => !uploadedDocTypes.has(d))
       if (missing.length === 0) return
       out.push({
-        findingType: "missing_required_documents",
-        severity: missing.length >= 2 ? "warn" : "info",
-        message: `${file.transactionType} requires: ${missing.join(", ")}.`,
+        findingType: 'missing_required_documents',
+        severity: missing.length >= 2 ? 'warn' : 'info',
+        message: `${file.transactionType} requires: ${missing.join(', ')}.`,
         involvedDocumentIds: [],
         involvedFields: [],
         rawDetail: {
@@ -493,26 +542,26 @@ function checkRequiredDocs(
 // as the user); the internal/auto path passes a synthetic "system" actor.
 async function runReconciliationCore(
   ctx: MutationCtx,
-  tenantId: Id<"tenants">,
-  fileId: Id<"files">,
+  tenantId: Id<'tenants'>,
+  fileId: Id<'files'>,
   actor:
-    | { kind: "user"; tc: TenantContext; trigger: "manual" }
-    | { kind: "system"; trigger: "auto" },
+    | { kind: 'user'; tc: TenantContext; trigger: 'manual' }
+    | { kind: 'system'; trigger: 'auto' }
 ) {
   const file = await ctx.db.get(fileId)
   if (!file || file.tenantId !== tenantId) {
-    throw new ConvexError("FILE_NOT_FOUND")
+    throw new ConvexError('FILE_NOT_FOUND')
   }
 
   const extractions = await ctx.db
-    .query("documentExtractions")
-    .withIndex("by_tenant_file", (q) =>
-      q.eq("tenantId", tenantId).eq("fileId", fileId),
+    .query('documentExtractions')
+    .withIndex('by_tenant_file', (q) =>
+      q.eq('tenantId', tenantId).eq('fileId', fileId)
     )
     .take(100)
 
   const succeeded = extractions.filter(
-    (e) => e.status === "succeeded" && e.payload,
+    (e) => e.status === 'succeeded' && e.payload
   )
 
   const enriched = await Promise.all(
@@ -526,11 +575,9 @@ async function runReconciliationCore(
             view: e.payload as ExtractionView,
           }
         : null
-    }),
+    })
   )
-  const usable = enriched.filter(
-    (e): e is NonNullable<typeof e> => e !== null,
-  )
+  const usable = enriched.filter((e): e is NonNullable<typeof e> => e !== null)
   usable.sort((a, b) => b.uploadedAt - a.uploadedAt) // newest first
 
   const findings: Pending[] = []
@@ -551,9 +598,9 @@ async function runReconciliationCore(
   const removed = await clearOpenFindings(ctx, tenantId, fileId)
 
   const now = Date.now()
-  const insertedIds: Array<Id<"reconciliationFindings">> = []
+  const insertedIds: Array<Id<'reconciliationFindings'>> = []
   for (const f of findings) {
-    const id = await ctx.db.insert("reconciliationFindings", {
+    const id = await ctx.db.insert('reconciliationFindings', {
       tenantId,
       fileId,
       findingType: f.findingType,
@@ -562,14 +609,14 @@ async function runReconciliationCore(
       involvedDocumentIds: f.involvedDocumentIds,
       involvedFields: f.involvedFields,
       rawDetail: f.rawDetail,
-      status: "open",
+      status: 'open',
       createdAt: now,
     })
     insertedIds.push(id)
 
     await ctx.runMutation(internal.webhooks.enqueue, {
       tenantId,
-      event: "finding.created",
+      event: 'finding.created',
       payload: {
         findingId: id,
         fileId,
@@ -583,9 +630,9 @@ async function runReconciliationCore(
   // Audit: user-triggered records under the member; system-triggered uses a
   // direct insert with no actor.
   const counts = {
-    info: findings.filter((f) => f.severity === "info").length,
-    warn: findings.filter((f) => f.severity === "warn").length,
-    block: findings.filter((f) => f.severity === "block").length,
+    info: findings.filter((f) => f.severity === 'info').length,
+    warn: findings.filter((f) => f.severity === 'warn').length,
+    block: findings.filter((f) => f.severity === 'block').length,
   }
 
   // Notify the team about the outcome. We only fan out when there's
@@ -594,37 +641,36 @@ async function runReconciliationCore(
   const total = counts.info + counts.warn + counts.block
   if (total > 0) {
     await fanOutNotification(ctx, tenantId, {
-      kind: "reconciliation.findings",
-      severity: counts.block > 0 ? "block" : counts.warn > 0 ? "warn" : "info",
+      kind: 'reconciliation.findings',
+      severity: counts.block > 0 ? 'block' : counts.warn > 0 ? 'warn' : 'info',
       title:
         counts.block > 0
-          ? `${counts.block} blocker${counts.block === 1 ? "" : "s"} on ${file.fileNumber}`
+          ? `${counts.block} blocker${counts.block === 1 ? '' : 's'} on ${file.fileNumber}`
           : counts.warn > 0
-            ? `${counts.warn} warning${counts.warn === 1 ? "" : "s"} on ${file.fileNumber}`
-            : `${counts.info} note${counts.info === 1 ? "" : "s"} on ${file.fileNumber}`,
+            ? `${counts.warn} warning${counts.warn === 1 ? '' : 's'} on ${file.fileNumber}`
+            : `${counts.info} note${counts.info === 1 ? '' : 's'} on ${file.fileNumber}`,
       body:
-        actor.kind === "system"
-          ? "Reconciliation ran automatically after a new extraction."
-          : "Reconciliation re-run.",
+        actor.kind === 'system'
+          ? 'Reconciliation ran automatically after a new extraction.'
+          : 'Reconciliation re-run.',
       fileId,
-      actorMemberId:
-        actor.kind === "user" ? actor.tc.memberId : undefined,
+      actorMemberId: actor.kind === 'user' ? actor.tc.memberId : undefined,
       actorType: actor.kind,
     })
-  } else if (actor.kind === "user") {
+  } else if (actor.kind === 'user') {
     // Manual run with all-clear: still worth telling the user.
     await fanOutNotification(ctx, tenantId, {
-      kind: "reconciliation.all_clear",
-      severity: "ok",
+      kind: 'reconciliation.all_clear',
+      severity: 'ok',
       title: `${file.fileNumber} is all clear`,
-      body: "Cross-document checks passed without findings.",
+      body: 'Cross-document checks passed without findings.',
       fileId,
       actorMemberId: actor.tc.memberId,
-      actorType: "user",
+      actorType: 'user',
     })
   }
-  if (actor.kind === "user") {
-    await recordAudit(ctx, actor.tc, "reconciliation.run", "file", fileId, {
+  if (actor.kind === 'user') {
+    await recordAudit(ctx, actor.tc, 'reconciliation.run', 'file', fileId, {
       removedOpen: removed,
       created: insertedIds.length,
       bySeverity: counts,
@@ -632,11 +678,11 @@ async function runReconciliationCore(
       trigger: actor.trigger,
     })
   } else {
-    await ctx.db.insert("auditEvents", {
+    await ctx.db.insert('auditEvents', {
       tenantId,
-      actorType: "system",
-      action: "reconciliation.run",
-      resourceType: "file",
+      actorType: 'system',
+      action: 'reconciliation.run',
+      resourceType: 'file',
       resourceId: fileId,
       metadata: {
         removedOpen: removed,
@@ -649,6 +695,19 @@ async function runReconciliationCore(
     })
   }
 
+  // Lifecycle nudge: in_exam → cleared once everything reconciles cleanly.
+  // We never auto-demote — if findings reappear later the dashboard will show
+  // them but the user's manual advance (closing/funded/etc.) stays put.
+  if (total === 0) {
+    await autoPromoteFileStatus(
+      ctx,
+      fileId,
+      ['in_exam'],
+      'cleared',
+      'reconciliation_all_clear'
+    )
+  }
+
   return {
     findings: insertedIds,
     counts,
@@ -659,16 +718,16 @@ async function runReconciliationCore(
 // called from both the user-context path and the system-context path.
 async function clearOpenFindings(
   ctx: MutationCtx,
-  tenantId: Id<"tenants">,
-  fileId: Id<"files">,
+  tenantId: Id<'tenants'>,
+  fileId: Id<'files'>
 ): Promise<number> {
   let cursor: string | null = null
   let removed = 0
   while (true) {
     const page = await ctx.db
-      .query("reconciliationFindings")
-      .withIndex("by_tenant_file_status", (q) =>
-        q.eq("tenantId", tenantId).eq("fileId", fileId).eq("status", "open"),
+      .query('reconciliationFindings')
+      .withIndex('by_tenant_file_status', (q) =>
+        q.eq('tenantId', tenantId).eq('fileId', fileId).eq('status', 'open')
       )
       .paginate({ numItems: 100, cursor })
     for (const f of page.page) {
@@ -682,14 +741,14 @@ async function clearOpenFindings(
 }
 
 export const runForFile = mutation({
-  args: { fileId: v.id("files") },
+  args: { fileId: v.id('files') },
   handler: async (ctx, { fileId }) => {
     const tc = await requireTenant(ctx)
     requireRole(tc, ...editorRoles)
     return await runReconciliationCore(ctx, tc.tenantId, fileId, {
-      kind: "user",
+      kind: 'user',
       tc,
-      trigger: "manual",
+      trigger: 'manual',
     })
   },
 })
@@ -699,58 +758,61 @@ export const runForFile = mutation({
 // auth context — the caller is the platform itself.
 export const runForFileAuto = internalMutation({
   args: {
-    tenantId: v.id("tenants"),
-    fileId: v.id("files"),
+    tenantId: v.id('tenants'),
+    fileId: v.id('files'),
   },
   handler: async (ctx, { tenantId, fileId }) => {
     return await runReconciliationCore(ctx, tenantId, fileId, {
-      kind: "system",
-      trigger: "auto",
+      kind: 'system',
+      trigger: 'auto',
     })
   },
 })
 
 export const listForFile = query({
   args: {
-    fileId: v.id("files"),
+    fileId: v.id('files'),
     status: v.optional(
       v.union(
-        v.literal("open"),
-        v.literal("acknowledged"),
-        v.literal("resolved"),
-        v.literal("dismissed"),
-      ),
+        v.literal('open'),
+        v.literal('acknowledged'),
+        v.literal('resolved'),
+        v.literal('dismissed')
+      )
     ),
   },
   handler: async (ctx, { fileId, status }) => {
     const tc = await requireTenant(ctx)
     if (status) {
       return await ctx.db
-        .query("reconciliationFindings")
-        .withIndex("by_tenant_file_status", (q) =>
-          q.eq("tenantId", tc.tenantId).eq("fileId", fileId).eq("status", status),
+        .query('reconciliationFindings')
+        .withIndex('by_tenant_file_status', (q) =>
+          q
+            .eq('tenantId', tc.tenantId)
+            .eq('fileId', fileId)
+            .eq('status', status)
         )
-        .order("desc")
+        .order('desc')
         .take(200)
     }
     return await ctx.db
-      .query("reconciliationFindings")
-      .withIndex("by_tenant_file", (q) =>
-        q.eq("tenantId", tc.tenantId).eq("fileId", fileId),
+      .query('reconciliationFindings')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('fileId', fileId)
       )
-      .order("desc")
+      .order('desc')
       .take(200)
   },
 })
 
 export const setStatus = mutation({
   args: {
-    findingId: v.id("reconciliationFindings"),
+    findingId: v.id('reconciliationFindings'),
     status: v.union(
-      v.literal("open"),
-      v.literal("acknowledged"),
-      v.literal("resolved"),
-      v.literal("dismissed"),
+      v.literal('open'),
+      v.literal('acknowledged'),
+      v.literal('resolved'),
+      v.literal('dismissed')
     ),
   },
   handler: async (ctx, { findingId, status }) => {
@@ -758,29 +820,31 @@ export const setStatus = mutation({
     requireRole(tc, ...editorRoles)
     const finding = await ctx.db.get(findingId)
     if (!finding || finding.tenantId !== tc.tenantId) {
-      throw new ConvexError("FINDING_NOT_FOUND")
+      throw new ConvexError('FINDING_NOT_FOUND')
     }
     await ctx.db.patch(findingId, {
       status,
       resolvedByMemberId:
-        status === "resolved" || status === "dismissed"
+        status === 'resolved' || status === 'dismissed'
           ? tc.memberId
           : undefined,
       resolvedAt:
-        status === "resolved" || status === "dismissed" ? Date.now() : undefined,
+        status === 'resolved' || status === 'dismissed'
+          ? Date.now()
+          : undefined,
     })
     await recordAudit(
       ctx,
       tc,
-      "finding.status_changed",
-      "file",
+      'finding.status_changed',
+      'file',
       finding.fileId,
-      { findingId, from: finding.status, to: status },
+      { findingId, from: finding.status, to: status }
     )
-    if (status === "resolved") {
+    if (status === 'resolved') {
       await ctx.runMutation(internal.webhooks.enqueue, {
         tenantId: tc.tenantId,
-        event: "finding.resolved",
+        event: 'finding.resolved',
         payload: {
           findingId,
           fileId: finding.fileId,
@@ -799,8 +863,8 @@ export const setStatus = mutation({
 // chosen value is also promoted to the file/party as the system of record.
 export const resolveWith = mutation({
   args: {
-    findingId: v.id("reconciliationFindings"),
-    documentId: v.id("documents"),
+    findingId: v.id('reconciliationFindings'),
+    documentId: v.id('documents'),
     value: v.optional(v.any()),
   },
   handler: async (ctx, { findingId, documentId, value }) => {
@@ -808,20 +872,20 @@ export const resolveWith = mutation({
     requireRole(tc, ...editorRoles)
     const finding = await ctx.db.get(findingId)
     if (!finding || finding.tenantId !== tc.tenantId) {
-      throw new ConvexError("FINDING_NOT_FOUND")
+      throw new ConvexError('FINDING_NOT_FOUND')
     }
     // The chosen document must be one of the documents the finding cited.
     if (!finding.involvedDocumentIds.includes(documentId)) {
-      throw new ConvexError("DOCUMENT_NOT_INVOLVED")
+      throw new ConvexError('DOCUMENT_NOT_INVOLVED')
     }
     const doc = await ctx.db.get(documentId)
     if (!doc || doc.tenantId !== tc.tenantId) {
-      throw new ConvexError("DOCUMENT_NOT_FOUND")
+      throw new ConvexError('DOCUMENT_NOT_FOUND')
     }
 
     const now = Date.now()
     await ctx.db.patch(findingId, {
-      status: "resolved",
+      status: 'resolved',
       resolvedByMemberId: tc.memberId,
       resolvedAt: now,
       resolvedDocumentId: documentId,
@@ -833,8 +897,8 @@ export const resolveWith = mutation({
     await recordAudit(
       ctx,
       tc,
-      "finding.resolved_with",
-      "file",
+      'finding.resolved_with',
+      'file',
       finding.fileId,
       {
         findingId,
@@ -844,12 +908,12 @@ export const resolveWith = mutation({
         chosenValue: value,
         from: finding.status,
         promoted: promoted ?? null,
-      },
+      }
     )
 
     await ctx.runMutation(internal.webhooks.enqueue, {
       tenantId: tc.tenantId,
-      event: "finding.resolved",
+      event: 'finding.resolved',
       payload: {
         findingId,
         fileId: finding.fileId,
@@ -865,7 +929,7 @@ export const resolveWith = mutation({
 })
 
 type Promotion = {
-  target: "file" | "party"
+  target: 'file' | 'party'
   id: string
   fields: string[]
 }
@@ -877,73 +941,73 @@ type Promotion = {
 async function promoteToGroundTruth(
   ctx: MutationCtx,
   tc: TenantContext,
-  finding: Doc<"reconciliationFindings">,
-  value: unknown,
+  finding: Doc<'reconciliationFindings'>,
+  value: unknown
 ): Promise<Promotion | null> {
   const fileId = finding.fileId
   switch (finding.findingType) {
-    case "price_mismatch":
-    case "price_amended":
-      if (typeof value === "number" && Number.isFinite(value)) {
+    case 'price_mismatch':
+    case 'price_amended':
+      if (typeof value === 'number' && Number.isFinite(value)) {
         await ctx.db.patch(fileId, { purchasePrice: value })
-        return { target: "file", id: fileId, fields: ["purchasePrice"] }
+        return { target: 'file', id: fileId, fields: ['purchasePrice'] }
       }
       return null
-    case "title_company_change":
-    case "title_company_set":
-      if (value && typeof value === "object") {
+    case 'title_company_change':
+    case 'title_company_set':
+      if (value && typeof value === 'object') {
         const obj = value as Record<string, unknown>
         await ctx.db.patch(fileId, {
           titleCompany: {
-            name: typeof obj.name === "string" ? obj.name : undefined,
-            phone: typeof obj.phone === "string" ? obj.phone : undefined,
+            name: typeof obj.name === 'string' ? obj.name : undefined,
+            phone: typeof obj.phone === 'string' ? obj.phone : undefined,
             selectedBy:
-              typeof obj.selectedBy === "string" ? obj.selectedBy : undefined,
+              typeof obj.selectedBy === 'string' ? obj.selectedBy : undefined,
           },
         })
-        return { target: "file", id: fileId, fields: ["titleCompany"] }
+        return { target: 'file', id: fileId, fields: ['titleCompany'] }
       }
       return null
-    case "earnest_money_refundability_change":
-      if (value && typeof value === "object") {
+    case 'earnest_money_refundability_change':
+      if (value && typeof value === 'object') {
         const obj = value as Record<string, unknown>
         await ctx.db.patch(fileId, {
           earnestMoney: {
-            amount: typeof obj.amount === "number" ? obj.amount : undefined,
+            amount: typeof obj.amount === 'number' ? obj.amount : undefined,
             refundable:
-              typeof obj.refundable === "boolean" ? obj.refundable : undefined,
+              typeof obj.refundable === 'boolean' ? obj.refundable : undefined,
             depositDays:
-              typeof obj.depositDays === "number" ? obj.depositDays : undefined,
+              typeof obj.depositDays === 'number' ? obj.depositDays : undefined,
           },
         })
-        return { target: "file", id: fileId, fields: ["earnestMoney"] }
+        return { target: 'file', id: fileId, fields: ['earnestMoney'] }
       }
       return null
-    case "closing_date_mismatch":
-      if (typeof value === "string") {
+    case 'closing_date_mismatch':
+      if (typeof value === 'string') {
         const ts = Date.parse(value)
         if (!Number.isNaN(ts)) {
           await ctx.db.patch(fileId, { targetCloseDate: ts })
-          return { target: "file", id: fileId, fields: ["targetCloseDate"] }
+          return { target: 'file', id: fileId, fields: ['targetCloseDate'] }
         }
       }
       return null
-    case "financing_window_change":
-      if (typeof value === "number" && Number.isFinite(value)) {
+    case 'financing_window_change':
+      if (typeof value === 'number' && Number.isFinite(value)) {
         await ctx.db.patch(fileId, { financingApprovalDays: value })
-        return { target: "file", id: fileId, fields: ["financingApprovalDays"] }
+        return { target: 'file', id: fileId, fields: ['financingApprovalDays'] }
       }
       return null
-    case "party_name_mismatch": {
+    case 'party_name_mismatch': {
       const rd = (finding.rawDetail ?? {}) as Record<string, unknown>
       const role = rd.role
-      if (typeof role !== "string" || typeof value !== "string") return null
+      if (typeof role !== 'string' || typeof value !== 'string') return null
       const trimmed = value.trim()
-      if (trimmed === "") return null
+      if (trimmed === '') return null
       const fps = await ctx.db
-        .query("fileParties")
-        .withIndex("by_tenant_file", (q) =>
-          q.eq("tenantId", tc.tenantId).eq("fileId", fileId),
+        .query('fileParties')
+        .withIndex('by_tenant_file', (q) =>
+          q.eq('tenantId', tc.tenantId).eq('fileId', fileId)
         )
         .take(50)
       const matches = fps.filter((fp) => fp.role === role)
@@ -952,7 +1016,7 @@ async function promoteToGroundTruth(
       const party = await ctx.db.get(partyId)
       if (!party || party.tenantId !== tc.tenantId) return null
       await ctx.db.patch(partyId, { legalName: trimmed })
-      return { target: "party", id: partyId, fields: ["legalName"] }
+      return { target: 'party', id: partyId, fields: ['legalName'] }
     }
     default:
       return null

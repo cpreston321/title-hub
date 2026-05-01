@@ -1,35 +1,35 @@
-import { v } from "convex/values"
-import { query } from "./_generated/server"
-import { components } from "./_generated/api"
-import { requireTenant } from "./lib/tenant"
-import type { Doc, Id } from "./_generated/dataModel"
+import { v } from 'convex/values'
+import { query } from './_generated/server'
+import { components } from './_generated/api'
+import { requireTenant } from './lib/tenant'
+import type { Doc, Id } from './_generated/dataModel'
 
 type ActorInfo =
   | {
-      kind: "member"
-      memberId: Id<"tenantMembers">
+      kind: 'member'
+      memberId: Id<'tenantMembers'>
       email: string
       name: string | null
       role: string
     }
-  | { kind: "system" }
-  | { kind: "unknown"; type: string }
+  | { kind: 'system' }
+  | { kind: 'unknown'; type: string }
 
 export const listForFile = query({
-  args: { fileId: v.id("files"), limit: v.optional(v.number()) },
+  args: { fileId: v.id('files'), limit: v.optional(v.number()) },
   handler: async (ctx, { fileId, limit }) => {
     const tc = await requireTenant(ctx)
     const cap = Math.min(limit ?? 50, 200)
 
     const events = await ctx.db
-      .query("auditEvents")
-      .withIndex("by_tenant_resource", (q) =>
+      .query('auditEvents')
+      .withIndex('by_tenant_resource', (q) =>
         q
-          .eq("tenantId", tc.tenantId)
-          .eq("resourceType", "file")
-          .eq("resourceId", fileId),
+          .eq('tenantId', tc.tenantId)
+          .eq('resourceType', 'file')
+          .eq('resourceId', fileId)
       )
-      .order("desc")
+      .order('desc')
       .take(cap)
 
     return await enrichWithActor(ctx, events)
@@ -43,9 +43,9 @@ export const listForTenant = query({
     const cap = Math.min(limit ?? 100, 500)
 
     const events = await ctx.db
-      .query("auditEvents")
-      .withIndex("by_tenant_time", (q) => q.eq("tenantId", tc.tenantId))
-      .order("desc")
+      .query('auditEvents')
+      .withIndex('by_tenant_time', (q) => q.eq('tenantId', tc.tenantId))
+      .order('desc')
       .take(cap)
 
     return await enrichWithActor(ctx, events)
@@ -54,7 +54,7 @@ export const listForTenant = query({
 
 async function enrichWithActor(
   ctx: { db: any; runQuery: any },
-  events: ReadonlyArray<Doc<"auditEvents">>,
+  events: ReadonlyArray<Doc<'auditEvents'>>
 ) {
   // Cache member + auth-user lookups so the same actor isn't hit repeatedly.
   const memberCache = new Map<
@@ -62,11 +62,12 @@ async function enrichWithActor(
     { email: string; name: string | null; role: string } | null
   >()
 
-  const out: Array<Doc<"auditEvents"> & { actor: ActorInfo }> = []
+  const out: Array<Doc<'auditEvents'> & { actor: ActorInfo }> = []
   for (const e of events) {
-    let actor: ActorInfo = e.actorType === "system"
-      ? { kind: "system" }
-      : { kind: "unknown", type: e.actorType }
+    let actor: ActorInfo =
+      e.actorType === 'system'
+        ? { kind: 'system' }
+        : { kind: 'unknown', type: e.actorType }
 
     if (e.actorMemberId) {
       const key = e.actorMemberId
@@ -79,9 +80,9 @@ async function enrichWithActor(
             const user = (await ctx.runQuery(
               components.betterAuth.adapter.findOne,
               {
-                model: "user",
-                where: [{ field: "_id", value: member.betterAuthUserId }],
-              },
+                model: 'user',
+                where: [{ field: '_id', value: member.betterAuthUserId }],
+              }
             )) as { name?: string | null } | null
             name = user?.name ?? null
           } catch {
@@ -95,7 +96,7 @@ async function enrichWithActor(
       }
       if (info) {
         actor = {
-          kind: "member",
+          kind: 'member',
           memberId: e.actorMemberId,
           email: info.email,
           name: info.name,

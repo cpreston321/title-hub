@@ -2,34 +2,39 @@
  * System admin allowlist — the only role that can create new organizations.
  *
  * These are deliberately `internalQuery`/`internalMutation` so they aren't
- * reachable from the browser. The `scripts/admin.ts` CLI invokes them via
- * `npx convex run`, which runs with deployment-level auth.
+ * reachable from the browser. The `scripts/admin.ts` CLI invokes them via `npx
+ * convex run`, which runs with deployment-level auth.
  */
-import { ConvexError, v } from "convex/values"
-import { internalMutation, internalQuery } from "./_generated/server"
-import { components } from "./_generated/api"
-import { deleteDocumentCascade, scheduleExtractionFor } from "./files"
+import { ConvexError, v } from 'convex/values'
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from './_generated/server'
+import { components, internal } from './_generated/api'
+import { deleteDocumentCascade, scheduleExtractionFor } from './files'
+import { createAuth } from './auth'
 
 type AuthUser = { _id: string; email?: string; name?: string }
 
 async function userByEmail(
   ctx: { runQuery: typeof components.betterAuth extends never ? never : any },
-  email: string,
+  email: string
 ): Promise<AuthUser | null> {
   const u = (await (ctx as { runQuery: Function }).runQuery(
     components.betterAuth.adapter.findOne,
-    { model: "user", where: [{ field: "email", value: email }] },
+    { model: 'user', where: [{ field: 'email', value: email }] }
   )) as AuthUser | null
   return u
 }
 
 async function userById(
   ctx: { runQuery: Function },
-  id: string,
+  id: string
 ): Promise<AuthUser | null> {
   const u = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-    model: "user",
-    where: [{ field: "_id", value: id }],
+    model: 'user',
+    where: [{ field: '_id', value: id }],
   })) as AuthUser | null
   return u
 }
@@ -37,7 +42,7 @@ async function userById(
 export const list = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const rows = await ctx.db.query("systemAdmins").collect()
+    const rows = await ctx.db.query('systemAdmins').collect()
     return Promise.all(
       rows.map(async (a) => {
         const user = await userById(ctx, a.betterAuthUserId)
@@ -48,7 +53,7 @@ export const list = internalQuery({
           addedAt: a.addedAt,
           addedBy: a.addedBy ?? null,
         }
-      }),
+      })
     )
   },
 })
@@ -60,15 +65,13 @@ export const addByEmail = internalMutation({
     const user = await userByEmail(ctx, normalized)
     if (!user) {
       throw new ConvexError(
-        `No user with email ${normalized}. They must sign up before being promoted.`,
+        `No user with email ${normalized}. They must sign up before being promoted.`
       )
     }
 
     const existing = await ctx.db
-      .query("systemAdmins")
-      .withIndex("by_user", (q) =>
-        q.eq("betterAuthUserId", user._id),
-      )
+      .query('systemAdmins')
+      .withIndex('by_user', (q) => q.eq('betterAuthUserId', user._id))
       .unique()
     if (existing) {
       return {
@@ -79,10 +82,10 @@ export const addByEmail = internalMutation({
       }
     }
 
-    await ctx.db.insert("systemAdmins", {
+    await ctx.db.insert('systemAdmins', {
       betterAuthUserId: user._id,
       addedAt: Date.now(),
-      addedBy: "cli",
+      addedBy: 'cli',
     })
     return {
       ok: true,
@@ -103,10 +106,8 @@ export const removeByEmail = internalMutation({
     }
 
     const existing = await ctx.db
-      .query("systemAdmins")
-      .withIndex("by_user", (q) =>
-        q.eq("betterAuthUserId", user._id),
-      )
+      .query('systemAdmins')
+      .withIndex('by_user', (q) => q.eq('betterAuthUserId', user._id))
       .unique()
     if (!existing) {
       return { ok: true, removed: false, email: normalized }
@@ -114,10 +115,10 @@ export const removeByEmail = internalMutation({
 
     // Refuse to remove the last admin — that would lock everyone out of org
     // creation with no in-app recovery path.
-    const all = await ctx.db.query("systemAdmins").collect()
+    const all = await ctx.db.query('systemAdmins').collect()
     if (all.length <= 1) {
       throw new ConvexError(
-        "Cannot remove the last system admin. Promote another user first.",
+        'Cannot remove the last system admin. Promote another user first.'
       )
     }
 
@@ -130,7 +131,7 @@ export const removeByEmail = internalMutation({
 export const listTenants = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const tenants = await ctx.db.query("tenants").collect()
+    const tenants = await ctx.db.query('tenants').collect()
     return tenants.map((t) => ({
       tenantId: t._id,
       slug: t.slug,
@@ -158,12 +159,12 @@ const propertyAddressV = v.object({
 })
 
 async function tenantBySlug(
-  ctx: { db: { query: (t: "tenants") => any } },
-  slug: string,
+  ctx: { db: { query: (t: 'tenants') => any } },
+  slug: string
 ) {
   const row = await ctx.db
-    .query("tenants")
-    .withIndex("by_slug", (q: any) => q.eq("slug", slug))
+    .query('tenants')
+    .withIndex('by_slug', (q: any) => q.eq('slug', slug))
     .unique()
   return row
 }
@@ -185,11 +186,9 @@ export const adminEnsureFile = internalMutation({
     }
 
     const existing = await ctx.db
-      .query("files")
-      .withIndex("by_tenant_filenumber", (q) =>
-        q
-          .eq("tenantId", tenant._id)
-          .eq("fileNumber", args.fileNumber),
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileNumber', args.fileNumber)
       )
       .unique()
     if (existing) {
@@ -201,47 +200,47 @@ export const adminEnsureFile = internalMutation({
     }
 
     const counties = await ctx.db
-      .query("counties")
-      .withIndex("by_state", (q) => q.eq("stateCode", args.stateCode))
+      .query('counties')
+      .withIndex('by_state', (q) => q.eq('stateCode', args.stateCode))
       .collect()
     const county = counties.find(
-      (c) => c.name.toLowerCase() === args.countyName.toLowerCase(),
+      (c) => c.name.toLowerCase() === args.countyName.toLowerCase()
     )
     if (!county) {
       throw new ConvexError(
-        `County not found: ${args.countyName} ${args.stateCode}. Run \`bun run admin seed-indiana\` first.`,
+        `County not found: ${args.countyName} ${args.stateCode}. Run \`bun run admin seed-indiana\` first.`
       )
     }
 
-    const fileId = await ctx.db.insert("files", {
+    const fileId = await ctx.db.insert('files', {
       tenantId: tenant._id,
       fileNumber: args.fileNumber,
       stateCode: county.stateCode,
       countyId: county._id,
       transactionType: args.transactionType,
-      status: "opened",
+      status: 'opened',
       propertyAddress: args.propertyAddress,
       propertyApn: args.propertyApn,
       searchText: [
         args.fileNumber,
         args.transactionType,
-        args.propertyApn ?? "",
-        args.propertyAddress?.line1 ?? "",
-        args.propertyAddress?.city ?? "",
+        args.propertyApn ?? '',
+        args.propertyAddress?.line1 ?? '',
+        args.propertyAddress?.city ?? '',
         county.name,
       ]
-        .join(" ")
+        .join(' ')
         .toLowerCase(),
       openedAt: Date.now(),
     })
 
-    await ctx.db.insert("auditEvents", {
+    await ctx.db.insert('auditEvents', {
       tenantId: tenant._id,
-      actorType: "system",
-      action: "file.created",
-      resourceType: "file",
+      actorType: 'system',
+      action: 'file.created',
+      resourceType: 'file',
       resourceId: fileId,
-      metadata: { fileNumber: args.fileNumber, source: "cli" },
+      metadata: { fileNumber: args.fileNumber, source: 'cli' },
       occurredAt: Date.now(),
     })
 
@@ -269,22 +268,20 @@ export const adminFileHasDocument = internalQuery({
     const tenant = await tenantBySlug(ctx, args.tenantSlug)
     if (!tenant) return false
     const file = await ctx.db
-      .query("files")
-      .withIndex("by_tenant_filenumber", (q) =>
-        q
-          .eq("tenantId", tenant._id)
-          .eq("fileNumber", args.fileNumber),
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileNumber', args.fileNumber)
       )
       .unique()
     if (!file) return false
     const docs = await ctx.db
-      .query("documents")
-      .withIndex("by_tenant_file", (q) =>
-        q.eq("tenantId", tenant._id).eq("fileId", file._id),
+      .query('documents')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id)
       )
       .collect()
     return docs.some(
-      (d) => d.docType === args.docType && (d.title ?? "") === args.title,
+      (d) => d.docType === args.docType && (d.title ?? '') === args.title
     )
   },
 })
@@ -299,16 +296,14 @@ export const adminDedupeDocuments = internalMutation({
     if (!tenant) throw new ConvexError(`No tenant with slug ${tenantSlug}`)
 
     const docs = await ctx.db
-      .query("documents")
-      .withIndex("by_tenant_uploadedAt", (q) =>
-        q.eq("tenantId", tenant._id),
-      )
+      .query('documents')
+      .withIndex('by_tenant_uploadedAt', (q) => q.eq('tenantId', tenant._id))
       .collect()
 
     const groups = new Map<string, typeof docs>()
     for (const d of docs) {
       if (!d.fileId) continue
-      const key = `${d.fileId} ${d.docType} ${d.title ?? ""}`
+      const key = `${d.fileId} ${d.docType} ${d.title ?? ''}`
       const list = groups.get(key) ?? []
       list.push(d)
       groups.set(key, list)
@@ -329,13 +324,13 @@ export const adminDedupeDocuments = internalMutation({
     }
 
     if (removed > 0) {
-      await ctx.db.insert("auditEvents", {
+      await ctx.db.insert('auditEvents', {
         tenantId: tenant._id,
-        actorType: "system",
-        action: "documents.deduped",
-        resourceType: "tenant",
+        actorType: 'system',
+        action: 'documents.deduped',
+        resourceType: 'tenant',
         resourceId: tenant._id,
-        metadata: { removed, storageRemoved, source: "cli" },
+        metadata: { removed, storageRemoved, source: 'cli' },
         occurredAt: Date.now(),
       })
     }
@@ -349,10 +344,10 @@ export const adminAddParty = internalMutation({
     tenantSlug: v.string(),
     fileNumber: v.string(),
     partyType: v.union(
-      v.literal("person"),
-      v.literal("entity"),
-      v.literal("trust"),
-      v.literal("estate"),
+      v.literal('person'),
+      v.literal('entity'),
+      v.literal('trust'),
+      v.literal('estate')
     ),
     legalName: v.string(),
     role: v.string(),
@@ -363,25 +358,23 @@ export const adminAddParty = internalMutation({
     if (!tenant) throw new ConvexError(`No tenant with slug ${args.tenantSlug}`)
 
     const file = await ctx.db
-      .query("files")
-      .withIndex("by_tenant_filenumber", (q) =>
-        q
-          .eq("tenantId", tenant._id)
-          .eq("fileNumber", args.fileNumber),
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileNumber', args.fileNumber)
       )
       .unique()
     if (!file) {
       throw new ConvexError(
-        `No file ${args.fileNumber} in tenant ${args.tenantSlug}`,
+        `No file ${args.fileNumber} in tenant ${args.tenantSlug}`
       )
     }
 
     // Skip if a party with the same legal name + role already exists on this
     // file (so re-running the seed is idempotent).
     const existingFileParties = await ctx.db
-      .query("fileParties")
-      .withIndex("by_tenant_file", (q) =>
-        q.eq("tenantId", tenant._id).eq("fileId", file._id),
+      .query('fileParties')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id)
       )
       .collect()
     for (const fp of existingFileParties) {
@@ -389,8 +382,7 @@ export const adminAddParty = internalMutation({
       if (
         p &&
         fp.role === args.role &&
-        p.legalName.trim().toLowerCase() ===
-          args.legalName.trim().toLowerCase()
+        p.legalName.trim().toLowerCase() === args.legalName.trim().toLowerCase()
       ) {
         return {
           partyId: p._id,
@@ -400,13 +392,13 @@ export const adminAddParty = internalMutation({
       }
     }
 
-    const partyId = await ctx.db.insert("parties", {
+    const partyId = await ctx.db.insert('parties', {
       tenantId: tenant._id,
       partyType: args.partyType,
       legalName: args.legalName.trim(),
     })
 
-    const filePartyId = await ctx.db.insert("fileParties", {
+    const filePartyId = await ctx.db.insert('fileParties', {
       tenantId: tenant._id,
       fileId: file._id,
       partyId,
@@ -414,18 +406,18 @@ export const adminAddParty = internalMutation({
       capacity: args.capacity,
     })
 
-    await ctx.db.insert("auditEvents", {
+    await ctx.db.insert('auditEvents', {
       tenantId: tenant._id,
-      actorType: "system",
-      action: "file.party_added",
-      resourceType: "file",
+      actorType: 'system',
+      action: 'file.party_added',
+      resourceType: 'file',
       resourceId: file._id,
       metadata: {
         partyId,
         filePartyId,
         role: args.role,
         legalName: args.legalName,
-        source: "cli",
+        source: 'cli',
       },
       occurredAt: Date.now(),
     })
@@ -438,7 +430,7 @@ export const adminRecordDocument = internalMutation({
   args: {
     tenantSlug: v.string(),
     fileNumber: v.string(),
-    storageId: v.id("_storage"),
+    storageId: v.id('_storage'),
     docType: v.string(),
     title: v.optional(v.string()),
   },
@@ -447,39 +439,37 @@ export const adminRecordDocument = internalMutation({
     if (!tenant) throw new ConvexError(`No tenant with slug ${args.tenantSlug}`)
 
     const file = await ctx.db
-      .query("files")
-      .withIndex("by_tenant_filenumber", (q) =>
-        q
-          .eq("tenantId", tenant._id)
-          .eq("fileNumber", args.fileNumber),
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileNumber', args.fileNumber)
       )
       .unique()
     if (!file) {
       throw new ConvexError(
-        `No file ${args.fileNumber} in tenant ${args.tenantSlug}`,
+        `No file ${args.fileNumber} in tenant ${args.tenantSlug}`
       )
     }
 
     // Pick any owner (or first member) as the uploader-of-record. Required
     // by schema; the audit metadata flags this row as CLI-sourced.
     const members = await ctx.db
-      .query("tenantMembers")
-      .withIndex("by_tenant_email", (q) => q.eq("tenantId", tenant._id))
+      .query('tenantMembers')
+      .withIndex('by_tenant_email', (q) => q.eq('tenantId', tenant._id))
       .collect()
     const fallback =
-      members.find((m) => m.role === "owner") ??
-      members.find((m) => m.role === "admin") ??
+      members.find((m) => m.role === 'owner') ??
+      members.find((m) => m.role === 'admin') ??
       members[0]
     if (!fallback) {
       throw new ConvexError(
-        `Tenant ${args.tenantSlug} has no members — invite someone first.`,
+        `Tenant ${args.tenantSlug} has no members — invite someone first.`
       )
     }
 
     const meta = await ctx.db.system.get(args.storageId)
-    if (!meta) throw new ConvexError("STORAGE_NOT_FOUND")
+    if (!meta) throw new ConvexError('STORAGE_NOT_FOUND')
 
-    const docId = await ctx.db.insert("documents", {
+    const docId = await ctx.db.insert('documents', {
       tenantId: tenant._id,
       fileId: file._id,
       docType: args.docType,
@@ -492,18 +482,18 @@ export const adminRecordDocument = internalMutation({
       uploadedAt: Date.now(),
     })
 
-    await ctx.db.insert("auditEvents", {
+    await ctx.db.insert('auditEvents', {
       tenantId: tenant._id,
       actorMemberId: fallback._id,
-      actorType: "system",
-      action: "document.uploaded",
-      resourceType: "file",
+      actorType: 'system',
+      action: 'document.uploaded',
+      resourceType: 'file',
       resourceId: file._id,
       metadata: {
         documentId: docId,
         docType: args.docType,
         sizeBytes: meta.size,
-        source: "cli",
+        source: 'cli',
       },
       occurredAt: Date.now(),
     })
@@ -516,18 +506,18 @@ export const adminRecordDocument = internalMutation({
       docType: args.docType,
     })
 
-    await ctx.db.insert("auditEvents", {
+    await ctx.db.insert('auditEvents', {
       tenantId: tenant._id,
       actorMemberId: fallback._id,
-      actorType: "system",
-      action: "extraction.requested",
-      resourceType: "file",
+      actorType: 'system',
+      action: 'extraction.requested',
+      resourceType: 'file',
       resourceId: file._id,
       metadata: {
         documentId: docId,
         extractionId,
         docType: args.docType,
-        source: "cli",
+        source: 'cli',
       },
       occurredAt: Date.now(),
     })
@@ -538,6 +528,149 @@ export const adminRecordDocument = internalMutation({
       fileId: file._id,
       sizeBytes: meta.size,
       contentType: meta.contentType,
+    }
+  },
+})
+
+// ─────────────────────────────────────────────────────────────────────
+// Seed a user (email + password) and add them to a tenant
+// ─────────────────────────────────────────────────────────────────────
+// Drives `bun run admin seed-user`. Goes through Better Auth's own APIs so
+// the password is hashed correctly and the org/member triggers fire (which
+// in turn provision the app-side `tenantMembers` row).
+
+export const tenantBySlugForSeed = internalQuery({
+  args: { tenantSlug: v.string() },
+  handler: async (ctx, { tenantSlug }) => {
+    const t = await ctx.db
+      .query('tenants')
+      .withIndex('by_slug', (q) => q.eq('slug', tenantSlug))
+      .unique()
+    if (!t) return null
+    return {
+      tenantId: t._id,
+      betterAuthOrgId: t.betterAuthOrgId,
+      slug: t.slug,
+      legalName: t.legalName,
+    }
+  },
+})
+
+type SeedUserResult = {
+  userId: string
+  email: string
+  tenantId: string
+  tenantSlug: string
+  tenantName: string
+  role: 'owner' | 'admin' | 'member'
+  userCreated: boolean
+  memberCreated: boolean
+}
+
+export const seedUserAndAssign = internalAction({
+  args: {
+    email: v.string(),
+    password: v.string(),
+    name: v.string(),
+    tenantSlug: v.string(),
+    role: v.optional(
+      v.union(v.literal('owner'), v.literal('admin'), v.literal('member'))
+    ),
+  },
+  handler: async (
+    ctx,
+    { email, password, name, tenantSlug, role }
+  ): Promise<SeedUserResult> => {
+    const normalizedEmail = email.trim().toLowerCase()
+    const finalRole = role ?? 'member'
+
+    const tenant = (await ctx.runQuery(
+      internal.systemAdmins.tenantBySlugForSeed,
+      { tenantSlug }
+    )) as {
+      tenantId: string
+      betterAuthOrgId: string
+      slug: string
+      legalName: string
+    } | null
+    if (!tenant) {
+      throw new ConvexError(`No tenant with slug ${tenantSlug}`)
+    }
+
+    // Org-plugin endpoints aren't surfaced on the inferred API type when
+    // BetterAuthOptions is widened, so the cast below is intentional.
+    const auth = createAuth(ctx) as unknown as {
+      api: {
+        signUpEmail: (args: {
+          body: { email: string; password: string; name: string }
+        }) => Promise<{ user: { id: string } }>
+        addMember: (args: {
+          body: {
+            userId: string
+            organizationId: string
+            role: 'owner' | 'admin' | 'member'
+          }
+        }) => Promise<unknown>
+      }
+    }
+
+    // Reuse the existing user if email is already registered. This makes the
+    // command safe to re-run and lets you add an existing user to a new org.
+    const existing = (await ctx.runQuery(
+      components.betterAuth.adapter.findOne,
+      {
+        model: 'user',
+        where: [{ field: 'email', value: normalizedEmail }],
+      }
+    )) as { _id: string; email?: string } | null
+
+    let userId: string
+    let userCreated: boolean
+    if (existing) {
+      userId = existing._id
+      userCreated = false
+    } else {
+      const result = await auth.api.signUpEmail({
+        body: { email: normalizedEmail, password, name },
+      })
+      userId = result.user.id
+      userCreated = true
+    }
+
+    // If they're already a member of this org, don't try to add again — BA's
+    // addMember endpoint throws on duplicate.
+    const memberAlready = (await ctx.runQuery(
+      components.betterAuth.adapter.findOne,
+      {
+        model: 'member',
+        where: [
+          { field: 'organizationId', value: tenant.betterAuthOrgId },
+          { field: 'userId', value: userId },
+        ],
+      }
+    )) as { _id: string } | null
+
+    let memberCreated = false
+    if (!memberAlready) {
+      await auth.api.addMember({
+        body: {
+          userId,
+          organizationId: tenant.betterAuthOrgId,
+          role: finalRole,
+        },
+      })
+      memberCreated = true
+    }
+
+    return {
+      userId,
+      email: normalizedEmail,
+      tenantId: tenant.tenantId,
+      tenantSlug: tenant.slug,
+      tenantName: tenant.legalName,
+      role: finalRole,
+      userCreated,
+      memberCreated,
     }
   },
 })

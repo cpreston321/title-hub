@@ -1,50 +1,50 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
-import { ScrollText, Stamp, X } from "lucide-react"
+import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
+import { ScrollText, Stamp, X } from 'lucide-react'
 import {
   Card,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { AppShell } from "@/components/app-shell"
-import { CountyCombobox } from "@/components/county-combobox"
-import { api } from "../../../convex/_generated/api"
-import type { Id } from "../../../convex/_generated/dataModel"
+} from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { AppShell } from '@/components/app-shell'
+import { CountyCombobox } from '@/components/county-combobox'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 
-export const Route = createFileRoute("/admin/rules")({
+export const Route = createFileRoute('/admin/rules')({
   head: () => ({
     meta: [
-      { title: "Recording rules · Title Hub" },
+      { title: 'Recording rules · Title Hub' },
       {
-        name: "description",
+        name: 'description',
         content:
-          "Versioned per-county recording rules — page size, margins, fees, and signature requirements.",
+          'Versioned per-county recording rules — page size, margins, fees, and signature requirements.',
       },
-      { name: "robots", content: "noindex, nofollow" },
+      { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
-      throw redirect({ to: "/signin" })
+      throw redirect({ to: '/signin' })
     }
   },
   component: RulesAdminPage,
 })
 
 const DOC_TYPES = [
-  { id: "deed", title: "Deeds", roman: "I" },
-  { id: "mortgage", title: "Mortgages", roman: "II" },
-  { id: "release", title: "Releases", roman: "III" },
-  { id: "assignment", title: "Assignments", roman: "IV" },
-  { id: "deed_of_trust", title: "Deeds of Trust", roman: "V" },
+  { id: 'deed', title: 'Deeds', roman: 'I' },
+  { id: 'mortgage', title: 'Mortgages', roman: 'II' },
+  { id: 'release', title: 'Releases', roman: 'III' },
+  { id: 'assignment', title: 'Assignments', roman: 'IV' },
+  { id: 'deed_of_trust', title: 'Deeds of Trust', roman: 'V' },
 ] as const
-type DocType = (typeof DOC_TYPES)[number]["id"]
+type DocType = (typeof DOC_TYPES)[number]['id']
 
 function RulesAdminPage() {
   const current = useQuery(convexQuery(api.tenants.current, {}))
@@ -52,25 +52,23 @@ function RulesAdminPage() {
   const seedPilot = useConvexMutation(api.rules.seedPilotRules)
   const [seeding, setSeeding] = useState(false)
   const [seedMsg, setSeedMsg] = useState<string | null>(null)
-  const [countyId, setCountyId] = useState<Id<"counties"> | "">("")
+  const [countyId, setCountyId] = useState<Id<'counties'> | ''>('')
 
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Recording rules">
-        <p className="text-sm text-muted-foreground">
-          Loading the codex...
-        </p>
+        <p className="text-sm text-muted-foreground">Loading the codex...</p>
       </AppShell>
     )
   }
   if (current.error) {
     return (
       <AppShell isAuthenticated title="Recording rules">
-        <p className="text-destructive text-sm">{current.error.message}</p>
+        <p className="text-sm text-destructive">{current.error.message}</p>
       </AppShell>
     )
   }
-  if (current.data?.role !== "owner") {
+  if (current.data?.role !== 'owner') {
     return (
       <AppShell isAuthenticated title="Recording rules">
         <Card className="mx-auto max-w-xl">
@@ -112,7 +110,7 @@ function RulesAdminPage() {
             <Link to="/admin">← Admin</Link>
           </Button>
           <Button variant="outline" onClick={onSeedPilot} disabled={seeding}>
-            {seeding ? "Seeding..." : "Seed Marion + Hamilton"}
+            {seeding ? 'Seeding...' : 'Seed Marion + Hamilton'}
           </Button>
         </>
       }
@@ -139,7 +137,7 @@ function RulesAdminPage() {
 
         {countyId && (
           <CountyRulesPanel
-            countyId={countyId as Id<"counties">}
+            countyId={countyId as Id<'counties'>}
             authoringMemberRole={current.data.role}
           />
         )}
@@ -153,12 +151,12 @@ function CodexHeader() {
     <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
       <div
         aria-hidden
-        className="paper-grain pointer-events-none absolute inset-0 opacity-60"
+        className="pointer-events-none absolute inset-0 paper-grain opacity-60"
       />
       <div className="relative grid grid-cols-1 items-center gap-6 px-7 py-10 md:grid-cols-[auto_1fr] md:px-10">
         <div className="grid size-20 place-items-center">
           <div className="relative grid size-20 place-items-center rounded-full ring-1 ring-[#40233f]/15">
-            <div className="brass-foil absolute inset-0 rounded-full opacity-90" />
+            <div className="absolute inset-0 rounded-full brass-foil opacity-90" />
             <div className="absolute inset-[3px] rounded-full bg-card" />
             <ScrollText className="relative size-8 text-[#40233f]" />
           </div>
@@ -167,13 +165,13 @@ function CodexHeader() {
           <div className="text-xs font-medium text-[#b78625]">
             Codex · Liber Recordationis
           </div>
-          <h1 className="font-display mt-2 text-5xl font-semibold leading-[0.95] tracking-tight text-[#40233f] md:text-6xl">
+          <h1 className="mt-2 font-display text-5xl leading-[0.95] font-semibold tracking-tight text-[#40233f] md:text-6xl">
             <span>Recording</span> Rules
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
             Margins, fees, exhibits, notarial requirements — versioned per
-            county and document type. New versions supersede the previous one
-            on their effective date.
+            county and document type. New versions supersede the previous one on
+            their effective date.
           </p>
         </div>
       </div>
@@ -188,25 +186,25 @@ function CountyPicker({
   selectedCountyName,
 }: {
   countyList: ReadonlyArray<{
-    _id: Id<"counties">
+    _id: Id<'counties'>
     name: string
     stateCode: string
   }>
-  countyId: Id<"counties"> | ""
-  setCountyId: (id: Id<"counties">) => void
+  countyId: Id<'counties'> | ''
+  setCountyId: (id: Id<'counties'>) => void
   selectedCountyName: string | null
 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/80 shadow-sm ring-1 ring-foreground/5">
       <div className="flex items-center gap-3 border-b border-border/50 bg-[#fdf6e8] px-6 py-3">
-        <span className="font-display grid size-7 place-items-center rounded-md border border-[#40233f]/20 bg-card text-xs font-semibold text-[#40233f]">
+        <span className="grid size-7 place-items-center rounded-md border border-[#40233f]/20 bg-card font-display text-xs font-semibold text-[#40233f]">
           I
         </span>
         <div className="text-xs font-medium text-[#b78625]">
           Step one · choose a jurisdiction
         </div>
         {selectedCountyName && (
-          <span className="font-numerals ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#e6f3ed] px-2.5 py-1 text-xs text-[#2f5d4b] ring-1 ring-inset ring-[#3f7c64]/35">
+          <span className="font-numerals ml-auto inline-flex items-center gap-1.5 rounded-full bg-[#e6f3ed] px-2.5 py-1 text-xs text-[#2f5d4b] ring-1 ring-[#3f7c64]/35 ring-inset">
             <span className="size-1 rounded-full bg-[#3f7c64]" />
             browsing {selectedCountyName}
           </span>
@@ -233,7 +231,7 @@ function CountyPicker({
 }
 
 type RuleRow = {
-  _id: Id<"countyRecordingRules">
+  _id: Id<'countyRecordingRules'>
   docType: string
   version: number
   effectiveFrom: number
@@ -242,7 +240,11 @@ type RuleRow = {
     pageSize?: string
     margins?: { top: number; bottom: number; left: number; right: number }
     requiredExhibits: string[]
-    feeSchedule?: { firstPage?: number; additionalPage?: number; salesDisclosureFee?: number }
+    feeSchedule?: {
+      firstPage?: number
+      additionalPage?: number
+      salesDisclosureFee?: number
+    }
   }
 }
 
@@ -250,11 +252,11 @@ function CountyRulesPanel({
   countyId,
   authoringMemberRole,
 }: {
-  countyId: Id<"counties">
+  countyId: Id<'counties'>
   authoringMemberRole: string
 }) {
   const list = useQuery(convexQuery(api.rules.listForCounty, { countyId }))
-  const [docType, setDocType] = useState<DocType>("deed")
+  const [docType, setDocType] = useState<DocType>('deed')
   const [showForm, setShowForm] = useState(false)
 
   const grouped = useMemo(() => {
@@ -265,7 +267,7 @@ function CountyRulesPanel({
     return out
   }, [list.data])
 
-  const isOwner = authoringMemberRole === "owner"
+  const isOwner = authoringMemberRole === 'owner'
 
   return (
     <div className="flex flex-col gap-6">
@@ -281,13 +283,13 @@ function CountyRulesPanel({
                 onClick={() => setDocType(d.id)}
                 className={`group/tab flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs transition ${
                   active
-                    ? "border-[#40233f] bg-[#40233f] text-[#f6e8d9] shadow-sm"
-                    : "border-border bg-card text-muted-foreground hover:border-[#40233f]/40 hover:text-[#40233f]"
+                    ? 'border-[#40233f] bg-[#40233f] text-[#f6e8d9] shadow-sm'
+                    : 'border-border bg-card text-muted-foreground hover:border-[#40233f]/40 hover:text-[#40233f]'
                 }`}
               >
                 <span
                   className={`text-xs ${
-                    active ? "text-[#f4d48f]" : "text-[#b78625]/80"
+                    active ? 'text-[#f4d48f]' : 'text-[#b78625]/80'
                   }`}
                 >
                   {d.roman}
@@ -296,8 +298,8 @@ function CountyRulesPanel({
                 <span
                   className={`font-numerals rounded-full px-1.5 text-xs tabular-nums ${
                     active
-                      ? "bg-white/15 text-white/80"
-                      : "bg-muted text-muted-foreground/80"
+                      ? 'bg-white/15 text-white/80'
+                      : 'bg-muted text-muted-foreground/80'
                   }`}
                 >
                   {count}
@@ -307,10 +309,7 @@ function CountyRulesPanel({
           })}
         </div>
         {isOwner && (
-          <Button
-            onClick={() => setShowForm((s) => !s)}
-            className="gap-2"
-          >
+          <Button onClick={() => setShowForm((s) => !s)} className="gap-2">
             {showForm ? (
               <>
                 <X className="size-4" />
@@ -330,9 +329,7 @@ function CountyRulesPanel({
         <PublishRuleForm
           countyId={countyId}
           docType={docType}
-          supersedes={
-            (grouped[docType] ?? []).find((r) => !r.effectiveTo)?._id
-          }
+          supersedes={(grouped[docType] ?? []).find((r) => !r.effectiveTo)?._id}
           onDone={() => setShowForm(false)}
         />
       )}
@@ -361,17 +358,17 @@ function DocTypePanel({
   const sorted = [...versions].sort((a, b) => b.version - a.version)
   return (
     <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
-      <header className="flex items-end justify-between border-b border-border/60 px-7 pb-5 pt-7">
+      <header className="flex items-end justify-between border-b border-border/60 px-7 pt-7 pb-5">
         <div>
           <div className="text-xs font-medium text-[#b78625]">
             Article {roman} · {docType}
           </div>
-          <h2 className="font-display mt-1.5 text-3xl font-semibold leading-none tracking-tight text-[#40233f]">
+          <h2 className="mt-1.5 font-display text-3xl leading-none font-semibold tracking-tight text-[#40233f]">
             {title}
           </h2>
         </div>
-        <div className="font-numerals rounded-md border border-border/60 bg-[#fdf6e8] px-3 py-1.5 text-xs tabular-nums text-[#40233f]">
-          {sorted.length} version{sorted.length === 1 ? "" : "s"} of record
+        <div className="font-numerals rounded-md border border-border/60 bg-[#fdf6e8] px-3 py-1.5 text-xs text-[#40233f] tabular-nums">
+          {sorted.length} version{sorted.length === 1 ? '' : 's'} of record
         </div>
       </header>
 
@@ -388,7 +385,7 @@ function DocTypePanel({
         <ol className="relative">
           <div
             aria-hidden
-            className="absolute left-[5.5rem] top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-border to-transparent"
+            className="absolute top-0 bottom-0 left-[5.5rem] w-px bg-gradient-to-b from-transparent via-border to-transparent"
           />
           {sorted.map((v, i) => {
             const active = !v.effectiveTo
@@ -396,27 +393,25 @@ function DocTypePanel({
               <li
                 key={v._id}
                 className={`relative grid grid-cols-[5.5rem_auto_1fr] items-start gap-6 px-7 py-6 ${
-                  i < sorted.length - 1 ? "border-b border-border/40" : ""
-                } ${active ? "bg-[#fdf6e8]/60" : ""}`}
+                  i < sorted.length - 1 ? 'border-b border-border/40' : ''
+                } ${active ? 'bg-[#fdf6e8]/60' : ''}`}
               >
                 <div className="text-right">
-                  <div className="text-xs text-muted-foreground">
-                    Version
-                  </div>
+                  <div className="text-xs text-muted-foreground">Version</div>
                   <div
-                    className={`font-display text-4xl font-semibold leading-none tabular-nums ${
-                      active ? "text-[#40233f]" : "text-muted-foreground/70"
+                    className={`font-display text-4xl leading-none font-semibold tabular-nums ${
+                      active ? 'text-[#40233f]' : 'text-muted-foreground/70'
                     }`}
                   >
-                    {String(v.version).padStart(2, "0")}
+                    {String(v.version).padStart(2, '0')}
                   </div>
                 </div>
 
                 <div
                   className={`relative z-10 mt-2 grid size-4 place-items-center rounded-full ${
                     active
-                      ? "bg-[#40233f] ring-4 ring-[#f8eed7]"
-                      : "bg-muted ring-4 ring-card"
+                      ? 'bg-[#40233f] ring-4 ring-[#f8eed7]'
+                      : 'bg-muted ring-4 ring-card'
                   }`}
                 >
                   {active && (
@@ -427,16 +422,20 @@ function DocTypePanel({
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-3">
                     <div className="font-display text-lg font-semibold tracking-tight text-[#40233f]">
-                      Effective {new Date(v.effectiveFrom).toLocaleDateString("en-US", { dateStyle: "long" })}
+                      Effective{' '}
+                      {new Date(v.effectiveFrom).toLocaleDateString('en-US', {
+                        dateStyle: 'long',
+                      })}
                     </div>
                     {active ? (
-                      <span className="font-numerals inline-flex items-center gap-1.5 rounded-full bg-[#e6f3ed] px-2.5 py-0.5 text-xs text-[#2f5d4b] ring-1 ring-inset ring-[#3f7c64]/35">
+                      <span className="font-numerals inline-flex items-center gap-1.5 rounded-full bg-[#e6f3ed] px-2.5 py-0.5 text-xs text-[#2f5d4b] ring-1 ring-[#3f7c64]/35 ring-inset">
                         <span className="size-1 rounded-full bg-[#3f7c64]" />
                         in force
                       </span>
                     ) : (
                       <span className="font-numerals text-xs text-muted-foreground">
-                        Superseded {new Date(v.effectiveTo!).toLocaleDateString()}
+                        Superseded{' '}
+                        {new Date(v.effectiveTo!).toLocaleDateString()}
                       </span>
                     )}
                   </div>
@@ -444,14 +443,14 @@ function DocTypePanel({
                   <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <DataCell
                       label="Page size"
-                      value={v.rules.pageSize ?? "—"}
+                      value={v.rules.pageSize ?? '—'}
                     />
                     <DataCell
                       label="Margins (TBLR)"
                       value={
                         v.rules.margins
                           ? `${v.rules.margins.top}·${v.rules.margins.bottom}·${v.rules.margins.left}·${v.rules.margins.right}`
-                          : "—"
+                          : '—'
                       }
                     />
                     <DataCell
@@ -459,7 +458,7 @@ function DocTypePanel({
                       value={
                         v.rules.feeSchedule
                           ? `$${v.rules.feeSchedule.firstPage ?? 0} / $${v.rules.feeSchedule.additionalPage ?? 0}`
-                          : "—"
+                          : '—'
                       }
                     />
                     <DataCell
@@ -467,7 +466,7 @@ function DocTypePanel({
                       value={
                         v.rules.feeSchedule?.salesDisclosureFee !== undefined
                           ? `$${v.rules.feeSchedule.salesDisclosureFee}`
-                          : "—"
+                          : '—'
                       }
                     />
                   </div>
@@ -500,10 +499,8 @@ function DocTypePanel({
 function DataCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-border/60 bg-card px-3 py-2">
-      <div className="text-xs font-medium text-muted-foreground">
-        {label}
-      </div>
-      <div className="font-numerals mt-0.5 text-sm tabular-nums text-[#40233f]">
+      <div className="text-xs font-medium text-muted-foreground">{label}</div>
+      <div className="font-numerals mt-0.5 text-sm text-[#40233f] tabular-nums">
         {value}
       </div>
     </div>
@@ -516,23 +513,23 @@ function PublishRuleForm({
   supersedes,
   onDone,
 }: {
-  countyId: Id<"counties">
+  countyId: Id<'counties'>
   docType: DocType
-  supersedes?: Id<"countyRecordingRules">
+  supersedes?: Id<'countyRecordingRules'>
   onDone: () => void
 }) {
   const publish = useConvexMutation(api.rules.publishRule)
-  const [pageSize, setPageSize] = useState("letter")
+  const [pageSize, setPageSize] = useState('letter')
   const [marginTop, setMarginTop] = useState(2)
   const [marginBottom, setMarginBottom] = useState(1)
   const [marginLeft, setMarginLeft] = useState(1)
   const [marginRight, setMarginRight] = useState(1)
-  const [exhibits, setExhibits] = useState("legal_description")
+  const [exhibits, setExhibits] = useState('legal_description')
   const [firstPage, setFirstPage] = useState(25)
   const [additionalPage, setAdditionalPage] = useState(5)
   const [salesDisclosureFee, setSalesDisclosureFee] = useState(0)
   const [effectiveDate, setEffectiveDate] = useState(
-    new Date().toISOString().slice(0, 10),
+    new Date().toISOString().slice(0, 10)
   )
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -557,7 +554,7 @@ function PublishRuleForm({
             right: marginRight,
           },
           requiredExhibits: exhibits
-            .split(",")
+            .split(',')
             .map((s) => s.trim())
             .filter(Boolean),
           feeSchedule: {
@@ -606,8 +603,8 @@ function PublishRuleForm({
         </div>
         <div className="rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-muted-foreground">
           {supersedes
-            ? "Will supersede the version currently in force"
-            : "First version of record"}
+            ? 'Will supersede the version currently in force'
+            : 'First version of record'}
         </div>
       </header>
 
@@ -651,9 +648,21 @@ function PublishRuleForm({
           </legend>
           <div className="grid grid-cols-4 gap-3">
             <NumberCell label="Top" value={marginTop} onChange={setMarginTop} />
-            <NumberCell label="Bottom" value={marginBottom} onChange={setMarginBottom} />
-            <NumberCell label="Left" value={marginLeft} onChange={setMarginLeft} />
-            <NumberCell label="Right" value={marginRight} onChange={setMarginRight} />
+            <NumberCell
+              label="Bottom"
+              value={marginBottom}
+              onChange={setMarginBottom}
+            />
+            <NumberCell
+              label="Left"
+              value={marginLeft}
+              onChange={setMarginLeft}
+            />
+            <NumberCell
+              label="Right"
+              value={marginRight}
+              onChange={setMarginRight}
+            />
           </div>
         </fieldset>
 
@@ -677,9 +686,21 @@ function PublishRuleForm({
             Fee schedule · USD
           </legend>
           <div className="grid grid-cols-3 gap-3">
-            <NumberCell label="First page" value={firstPage} onChange={setFirstPage} />
-            <NumberCell label="Each addl" value={additionalPage} onChange={setAdditionalPage} />
-            <NumberCell label="SDF" value={salesDisclosureFee} onChange={setSalesDisclosureFee} />
+            <NumberCell
+              label="First page"
+              value={firstPage}
+              onChange={setFirstPage}
+            />
+            <NumberCell
+              label="Each addl"
+              value={additionalPage}
+              onChange={setAdditionalPage}
+            />
+            <NumberCell
+              label="SDF"
+              value={salesDisclosureFee}
+              onChange={setSalesDisclosureFee}
+            />
           </div>
         </fieldset>
       </div>
@@ -701,7 +722,7 @@ function PublishRuleForm({
           </Button>
           <Button type="submit" disabled={pending} className="gap-2">
             <Stamp className="size-4" />
-            {pending ? "Recording..." : "Publish version"}
+            {pending ? 'Recording...' : 'Publish version'}
           </Button>
         </div>
       </footer>
@@ -718,13 +739,10 @@ function NumberCell({
   value: number
   onChange: (n: number) => void
 }) {
-  const id = `numcell-${label.replace(/\s+/g, "-")}`
+  const id = `numcell-${label.replace(/\s+/g, '-')}`
   return (
     <div className="flex flex-col gap-1">
-      <Label
-        htmlFor={id}
-        className="text-xs text-muted-foreground"
-      >
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
         {label}
       </Label>
       <Input

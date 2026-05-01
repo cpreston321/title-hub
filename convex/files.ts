@@ -1,13 +1,13 @@
-import { ConvexError, v } from "convex/values"
-import { mutation, query } from "./_generated/server"
-import type { MutationCtx, QueryCtx } from "./_generated/server"
-import type { Doc, Id } from "./_generated/dataModel"
-import { internal } from "./_generated/api"
-import { requireRole, requireTenant } from "./lib/tenant"
-import { recordAudit } from "./lib/audit"
-import { fileStatus, partyType, propertyAddress } from "./schema"
+import { ConvexError, v } from 'convex/values'
+import { mutation, query } from './_generated/server'
+import type { MutationCtx, QueryCtx } from './_generated/server'
+import type { Doc, Id } from './_generated/dataModel'
+import { internal } from './_generated/api'
+import { requireRole, requireTenant } from './lib/tenant'
+import { recordAudit } from './lib/audit'
+import { fileStatus, partyType, propertyAddress } from './schema'
 
-const editorRoles = ["owner", "admin", "processor"] as const
+const editorRoles = ['owner', 'admin', 'processor'] as const
 
 export function buildFileSearchText(
   file: {
@@ -22,7 +22,7 @@ export function buildFileSearchText(
       zip: string
     }
   },
-  countyName?: string | null,
+  countyName?: string | null
 ): string {
   const addr = file.propertyAddress
   return [
@@ -36,25 +36,53 @@ export function buildFileSearchText(
     addr?.zip,
     countyName,
   ]
-    .filter((s): s is string => typeof s === "string" && s.length > 0)
-    .join(" ")
+    .filter((s): s is string => typeof s === 'string' && s.length > 0)
+    .join(' ')
 }
 
 async function loadFile(
   ctx: QueryCtx,
-  fileId: Id<"files">,
-  tenantId: Id<"tenants">,
-): Promise<Doc<"files">> {
+  fileId: Id<'files'>,
+  tenantId: Id<'tenants'>
+): Promise<Doc<'files'>> {
   const file = await ctx.db.get(fileId)
-  if (!file) throw new ConvexError("FILE_NOT_FOUND")
-  if (file.tenantId !== tenantId) throw new ConvexError("FILE_NOT_FOUND")
+  if (!file) throw new ConvexError('FILE_NOT_FOUND')
+  if (file.tenantId !== tenantId) throw new ConvexError('FILE_NOT_FOUND')
   return file
+}
+
+// Idempotent system-driven status advance. Patches the file only when its
+// current status is one of `from`; otherwise no-op so concurrent triggers and
+// re-runs (e.g. multiple extractions completing) don't fight each other or
+// undo a manual move the user has already made.
+export async function autoPromoteFileStatus(
+  ctx: MutationCtx,
+  fileId: Id<'files'>,
+  from: ReadonlyArray<Doc<'files'>['status']>,
+  to: Doc<'files'>['status'],
+  reason: string
+): Promise<boolean> {
+  const file = await ctx.db.get(fileId)
+  if (!file) return false
+  if (file.status === to) return false
+  if (!from.includes(file.status)) return false
+  await ctx.db.patch(fileId, { status: to })
+  await ctx.db.insert('auditEvents', {
+    tenantId: file.tenantId,
+    actorType: 'system',
+    action: 'file.status_changed',
+    resourceType: 'file',
+    resourceId: fileId,
+    metadata: { from: file.status, to, reason, auto: true },
+    occurredAt: Date.now(),
+  })
+  return true
 }
 
 export const create = mutation({
   args: {
     fileNumber: v.string(),
-    countyId: v.id("counties"),
+    countyId: v.id('counties'),
     transactionType: v.string(),
     propertyAddress: v.optional(propertyAddress),
     propertyApn: v.optional(v.string()),
@@ -64,18 +92,19 @@ export const create = mutation({
     const tc = await requireTenant(ctx)
     requireRole(tc, ...editorRoles)
 
-    if (args.fileNumber.trim() === "") throw new ConvexError("INVALID_FILE_NUMBER")
+    if (args.fileNumber.trim() === '')
+      throw new ConvexError('INVALID_FILE_NUMBER')
 
     const county = await ctx.db.get(args.countyId)
-    if (!county) throw new ConvexError("COUNTY_NOT_FOUND")
+    if (!county) throw new ConvexError('COUNTY_NOT_FOUND')
 
     const dup = await ctx.db
-      .query("files")
-      .withIndex("by_tenant_filenumber", (q) =>
-        q.eq("tenantId", tc.tenantId).eq("fileNumber", args.fileNumber),
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('fileNumber', args.fileNumber)
       )
       .unique()
-    if (dup) throw new ConvexError("FILE_NUMBER_TAKEN")
+    if (dup) throw new ConvexError('FILE_NUMBER_TAKEN')
 
     const searchText = buildFileSearchText(
       {
@@ -84,16 +113,16 @@ export const create = mutation({
         propertyApn: args.propertyApn,
         propertyAddress: args.propertyAddress,
       },
-      county.name,
+      county.name
     )
 
-    const fileId = await ctx.db.insert("files", {
+    const fileId = await ctx.db.insert('files', {
       tenantId: tc.tenantId,
       fileNumber: args.fileNumber,
       stateCode: county.stateCode,
       countyId: args.countyId,
       transactionType: args.transactionType,
-      status: "opened",
+      status: 'opened',
       propertyAddress: args.propertyAddress,
       propertyApn: args.propertyApn,
       searchText,
@@ -101,7 +130,7 @@ export const create = mutation({
       targetCloseDate: args.targetCloseDate,
     })
 
-    await recordAudit(ctx, tc, "file.created", "file", fileId, {
+    await recordAudit(ctx, tc, 'file.created', 'file', fileId, {
       fileNumber: args.fileNumber,
       countyId: args.countyId,
     })
@@ -111,7 +140,7 @@ export const create = mutation({
 })
 
 export const get = query({
-  args: { fileId: v.id("files") },
+  args: { fileId: v.id('files') },
   handler: async (ctx, { fileId }) => {
     const tc = await requireTenant(ctx)
     const file = await loadFile(ctx, fileId, tc.tenantId)
@@ -119,9 +148,9 @@ export const get = query({
     const county = await ctx.db.get(file.countyId)
 
     const fileParties = await ctx.db
-      .query("fileParties")
-      .withIndex("by_tenant_file", (q) =>
-        q.eq("tenantId", tc.tenantId).eq("fileId", fileId),
+      .query('fileParties')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('fileId', fileId)
       )
       .take(50)
 
@@ -134,15 +163,15 @@ export const get = query({
               party: p,
             }
           : null
-      }),
+      })
     )
 
     const documents = await ctx.db
-      .query("documents")
-      .withIndex("by_tenant_file", (q) =>
-        q.eq("tenantId", tc.tenantId).eq("fileId", fileId),
+      .query('documents')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('fileId', fileId)
       )
-      .order("desc")
+      .order('desc')
       .take(50)
 
     return {
@@ -165,18 +194,16 @@ export const list = query({
 
     const rows = status
       ? await ctx.db
-          .query("files")
-          .withIndex("by_tenant_status", (q) =>
-            q.eq("tenantId", tc.tenantId).eq("status", status),
+          .query('files')
+          .withIndex('by_tenant_status', (q) =>
+            q.eq('tenantId', tc.tenantId).eq('status', status)
           )
-          .order("desc")
+          .order('desc')
           .take(cap)
       : await ctx.db
-          .query("files")
-          .withIndex("by_tenant_openedAt", (q) =>
-            q.eq("tenantId", tc.tenantId),
-          )
-          .order("desc")
+          .query('files')
+          .withIndex('by_tenant_openedAt', (q) => q.eq('tenantId', tc.tenantId))
+          .order('desc')
           .take(cap)
 
     return rows
@@ -184,14 +211,14 @@ export const list = query({
 })
 
 export const setStatus = mutation({
-  args: { fileId: v.id("files"), status: fileStatus },
+  args: { fileId: v.id('files'), status: fileStatus },
   handler: async (ctx, { fileId, status }) => {
     const tc = await requireTenant(ctx)
     requireRole(tc, ...editorRoles)
     const file = await loadFile(ctx, fileId, tc.tenantId)
 
     await ctx.db.patch(fileId, { status })
-    await recordAudit(ctx, tc, "file.status_changed", "file", fileId, {
+    await recordAudit(ctx, tc, 'file.status_changed', 'file', fileId, {
       from: file.status,
       to: status,
     })
@@ -201,7 +228,7 @@ export const setStatus = mutation({
 
 export const update = mutation({
   args: {
-    fileId: v.id("files"),
+    fileId: v.id('files'),
     transactionType: v.optional(v.string()),
     propertyApn: v.optional(v.string()),
     propertyAddress: v.optional(propertyAddress),
@@ -246,13 +273,13 @@ export const update = mutation({
               ? patch.propertyAddress
               : file.propertyAddress,
         },
-        county?.name ?? null,
+        county?.name ?? null
       )
     }
 
     await ctx.db.patch(args.fileId, patch)
-    await recordAudit(ctx, tc, "file.updated", "file", args.fileId, {
-      fields: Object.keys(patch).filter((k) => k !== "searchText"),
+    await recordAudit(ctx, tc, 'file.updated', 'file', args.fileId, {
+      fields: Object.keys(patch).filter((k) => k !== 'searchText'),
     })
     return { ok: true }
   },
@@ -260,7 +287,7 @@ export const update = mutation({
 
 export const addParty = mutation({
   args: {
-    fileId: v.id("files"),
+    fileId: v.id('files'),
     partyType: partyType,
     legalName: v.string(),
     role: v.string(),
@@ -275,9 +302,10 @@ export const addParty = mutation({
     requireRole(tc, ...editorRoles)
     await loadFile(ctx, args.fileId, tc.tenantId)
 
-    if (args.legalName.trim() === "") throw new ConvexError("INVALID_LEGAL_NAME")
+    if (args.legalName.trim() === '')
+      throw new ConvexError('INVALID_LEGAL_NAME')
 
-    const partyId = await ctx.db.insert("parties", {
+    const partyId = await ctx.db.insert('parties', {
       tenantId: tc.tenantId,
       partyType: args.partyType,
       legalName: args.legalName.trim(),
@@ -286,7 +314,7 @@ export const addParty = mutation({
       entitySubtype: args.entitySubtype,
     })
 
-    const filePartyId = await ctx.db.insert("fileParties", {
+    const filePartyId = await ctx.db.insert('fileParties', {
       tenantId: tc.tenantId,
       fileId: args.fileId,
       partyId,
@@ -295,7 +323,7 @@ export const addParty = mutation({
       ownershipPct: args.ownershipPct,
     })
 
-    await recordAudit(ctx, tc, "file.party_added", "file", args.fileId, {
+    await recordAudit(ctx, tc, 'file.party_added', 'file', args.fileId, {
       partyId,
       filePartyId,
       role: args.role,
@@ -317,8 +345,8 @@ export const generateUploadUrl = mutation({
 
 export const recordDocument = mutation({
   args: {
-    fileId: v.optional(v.id("files")),
-    storageId: v.id("_storage"),
+    fileId: v.optional(v.id('files')),
+    storageId: v.id('_storage'),
     docType: v.string(),
     title: v.optional(v.string()),
   },
@@ -328,9 +356,9 @@ export const recordDocument = mutation({
     if (fileId) await loadFile(ctx, fileId, tc.tenantId)
 
     const meta = await ctx.db.system.get(storageId)
-    if (!meta) throw new ConvexError("STORAGE_NOT_FOUND")
+    if (!meta) throw new ConvexError('STORAGE_NOT_FOUND')
 
-    const docId = await ctx.db.insert("documents", {
+    const docId = await ctx.db.insert('documents', {
       tenantId: tc.tenantId,
       fileId,
       docType,
@@ -346,13 +374,13 @@ export const recordDocument = mutation({
     // Audit under the file when one is attached so the event shows up in the
     // file's activity feed; otherwise log against the document itself.
     if (fileId) {
-      await recordAudit(ctx, tc, "document.uploaded", "file", fileId, {
+      await recordAudit(ctx, tc, 'document.uploaded', 'file', fileId, {
         documentId: docId,
         docType,
         sizeBytes: meta.size,
       })
     } else {
-      await recordAudit(ctx, tc, "document.uploaded", "document", docId, {
+      await recordAudit(ctx, tc, 'document.uploaded', 'document', docId, {
         docType,
         sizeBytes: meta.size,
       })
@@ -361,7 +389,7 @@ export const recordDocument = mutation({
     // Auto-extract: as soon as the document is recorded against a file, kick
     // off Claude extraction. Reconciliation needs an extraction per doc, so
     // doing it implicitly removes a manual step from the workflow.
-    let extractionId: Id<"documentExtractions"> | null = null
+    let extractionId: Id<'documentExtractions'> | null = null
     if (fileId) {
       extractionId = await scheduleExtractionFor(ctx, tc.tenantId, {
         documentId: docId,
@@ -369,11 +397,11 @@ export const recordDocument = mutation({
         storageId,
         docType,
       })
-      await recordAudit(ctx, tc, "extraction.requested", "file", fileId, {
+      await recordAudit(ctx, tc, 'extraction.requested', 'file', fileId, {
         documentId: docId,
         extractionId,
         docType,
-        source: "auto",
+        source: 'auto',
       })
     }
 
@@ -385,13 +413,13 @@ export const recordDocument = mutation({
 // Caller must verify tenant + role before invoking.
 export async function deleteDocumentCascade(
   ctx: MutationCtx,
-  tenantId: Id<"tenants">,
-  doc: Doc<"documents">,
+  tenantId: Id<'tenants'>,
+  doc: Doc<'documents'>
 ) {
   const extractions = await ctx.db
-    .query("documentExtractions")
-    .withIndex("by_tenant_document", (q) =>
-      q.eq("tenantId", tenantId).eq("documentId", doc._id),
+    .query('documentExtractions')
+    .withIndex('by_tenant_document', (q) =>
+      q.eq('tenantId', tenantId).eq('documentId', doc._id)
     )
     .collect()
   for (const e of extractions) await ctx.db.delete(e._id)
@@ -412,28 +440,28 @@ export async function deleteDocumentCascade(
 // Used by both the public upload flow and the CLI seed.
 export async function scheduleExtractionFor(
   ctx: MutationCtx,
-  tenantId: Id<"tenants">,
+  tenantId: Id<'tenants'>,
   args: {
-    documentId: Id<"documents">
-    fileId: Id<"files">
-    storageId: Id<"_storage">
+    documentId: Id<'documents'>
+    fileId: Id<'files'>
+    storageId: Id<'_storage'>
     docType: string
-  },
-): Promise<Id<"documentExtractions">> {
+  }
+): Promise<Id<'documentExtractions'>> {
   const prior = await ctx.db
-    .query("documentExtractions")
-    .withIndex("by_tenant_document", (q) =>
-      q.eq("tenantId", tenantId).eq("documentId", args.documentId),
+    .query('documentExtractions')
+    .withIndex('by_tenant_document', (q) =>
+      q.eq('tenantId', tenantId).eq('documentId', args.documentId)
     )
     .unique()
   if (prior) await ctx.db.delete(prior._id)
 
-  const extractionId = await ctx.db.insert("documentExtractions", {
+  const extractionId = await ctx.db.insert('documentExtractions', {
     tenantId,
     fileId: args.fileId,
     documentId: args.documentId,
-    status: "pending",
-    source: "claude",
+    status: 'pending',
+    source: 'claude',
     startedAt: Date.now(),
   })
 
@@ -447,14 +475,14 @@ export async function scheduleExtractionFor(
 }
 
 export const deleteDocument = mutation({
-  args: { documentId: v.id("documents") },
+  args: { documentId: v.id('documents') },
   handler: async (ctx, { documentId }) => {
     const tc = await requireTenant(ctx)
     requireRole(tc, ...editorRoles)
 
     const doc = await ctx.db.get(documentId)
     if (!doc || doc.tenantId !== tc.tenantId) {
-      throw new ConvexError("DOCUMENT_NOT_FOUND")
+      throw new ConvexError('DOCUMENT_NOT_FOUND')
     }
 
     const meta = {
@@ -467,13 +495,13 @@ export const deleteDocument = mutation({
 
     // Audit on the file when there is one so it shows up in the activity feed.
     if (doc.fileId) {
-      await recordAudit(ctx, tc, "document.deleted", "file", doc.fileId, {
+      await recordAudit(ctx, tc, 'document.deleted', 'file', doc.fileId, {
         documentId,
         ...meta,
         extractionsRemoved: result.extractionsRemoved,
       })
     } else {
-      await recordAudit(ctx, tc, "document.deleted", "document", documentId, {
+      await recordAudit(ctx, tc, 'document.deleted', 'document', documentId, {
         ...meta,
         extractionsRemoved: result.extractionsRemoved,
       })
@@ -484,12 +512,12 @@ export const deleteDocument = mutation({
 })
 
 export const documentUrl = query({
-  args: { documentId: v.id("documents") },
+  args: { documentId: v.id('documents') },
   handler: async (ctx, { documentId }) => {
     const tc = await requireTenant(ctx)
     const doc = await ctx.db.get(documentId)
     if (!doc || doc.tenantId !== tc.tenantId) {
-      throw new ConvexError("DOCUMENT_NOT_FOUND")
+      throw new ConvexError('DOCUMENT_NOT_FOUND')
     }
     return await ctx.storage.getUrl(doc.storageId)
   },

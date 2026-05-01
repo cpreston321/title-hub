@@ -1,6 +1,6 @@
-import { Link, useLocation, useNavigate } from "@tanstack/react-router"
-import { useQuery } from "@tanstack/react-query"
-import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
+import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   Bell,
   Check,
@@ -9,24 +9,27 @@ import {
   CircleAlert,
   Search,
   Sparkles,
-} from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+} from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   SidebarProvider,
   SidebarInset,
   SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { Input } from "@/components/ui/input"
-import { AppSidebar } from "./app-sidebar"
-import { api } from "../../convex/_generated/api"
-import type { Id } from "../../convex/_generated/dataModel"
+} from '@/components/ui/sidebar'
+import { Input } from '@/components/ui/input'
+import { AppSidebar } from './app-sidebar'
+import { api } from '../../convex/_generated/api'
+import type { Id } from '../../convex/_generated/dataModel'
 
 export type Crumb = { label: string; to?: string }
 
 type AppShellProps = {
   isAuthenticated: boolean
-  /** Legacy: a single label used as the final breadcrumb when no `breadcrumb` is given. */
+  /**
+   * Legacy: a single label used as the final breadcrumb when no `breadcrumb` is
+   * given.
+   */
   title?: string
   /** Optional context line shown beneath the breadcrumb. */
   subtitle?: string
@@ -92,20 +95,20 @@ export function AppShell({
 
 // Pathname → breadcrumb. Pages can override by passing the `breadcrumb` prop.
 function deriveBreadcrumb(pathname: string): ReadonlyArray<Crumb> {
-  if (pathname === "/") return [{ label: "Dashboard" }]
-  if (pathname === "/files") return [{ label: "Files" }]
+  if (pathname === '/') return [{ label: 'Dashboard' }]
+  if (pathname === '/files') return [{ label: 'Files' }]
   if (/^\/files\/[^/]+/.test(pathname)) {
-    return [{ label: "Files", to: "/files" }, { label: "File" }]
+    return [{ label: 'Files', to: '/files' }, { label: 'File' }]
   }
-  if (pathname === "/admin") return [{ label: "Admin" }]
-  if (pathname === "/admin/rules") {
-    return [{ label: "Admin", to: "/admin" }, { label: "Recording rules" }]
+  if (pathname === '/admin') return [{ label: 'Admin' }]
+  if (pathname === '/admin/rules') {
+    return [{ label: 'Admin', to: '/admin' }, { label: 'Recording rules' }]
   }
-  if (pathname === "/admin/integrations") {
-    return [{ label: "Admin", to: "/admin" }, { label: "Integrations" }]
+  if (pathname === '/admin/integrations') {
+    return [{ label: 'Admin', to: '/admin' }, { label: 'Integrations' }]
   }
-  if (pathname === "/settings") return [{ label: "Settings" }]
-  if (pathname === "/tenants") return [{ label: "Organizations" }]
+  if (pathname === '/settings') return [{ label: 'Settings' }]
+  if (pathname === '/tenants') return [{ label: 'Organizations' }]
   return []
 }
 
@@ -117,8 +120,8 @@ function Breadcrumb({ crumbs }: { crumbs: ReadonlyArray<Crumb> }) {
         {crumbs.map((c, i) => {
           const last = i === crumbs.length - 1
           const labelClass = last
-            ? "font-medium text-[#40233f]"
-            : "text-muted-foreground"
+            ? 'font-medium text-[#40233f]'
+            : 'text-muted-foreground'
           return (
             <li key={`${c.label}-${i}`} className="flex items-center gap-1.5">
               {c.to && !last ? (
@@ -144,20 +147,20 @@ function Breadcrumb({ crumbs }: { crumbs: ReadonlyArray<Crumb> }) {
 
 // Flat list shape used for keyboard navigation through the search popover.
 type FlatResult =
-  | { kind: "file"; fileId: string; title: string; meta: string }
+  | { kind: 'file'; fileId: string; title: string; meta: string }
   | {
-      kind: "party"
+      kind: 'party'
       title: string
       meta: string
       fileId: string | null
     }
-  | { kind: "finding"; fileId: string; title: string; meta: string }
+  | { kind: 'finding'; fileId: string; title: string; meta: string }
 
 function GlobalSearch() {
   const navigate = useNavigate()
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const [q, setQ] = useState("")
+  const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const trimmed = q.trim()
@@ -185,7 +188,7 @@ function GlobalSearch() {
     const out: FlatResult[] = []
     for (const f of data.files) {
       out.push({
-        kind: "file",
+        kind: 'file',
         fileId: f._id,
         title: f.fileNumber,
         meta: `${f.transactionType} · ${f.status}`,
@@ -194,7 +197,7 @@ function GlobalSearch() {
     for (const p of data.parties) {
       if (!p.fileId) continue
       out.push({
-        kind: "party",
+        kind: 'party',
         title: p.legalName,
         meta: p.fileNumber
           ? `${p.partyType} · on ${p.fileNumber}`
@@ -204,10 +207,10 @@ function GlobalSearch() {
     }
     for (const fd of data.findings) {
       out.push({
-        kind: "finding",
+        kind: 'finding',
         fileId: fd.fileId,
         title: fd.message,
-        meta: `${fd.severity} · ${fd.findingType}${fd.fileNumber ? ` · ${fd.fileNumber}` : ""}`,
+        meta: `${fd.severity} · ${fd.findingType}${fd.fileNumber ? ` · ${fd.fileNumber}` : ''}`,
       })
     }
     return out
@@ -224,55 +227,55 @@ function GlobalSearch() {
     const onPointer = (e: MouseEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener("mousedown", onPointer)
-    return () => document.removeEventListener("mousedown", onPointer)
+    document.addEventListener('mousedown', onPointer)
+    return () => document.removeEventListener('mousedown', onPointer)
   }, [open])
 
   // Global ⌘K / Ctrl+K to focus the search input.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         inputRef.current?.focus()
         inputRef.current?.select()
         if (trimmed.length >= 2) setOpen(true)
       }
     }
-    window.addEventListener("keydown", onKey)
-    return () => window.removeEventListener("keydown", onKey)
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [trimmed.length])
 
   const close = () => {
     setOpen(false)
-    setQ("")
+    setQ('')
   }
 
-  const gotoFile = (fileId: Id<"files">) => {
+  const gotoFile = (fileId: Id<'files'>) => {
     close()
-    navigate({ to: "/files/$fileId", params: { fileId } })
+    navigate({ to: '/files/$fileId', params: { fileId } })
   }
 
   const activate = (i: number) => {
     const r = flat[i]
     if (!r) return
-    gotoFile(r.fileId as Id<"files">)
+    gotoFile(r.fileId as Id<'files'>)
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape") {
+    if (e.key === 'Escape') {
       e.preventDefault()
       setOpen(false)
       inputRef.current?.blur()
       return
     }
     if (!showPanel || flat.length === 0) return
-    if (e.key === "ArrowDown") {
+    if (e.key === 'ArrowDown') {
       e.preventDefault()
       setSelectedIndex((i) => (i + 1) % flat.length)
-    } else if (e.key === "ArrowUp") {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelectedIndex((i) => (i - 1 + flat.length) % flat.length)
-    } else if (e.key === "Enter") {
+    } else if (e.key === 'Enter') {
       e.preventDefault()
       activate(selectedIndex)
     }
@@ -340,19 +343,19 @@ function GlobalSearch() {
               <span>
                 <kbd className="rounded border border-border bg-muted px-1 font-mono">
                   ↑↓
-                </kbd>{" "}
-                navigate ·{" "}
+                </kbd>{' '}
+                navigate ·{' '}
                 <kbd className="rounded border border-border bg-muted px-1 font-mono">
                   ↵
-                </kbd>{" "}
-                open ·{" "}
+                </kbd>{' '}
+                open ·{' '}
                 <kbd className="rounded border border-border bg-muted px-1 font-mono">
                   esc
-                </kbd>{" "}
+                </kbd>{' '}
                 close
               </span>
               <span className="font-numerals tabular-nums">
-                {flat.length} {flat.length === 1 ? "result" : "results"}
+                {flat.length} {flat.length === 1 ? 'result' : 'results'}
               </span>
             </div>
           )}
@@ -465,7 +468,7 @@ function FlatResultList({
             <ResultRow
               key={fd.findingId}
               title={fd.message}
-              meta={`${fd.severity} · ${fd.findingType}${fd.fileNumber ? ` · ${fd.fileNumber}` : ""}`}
+              meta={`${fd.severity} · ${fd.findingType}${fd.fileNumber ? ` · ${fd.fileNumber}` : ''}`}
               selected={idx === selectedIndex}
               onMouseMove={() => onHover(idx)}
               onSelect={() => onSelect(idx)}
@@ -485,7 +488,7 @@ function FlatResultList({
       {unattachedParties.length > 0 && (
         <div className="px-3 pt-1 text-[10px] text-muted-foreground">
           {unattachedParties.length} unattached part
-          {unattachedParties.length === 1 ? "y" : "ies"} — not yet on a file.
+          {unattachedParties.length === 1 ? 'y' : 'ies'} — not yet on a file.
         </div>
       )}
     </div>
@@ -531,7 +534,7 @@ function ResultRow({
       onClick={onSelect}
       onMouseMove={onMouseMove}
       className={`flex w-full flex-col items-start gap-0.5 rounded-xl px-3 py-2 text-left text-sm font-normal transition ${
-        selected ? "bg-[#fdf6e8]" : "hover:bg-muted"
+        selected ? 'bg-[#fdf6e8]' : 'hover:bg-muted'
       }`}
     >
       <span className="line-clamp-1 w-full font-medium text-[#2e2430]">
@@ -595,8 +598,8 @@ function NotificationsBell() {
     const onPointer = (e: MouseEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) setOpen(false)
     }
-    document.addEventListener("mousedown", onPointer)
-    return () => document.removeEventListener("mousedown", onPointer)
+    document.addEventListener('mousedown', onPointer)
+    return () => document.removeEventListener('mousedown', onPointer)
   }, [open])
 
   // Reset the inline "are you sure?" state whenever the popover closes.
@@ -610,13 +613,13 @@ function NotificationsBell() {
     setOpen(false)
     if (!n.readAt) {
       try {
-        await markRead({ notificationId: n._id as Id<"notifications"> })
+        await markRead({ notificationId: n._id as Id<'notifications'> })
       } catch {
         // ignore — UI doesn't depend on success.
       }
     }
     if (n.fileId) {
-      navigate({ to: "/files/$fileId", params: { fileId: n.fileId } })
+      navigate({ to: '/files/$fileId', params: { fileId: n.fileId } })
     }
   }
 
@@ -648,16 +651,16 @@ function NotificationsBell() {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ""}`}
+        aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
         aria-expanded={open}
         className={`relative inline-flex size-9 items-center justify-center rounded-xl border border-input bg-card text-[#40233f] transition hover:bg-[#fdf6e8] ${
-          open ? "ring-2 ring-[#593157]/30" : ""
+          open ? 'ring-2 ring-[#593157]/30' : ''
         }`}
       >
         <Bell className="size-4" />
         {unread > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b94f58] px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-background">
-            {unread > 99 ? "99+" : unread}
+          <span className="absolute -top-1.5 -right-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b94f58] px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-background">
+            {unread > 99 ? '99+' : unread}
           </span>
         )}
       </button>
@@ -666,14 +669,14 @@ function NotificationsBell() {
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute right-0 top-full z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border/70 bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5"
+          className="absolute top-full right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border/70 bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5"
         >
           <header className="flex items-center justify-between gap-3 border-b border-border/60 bg-[#fdf6e8]/60 px-4 py-3">
             <div className="min-w-0">
               <div className="text-xs font-semibold text-[#b78625]">
                 Notifications
               </div>
-              <div className="font-display text-base font-semibold leading-none tracking-tight text-[#40233f]">
+              <div className="font-display text-base leading-none font-semibold tracking-tight text-[#40233f]">
                 What's new
               </div>
             </div>
@@ -761,15 +764,35 @@ function NotificationRowView({
   onClick: () => void
 }) {
   const tone =
-    n.severity === "block"
-      ? { bg: "bg-[#fdecee]", text: "text-[#8a3942]", icon: <CircleAlert className="size-3.5" /> }
-      : n.severity === "warn"
-        ? { bg: "bg-[#fde9dc]", text: "text-[#7a3d18]", icon: <CircleAlert className="size-3.5" /> }
-        : n.severity === "ok"
-          ? { bg: "bg-[#e6f3ed]", text: "text-[#2f5d4b]", icon: <CheckCircle2 className="size-3.5" /> }
-          : n.kind.startsWith("extraction")
-            ? { bg: "bg-[#fdf6e8]", text: "text-[#7a5818]", icon: <Sparkles className="size-3.5" /> }
-            : { bg: "bg-muted", text: "text-muted-foreground", icon: <Check className="size-3.5" /> }
+    n.severity === 'block'
+      ? {
+          bg: 'bg-[#fdecee]',
+          text: 'text-[#8a3942]',
+          icon: <CircleAlert className="size-3.5" />,
+        }
+      : n.severity === 'warn'
+        ? {
+            bg: 'bg-[#fde9dc]',
+            text: 'text-[#7a3d18]',
+            icon: <CircleAlert className="size-3.5" />,
+          }
+        : n.severity === 'ok'
+          ? {
+              bg: 'bg-[#e6f3ed]',
+              text: 'text-[#2f5d4b]',
+              icon: <CheckCircle2 className="size-3.5" />,
+            }
+          : n.kind.startsWith('extraction')
+            ? {
+                bg: 'bg-[#fdf6e8]',
+                text: 'text-[#7a5818]',
+                icon: <Sparkles className="size-3.5" />,
+              }
+            : {
+                bg: 'bg-muted',
+                text: 'text-muted-foreground',
+                icon: <Check className="size-3.5" />,
+              }
 
   const unread = !n.readAt
   return (
@@ -778,7 +801,7 @@ function NotificationRowView({
         type="button"
         onClick={onClick}
         className={`group/notif flex w-full appearance-none items-start gap-3 border-0 bg-transparent px-4 py-2.5 text-left font-sans text-inherit transition hover:bg-[#fdf6e8]/50 ${
-          unread ? "bg-[#fdf6e8]/30" : ""
+          unread ? 'bg-[#fdf6e8]/30' : ''
         }`}
       >
         <div
@@ -801,7 +824,7 @@ function NotificationRowView({
             </div>
           )}
         </div>
-        <div className="flex shrink-0 items-center self-center gap-1">
+        <div className="flex shrink-0 items-center gap-1 self-center">
           {unread && (
             <span
               aria-label="Unread"
@@ -819,7 +842,7 @@ function NotificationRowView({
 
 function bellTimeAgo(ts: number): string {
   const diff = Date.now() - ts
-  if (diff < 5_000) return "just now"
+  if (diff < 5_000) return 'just now'
   const sec = Math.floor(diff / 1000)
   if (sec < 60) return `${sec}s ago`
   const min = Math.floor(sec / 60)
@@ -828,8 +851,8 @@ function bellTimeAgo(ts: number): string {
   if (hr < 24) return `${hr}h ago`
   const d = Math.floor(hr / 24)
   if (d < 7) return `${d}d ago`
-  return new Date(ts).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
+  return new Date(ts).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
   })
 }

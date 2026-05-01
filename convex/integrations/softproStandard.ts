@@ -1,4 +1,4 @@
-import type { Adapter, FileSnapshot } from "./types"
+import type { Adapter, FileSnapshot } from './types'
 
 // SoftPro Standard *direct* adapter — for customers running SoftPro
 // Standard without the 360 connector. Push-mode: a customer-side agent
@@ -22,18 +22,18 @@ import type { Adapter, FileSnapshot } from "./types"
 // runner skips push-mode adapters. They exist as guard rails: if anyone
 // wires this kind into a pull-mode path, it fails loudly.
 
-const NOT_PULLABLE = "SOFTPRO_STANDARD_PUSH_MODE_ONLY"
+const NOT_PULLABLE = 'SOFTPRO_STANDARD_PUSH_MODE_ONLY'
 
 export const softproStandardAdapter: Adapter = {
-  kind: "softpro_standard",
-  mode: "push",
+  kind: 'softpro_standard',
+  mode: 'push',
 
   // eslint-disable-next-line @typescript-eslint/require-await
   async testConnection() {
     return {
       ok: true,
       detail:
-        "push-mode integration — readiness is determined by agent heartbeat freshness",
+        'push-mode integration — readiness is determined by agent heartbeat freshness',
     }
   },
 

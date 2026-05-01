@@ -1,15 +1,15 @@
-"use node"
+'use node'
 
-import Anthropic from "@anthropic-ai/sdk"
-import { v } from "convex/values"
-import { internalAction } from "./_generated/server"
-import { internal } from "./_generated/api"
+import Anthropic from '@anthropic-ai/sdk'
+import { v } from 'convex/values'
+import { internalAction } from './_generated/server'
+import { internal } from './_generated/api'
 
 // ─────────────────────────────────────────────────────────────────────
 // Prompt + parser
 // ─────────────────────────────────────────────────────────────────────
 
-const SCHEMA_VERSION = "v2"
+const SCHEMA_VERSION = 'v2'
 
 const SYSTEM_PROMPT = `You extract structured fields from US real-estate transaction documents: purchase agreements, counter offers, title commitments, title search reports, closing disclosures, deeds, and seller's disclosures.
 
@@ -113,7 +113,7 @@ export type ExtractionPayload = {
 export function parseExtractionJson(raw: string): ExtractionPayload {
   const trimmed = raw.trim()
 
-  if (trimmed.startsWith("{")) {
+  if (trimmed.startsWith('{')) {
     try {
       return JSON.parse(trimmed) as ExtractionPayload
     } catch {
@@ -130,7 +130,7 @@ export function parseExtractionJson(raw: string): ExtractionPayload {
     }
   }
 
-  const start = trimmed.indexOf("{")
+  const start = trimmed.indexOf('{')
   if (start >= 0) {
     let depth = 0
     let inString = false
@@ -139,7 +139,7 @@ export function parseExtractionJson(raw: string): ExtractionPayload {
       const ch = trimmed[i]
       if (inString) {
         if (escaped) escaped = false
-        else if (ch === "\\") escaped = true
+        else if (ch === '\\') escaped = true
         else if (ch === '"') inString = false
         continue
       }
@@ -147,8 +147,8 @@ export function parseExtractionJson(raw: string): ExtractionPayload {
         inString = true
         continue
       }
-      if (ch === "{") depth++
-      else if (ch === "}") {
+      if (ch === '{') depth++
+      else if (ch === '}') {
         depth--
         if (depth === 0) {
           return JSON.parse(trimmed.slice(start, i + 1)) as ExtractionPayload
@@ -157,7 +157,7 @@ export function parseExtractionJson(raw: string): ExtractionPayload {
     }
   }
 
-  throw new Error("EXTRACTION_NO_JSON")
+  throw new Error('EXTRACTION_NO_JSON')
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -166,86 +166,91 @@ export function parseExtractionJson(raw: string): ExtractionPayload {
 
 const MOCK_BY_DOCTYPE: Record<string, ExtractionPayload> = {
   purchase_agreement: {
-    documentKind: "purchase_agreement",
+    documentKind: 'purchase_agreement',
     parties: [
-      { role: "buyer", legalName: "Michelle Hicks" },
-      { role: "seller", legalName: "Rene S Kotter", capacity: "AIF" },
+      { role: 'buyer', legalName: 'Michelle Hicks' },
+      { role: 'seller', legalName: 'Rene S Kotter', capacity: 'AIF' },
     ],
     property: {
-      address: "3324 Corey Dr, Indianapolis, IN 46227",
-      legalDescription: "Holly Heights L68",
-      parcelId: "491517124083000500",
-      county: "Marion",
-      state: "IN",
-      zip: "46227",
+      address: '3324 Corey Dr, Indianapolis, IN 46227',
+      legalDescription: 'Holly Heights L68',
+      parcelId: '491517124083000500',
+      county: 'Marion',
+      state: 'IN',
+      zip: '46227',
     },
     financial: {
       purchasePrice: 225000,
       earnestMoney: { amount: 500, refundable: true, depositDays: 2 },
       sellerConcessions: 3200,
-      buyerBrokerCompensation: { percent: 3, paidBy: "seller" },
+      buyerBrokerCompensation: { percent: 3, paidBy: 'seller' },
     },
     dates: {
-      effectiveDate: "2026-02-02",
-      closingDate: "2026-03-04",
+      effectiveDate: '2026-02-02',
+      closingDate: '2026-03-04',
       financingApprovalDays: 40,
-      expirationOfOffer: "2026-02-03",
+      expirationOfOffer: '2026-02-03',
     },
-    titleCompany: { name: "Near North Title", selectedBy: "buyer" },
-    contingencies: ["financing", "inspection", "appraisal", "homeowners_insurance"],
+    titleCompany: { name: 'Near North Title', selectedBy: 'buyer' },
+    contingencies: [
+      'financing',
+      'inspection',
+      'appraisal',
+      'homeowners_insurance',
+    ],
     amendments: [],
     notes: [
-      "Seller agrees to a $5,500 contractor check at closing payable to RiteRug Flooring.",
+      'Seller agrees to a $5,500 contractor check at closing payable to RiteRug Flooring.',
       "Surveyor location report at seller's expense.",
     ],
     _confidence: {
-      "financial.earnestMoney.refundable": 0.7,
-      "parties[1].capacity": 0.8,
+      'financial.earnestMoney.refundable': 0.7,
+      'parties[1].capacity': 0.8,
     },
   },
   counter_offer: {
-    documentKind: "counter_offer",
+    documentKind: 'counter_offer',
     parties: [
-      { role: "buyer", legalName: "Michelle Hicks" },
-      { role: "seller", legalName: "Rene S Kotter", capacity: "AIF" },
+      { role: 'buyer', legalName: 'Michelle Hicks' },
+      { role: 'seller', legalName: 'Rene S Kotter', capacity: 'AIF' },
     ],
     property: {
-      address: "3324 Corey Dr, Indianapolis, IN 46227",
-      county: "Marion",
-      state: "IN",
+      address: '3324 Corey Dr, Indianapolis, IN 46227',
+      county: 'Marion',
+      state: 'IN',
     },
     financial: {
       purchasePrice: 233600,
       earnestMoney: { refundable: false },
     },
     dates: {
-      effectiveDate: "2026-02-03",
-      closingDate: "2026-03-04",
+      effectiveDate: '2026-02-03',
+      closingDate: '2026-03-04',
       financingApprovalDays: 25,
     },
     titleCompany: {
-      name: "Quality Title Insurance",
-      phone: "317-780-5700",
-      selectedBy: "seller",
+      name: 'Quality Title Insurance',
+      phone: '317-780-5700',
+      selectedBy: 'seller',
     },
-    contingencies: ["financing", "inspection"],
+    contingencies: ['financing', 'inspection'],
     amendments: [
-      "Purchase price raised to $233,600 (from $225,000).",
-      "Earnest money is non-refundable.",
-      "Financing approval deadline reduced to 25 days after acceptance.",
-      "Seller selects title company: Quality Title Insurance.",
-      "Seller transfers existing American Home Shield warranty to buyer at closing.",
-      "Survey, if requested, ordered and paid for by buyer.",
-      "Seller not required to make any single repair under $500.",
+      'Purchase price raised to $233,600 (from $225,000).',
+      'Earnest money is non-refundable.',
+      'Financing approval deadline reduced to 25 days after acceptance.',
+      'Seller selects title company: Quality Title Insurance.',
+      'Seller transfers existing American Home Shield warranty to buyer at closing.',
+      'Survey, if requested, ordered and paid for by buyer.',
+      'Seller not required to make any single repair under $500.',
     ],
     notes: [
-      "BIR #1 response window: 48 hours after written proof of lender loan conditions.",
+      'BIR #1 response window: 48 hours after written proof of lender loan conditions.',
     ],
     _confidence: {
-      "financial.purchasePrice": 0.9,
-      "financial.earnestMoney.refundable": 0.65,
-      "titleCompany.name": 0.85,
-      "dates.financingApprovalDays": 0.75,
+      'financial.purchasePrice': 0.9,
+      'financial.earnestMoney.refundable': 0.65,
+      'titleCompany.name': 0.85,
+      'dates.financingApprovalDays': 0.75,
     },
   },
 }
@@ -255,7 +260,7 @@ function mockExtraction(docTypeHint?: string): ExtractionPayload {
     return MOCK_BY_DOCTYPE[docTypeHint]
   }
   return {
-    documentKind: "other",
+    documentKind: 'other',
     parties: [],
     property: null,
     financial: null,
@@ -280,7 +285,7 @@ function client(): Anthropic | null {
   return cachedClient
 }
 
-const ANTHROPIC_MODEL = "claude-haiku-4-5"
+const ANTHROPIC_MODEL = 'claude-haiku-4-5'
 
 // Single-action job: load bytes from _storage, base64 in-action, call
 // Anthropic, persist. Doing everything in one action means the PDF bytes
@@ -289,27 +294,27 @@ const ANTHROPIC_MODEL = "claude-haiku-4-5"
 // large documents.
 export const runJob = internalAction({
   args: {
-    extractionId: v.id("documentExtractions"),
-    storageId: v.id("_storage"),
+    extractionId: v.id('documentExtractions'),
+    storageId: v.id('_storage'),
     docTypeHint: v.optional(v.string()),
   },
   handler: async (ctx, { extractionId, storageId, docTypeHint }) => {
     await ctx.runMutation(internal.extractions.markRunning, { extractionId })
     try {
       const blob = await ctx.storage.get(storageId)
-      if (!blob) throw new Error("STORAGE_NOT_FOUND")
+      if (!blob) throw new Error('STORAGE_NOT_FOUND')
       const bytes = await blob.arrayBuffer()
-      const base64 = Buffer.from(bytes).toString("base64")
+      const base64 = Buffer.from(bytes).toString('base64')
 
       const c = client()
       let payload: ExtractionPayload
       let modelId: string
-      let source: "claude" | "mock"
+      let source: 'claude' | 'mock'
 
       if (!c) {
         payload = mockExtraction(docTypeHint)
-        modelId = "mock"
-        source = "mock"
+        modelId = 'mock'
+        source = 'mock'
       } else {
         const userText = docTypeHint
           ? `The user has classified this document as: ${docTypeHint}. Verify and extract per schema. Return JSON only.`
@@ -320,37 +325,37 @@ export const runJob = internalAction({
           max_tokens: 4096,
           system: [
             {
-              type: "text",
+              type: 'text',
               text: `Schema version: ${SCHEMA_VERSION}\n\n${SYSTEM_PROMPT}`,
-              cache_control: { type: "ephemeral" },
+              cache_control: { type: 'ephemeral' },
             },
           ],
           messages: [
             {
-              role: "user",
+              role: 'user',
               content: [
                 {
-                  type: "document",
+                  type: 'document',
                   source: {
-                    type: "base64",
-                    media_type: "application/pdf",
+                    type: 'base64',
+                    media_type: 'application/pdf',
                     data: base64,
                   },
                 },
-                { type: "text", text: userText },
+                { type: 'text', text: userText },
               ],
             },
           ],
         })
 
-        const textBlock = response.content.find((b) => b.type === "text")
-        if (!textBlock || textBlock.type !== "text") {
-          throw new Error("EXTRACTION_NO_TEXT")
+        const textBlock = response.content.find((b) => b.type === 'text')
+        if (!textBlock || textBlock.type !== 'text') {
+          throw new Error('EXTRACTION_NO_TEXT')
         }
 
         payload = parseExtractionJson(textBlock.text)
         modelId = response.model
-        source = "claude"
+        source = 'claude'
       }
 
       await ctx.runMutation(internal.extractions.markSucceeded, {

@@ -1,7 +1,7 @@
-import { Link, useLocation, useNavigate } from "@tanstack/react-router"
-import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { convexQuery } from "@convex-dev/react-query"
-import { useState } from "react"
+import { Link, useLocation, useNavigate } from '@tanstack/react-router'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { convexQuery } from '@convex-dev/react-query'
+import { useState } from 'react'
 import {
   LayoutDashboard,
   FolderOpen,
@@ -18,7 +18,7 @@ import {
   Check,
   Loader2,
   Plus,
-} from "lucide-react"
+} from 'lucide-react'
 
 import {
   Sidebar,
@@ -33,8 +33,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarSeparator,
-} from "@/components/ui/sidebar"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+} from '@/components/ui/sidebar'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,9 +42,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { authClient } from "@/lib/auth-client"
-import { api } from "../../convex/_generated/api"
+} from '@/components/ui/dropdown-menu'
+import { authClient } from '@/lib/auth-client'
+import { api } from '../../convex/_generated/api'
 
 type AppSidebarProps = {
   isAuthenticated: boolean
@@ -88,9 +88,8 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
     | { name?: string | null; email?: string | null }
     | null
     | undefined
-  const accountLabel =
-    (me?.name && me.name.trim()) || me?.email || "Account"
-  const accountSub = me?.name && me?.email ? me.email : "Signed in"
+  const accountLabel = (me?.name && me.name.trim()) || me?.email || 'Account'
+  const accountSub = me?.name && me?.email ? me.email : 'Signed in'
   const accountInitials = personInitials(me?.name, me?.email)
   const hasActiveOrg = !!tenant
   const isSystemAdmin = isAdminQ.data === true
@@ -98,7 +97,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
 
   const onSignOut = async () => {
     await authClient.signOut()
-    navigate({ to: "/signin" })
+    navigate({ to: '/signin' })
   }
 
   const onSwitchTo = async (betterAuthOrgId: string) => {
@@ -109,11 +108,11 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
         organizationId: betterAuthOrgId,
       })
       if (res.error) {
-        throw new Error(res.error.message ?? "Switch failed")
+        throw new Error(res.error.message ?? 'Switch failed')
       }
       // Re-fetch tenant-scoped queries so the new org's data shows up.
       await queryClient.invalidateQueries()
-      navigate({ to: "/" })
+      navigate({ to: '/' })
     } catch {
       // Surface the failure inline by reverting state; the dropdown closes
       // either way and the user can retry.
@@ -132,7 +131,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="group/orgswitch mx-2 mb-2 mt-1 flex items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-white/10 data-[state=open]:bg-white/10"
+              className="group/orgswitch mx-2 mt-1 mb-2 flex items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-white/10 data-[state=open]:bg-white/10"
               aria-label="Switch organization"
             >
               <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#f4d48f] to-[#b78625] text-[#40233f] shadow-inner">
@@ -140,14 +139,14 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
               </div>
               <div className="min-w-0 flex-1 leading-tight">
                 <div className="truncate font-serif text-base tracking-wide text-white">
-                  {tenant?.legalName ?? "Title Hub"}
+                  {tenant?.legalName ?? 'Title Hub'}
                 </div>
                 <div className="truncate text-xs text-white/60">
                   {tenant
                     ? `${tenant.slug} · ${tenant.role}`
                     : hasActiveOrg
-                      ? "Loading..."
-                      : "No active org"}
+                      ? 'Loading...'
+                      : 'No active org'}
                 </div>
               </div>
               <ChevronsUpDown className="size-3.5 shrink-0 text-white/60 group-hover/orgswitch:text-white/85" />
@@ -183,7 +182,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                       if (active) return
                       onSwitchTo(o.betterAuthOrgId)
                     }}
-                    className={`flex items-start gap-2 ${active ? "cursor-default" : "cursor-pointer"}`}
+                    className={`flex items-start gap-2 ${active ? 'cursor-default' : 'cursor-pointer'}`}
                   >
                     <div className="grid size-7 shrink-0 place-items-center rounded-md border border-[#40233f]/15 bg-[#fdf6e8] text-[#40233f]">
                       <Building className="size-3.5" />
@@ -233,27 +232,27 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 to="/"
                 label="Dashboard"
                 icon={<LayoutDashboard className="size-4" />}
-                active={location.pathname === "/"}
+                active={location.pathname === '/'}
               />
               <NavLink
                 to="/files"
                 label="Files"
                 icon={<FolderOpen className="size-4" />}
-                active={location.pathname.startsWith("/files")}
+                active={location.pathname.startsWith('/files')}
                 disabled={!hasActiveOrg}
               />
               <NavLink
                 to="/admin"
                 label="Admin"
                 icon={<Shield className="size-4" />}
-                active={location.pathname === "/admin"}
+                active={location.pathname === '/admin'}
                 disabled={!hasActiveOrg}
               />
               <NavLink
                 to="/admin/rules"
                 label="Recording rules"
                 icon={<ScrollText className="size-4" />}
-                active={location.pathname.startsWith("/admin/rules")}
+                active={location.pathname.startsWith('/admin/rules')}
                 disabled={!hasActiveOrg}
               />
             </SidebarMenu>
@@ -366,7 +365,7 @@ function NewFileCTA({ hasActiveOrg }: { hasActiveOrg: boolean }) {
       <Link
         to="/files"
         search={{ new: true }}
-        className="group/newfile flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-[#f4d48f] to-[#b78625] px-3 py-2 text-sm font-semibold text-[#40233f] shadow-sm ring-1 ring-inset ring-[#40233f]/15 transition hover:from-[#f6dca0] hover:to-[#c2902c] hover:shadow"
+        className="group/newfile flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-[#f4d48f] to-[#b78625] px-3 py-2 text-sm font-semibold text-[#40233f] shadow-sm ring-1 ring-[#40233f]/15 transition ring-inset hover:from-[#f6dca0] hover:to-[#c2902c] hover:shadow"
       >
         <Plus className="size-4" />
         New file
@@ -482,21 +481,17 @@ function initials(name: string): string {
   return parts
     .map((p) => p[0])
     .filter(Boolean)
-    .join("")
+    .join('')
     .toUpperCase()
 }
 
-function personInitials(
-  name?: string | null,
-  email?: string | null,
-): string {
+function personInitials(name?: string | null, email?: string | null): string {
   if (name && name.trim()) return initials(name)
   if (email && email.length > 0) {
-    const local = email.split("@")[0] ?? email
+    const local = email.split('@')[0] ?? email
     const segs = local.split(/[._-]+/).filter(Boolean)
-    if (segs.length >= 2)
-      return (segs[0]![0]! + segs[1]![0]!).toUpperCase()
-    return (local.slice(0, 2) || "··").toUpperCase()
+    if (segs.length >= 2) return (segs[0]![0]! + segs[1]![0]!).toUpperCase()
+    return (local.slice(0, 2) || '··').toUpperCase()
   }
-  return "··"
+  return '··'
 }

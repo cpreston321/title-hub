@@ -3,10 +3,10 @@ import {
   Link,
   redirect,
   useNavigate,
-} from "@tanstack/react-router"
-import { useEffect, useMemo, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
+} from '@tanstack/react-router'
+import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   Plus,
   Search,
@@ -15,56 +15,56 @@ import {
   HelpCircle,
   CheckCircle2,
   XCircle,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+} from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { AppShell } from "@/components/app-shell"
-import { CountyCombobox } from "@/components/county-combobox"
-import { api } from "../../../convex/_generated/api"
-import type { Id } from "../../../convex/_generated/dataModel"
+} from '@/components/ui/select'
+import { AppShell } from '@/components/app-shell'
+import { CountyCombobox } from '@/components/county-combobox'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 
 type FilesSearch = { new?: boolean }
 
-export const Route = createFileRoute("/files/")({
+export const Route = createFileRoute('/files/')({
   head: () => ({
     meta: [
-      { title: "Files · Title Hub" },
+      { title: 'Files · Title Hub' },
       {
-        name: "description",
+        name: 'description',
         content:
-          "All files in your workspace, with status, parties, and reconciliation health at a glance.",
+          'All files in your workspace, with status, parties, and reconciliation health at a glance.',
       },
-      { name: "robots", content: "noindex, nofollow" },
+      { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
-      throw redirect({ to: "/signin" })
+      throw redirect({ to: '/signin' })
     }
   },
   validateSearch: (raw): FilesSearch => {
     const v = (raw as Record<string, unknown>).new
-    const isNew = v === true || v === "true" || v === 1 || v === "1"
+    const isNew = v === true || v === 'true' || v === 1 || v === '1'
     return { new: isNew || undefined }
   },
   component: FilesListPage,
 })
 
 const TX_FILTERS = [
-  { id: "all", label: "All types" },
-  { id: "purchase", label: "Purchase" },
-  { id: "refi", label: "Refinance" },
-  { id: "commercial", label: "Commercial" },
-  { id: "reo", label: "REO" },
+  { id: 'all', label: 'All types' },
+  { id: 'purchase', label: 'Purchase' },
+  { id: 'refi', label: 'Refinance' },
+  { id: 'commercial', label: 'Commercial' },
+  { id: 'reo', label: 'REO' },
 ] as const
-type TxFilter = (typeof TX_FILTERS)[number]["id"]
+type TxFilter = (typeof TX_FILTERS)[number]['id']
 
 // The lifecycle a file moves through, in order.
 const STAGES: ReadonlyArray<{
@@ -72,28 +72,28 @@ const STAGES: ReadonlyArray<{
   label: string
   caption: string
 }> = [
-  { id: "opened", label: "Opened", caption: "Just received" },
-  { id: "in_exam", label: "In exam", caption: "Searching title" },
-  { id: "cleared", label: "Cleared", caption: "Ready to close" },
-  { id: "closing", label: "Closing", caption: "At the table" },
-  { id: "funded", label: "Funded", caption: "Money disbursed" },
-  { id: "recorded", label: "Recorded", caption: "At the county" },
-  { id: "policied", label: "Policy issued", caption: "Done" },
+  { id: 'opened', label: 'Opened', caption: 'Just received' },
+  { id: 'in_exam', label: 'In exam', caption: 'Searching title' },
+  { id: 'cleared', label: 'Cleared', caption: 'Ready to close' },
+  { id: 'closing', label: 'Closing', caption: 'At the table' },
+  { id: 'funded', label: 'Funded', caption: 'Money disbursed' },
+  { id: 'recorded', label: 'Recorded', caption: 'At the county' },
+  { id: 'policied', label: 'Policy issued', caption: 'Done' },
 ]
 
 // Plain-English labels for every status (including non-pipeline ones).
 const STATUS_LABEL: Record<string, string> = {
-  opened: "Opened",
-  in_exam: "In exam",
-  cleared: "Cleared",
-  closing: "Closing",
-  funded: "Funded",
-  recorded: "Recorded",
-  policied: "Policy issued",
-  cancelled: "Cancelled",
+  opened: 'Opened',
+  in_exam: 'In exam',
+  cleared: 'Cleared',
+  closing: 'Closing',
+  funded: 'Funded',
+  recorded: 'Recorded',
+  policied: 'Policy issued',
+  cancelled: 'Cancelled',
 }
 
-type StageFilter = "active" | "done" | "cancelled" | "all" | string
+type StageFilter = 'active' | 'done' | 'cancelled' | 'all' | string
 
 function FilesListPage() {
   const search = Route.useSearch() as FilesSearch
@@ -105,21 +105,21 @@ function FilesListPage() {
   const seedIndiana = useConvexMutation(api.seed.indiana)
 
   const [showForm, setShowForm] = useState(search.new === true)
-  const [txFilter, setTxFilter] = useState<TxFilter>("all")
-  const [stage, setStage] = useState<StageFilter>("active")
-  const [q, setQ] = useState("")
+  const [txFilter, setTxFilter] = useState<TxFilter>('all')
+  const [stage, setStage] = useState<StageFilter>('active')
+  const [q, setQ] = useState('')
   const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     if (search.new === true) {
       setShowForm(true)
-      navigate({ to: "/files", search: {}, replace: true })
+      navigate({ to: '/files', search: {}, replace: true })
     }
   }, [search.new, navigate])
 
-  const [fileNumber, setFileNumber] = useState("")
-  const [countyId, setCountyId] = useState<Id<"counties"> | "">("")
-  const [transactionType, setTransactionType] = useState("purchase")
+  const [fileNumber, setFileNumber] = useState('')
+  const [countyId, setCountyId] = useState<Id<'counties'> | ''>('')
+  const [transactionType, setTransactionType] = useState('purchase')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -127,11 +127,11 @@ function FilesListPage() {
     const msg = current.error.message
     if (/NO_ACTIVE_TENANT|NOT_A_MEMBER|TENANT_NOT_FOUND/.test(msg)) {
       // Send the user to the dashboard which has a proper picker/creator.
-      throw redirect({ to: "/" })
+      throw redirect({ to: '/' })
     }
     return (
       <AppShell isAuthenticated title="Files">
-        <p className="text-destructive text-sm">Error: {msg}</p>
+        <p className="text-sm text-destructive">Error: {msg}</p>
       </AppShell>
     )
   }
@@ -139,7 +139,7 @@ function FilesListPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!countyId) {
-      setError("Pick a county.")
+      setError('Pick a county.')
       return
     }
     setPending(true)
@@ -147,14 +147,14 @@ function FilesListPage() {
     try {
       await create({
         fileNumber: fileNumber.trim(),
-        countyId: countyId as Id<"counties">,
+        countyId: countyId as Id<'counties'>,
         transactionType,
       })
       setShowForm(false)
-      setFileNumber("")
+      setFileNumber('')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      setError(msg.replace(/^.*ConvexError:\s*/, ""))
+      setError(msg.replace(/^.*ConvexError:\s*/, ''))
     } finally {
       setPending(false)
     }
@@ -173,7 +173,7 @@ function FilesListPage() {
       byStatus[f.status] = (byStatus[f.status] ?? 0) + 1
     }
     const active = allFiles.filter(
-      (f) => f.status !== "policied" && f.status !== "cancelled",
+      (f) => f.status !== 'policied' && f.status !== 'cancelled'
     ).length
     const done = byStatus.policied ?? 0
     const cancelled = byStatus.cancelled ?? 0
@@ -183,14 +183,14 @@ function FilesListPage() {
   const filtered = useMemo(() => {
     const lower = q.trim().toLowerCase()
     return allFiles.filter((f) => {
-      if (txFilter !== "all" && f.transactionType !== txFilter) return false
-      if (stage === "active") {
-        if (f.status === "policied" || f.status === "cancelled") return false
-      } else if (stage === "done") {
-        if (f.status !== "policied") return false
-      } else if (stage === "cancelled") {
-        if (f.status !== "cancelled") return false
-      } else if (stage !== "all") {
+      if (txFilter !== 'all' && f.transactionType !== txFilter) return false
+      if (stage === 'active') {
+        if (f.status === 'policied' || f.status === 'cancelled') return false
+      } else if (stage === 'done') {
+        if (f.status !== 'policied') return false
+      } else if (stage === 'cancelled') {
+        if (f.status !== 'cancelled') return false
+      } else if (stage !== 'all') {
         if (f.status !== stage) return false
       }
       if (lower) {
@@ -205,7 +205,7 @@ function FilesListPage() {
           addr?.zip,
         ]
           .filter(Boolean)
-          .join(" ")
+          .join(' ')
           .toLowerCase()
         if (!hay.includes(lower)) return false
       }
@@ -304,9 +304,9 @@ function FilesListPage() {
         ) : filtered.length === 0 ? (
           <NoMatches
             onClear={() => {
-              setQ("")
-              setTxFilter("all")
-              setStage("active")
+              setQ('')
+              setTxFilter('all')
+              setStage('active')
             }}
           />
         ) : (
@@ -330,14 +330,16 @@ function PageHeader({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-4xl font-semibold leading-[1] tracking-tight text-[#40233f] md:text-5xl">
+          <h1 className="font-display text-4xl leading-[1] font-semibold tracking-tight text-[#40233f] md:text-5xl">
             Files
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            One file per property transaction. Each one tracks the work from{" "}
+            One file per property transaction. Each one tracks the work from{' '}
             <strong className="font-medium text-[#40233f]">opened</strong> all
-            the way to{" "}
-            <strong className="font-medium text-[#40233f]">policy issued</strong>
+            the way to{' '}
+            <strong className="font-medium text-[#40233f]">
+              policy issued
+            </strong>
             . Click any row below to open its docket.
           </p>
         </div>
@@ -347,12 +349,12 @@ function PageHeader({
           className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs text-muted-foreground ring-1 ring-border/70 transition hover:text-[#40233f]"
         >
           <HelpCircle className="size-3.5" />
-          {showHelp ? "Hide" : "How files work"}
+          {showHelp ? 'Hide' : 'How files work'}
         </button>
       </div>
       {totalFiles > 0 && (
-        <div className="font-numerals text-xs tabular-nums text-muted-foreground">
-          {totalFiles} file{totalFiles === 1 ? "" : "s"} of record
+        <div className="font-numerals text-xs text-muted-foreground tabular-nums">
+          {totalFiles} file{totalFiles === 1 ? '' : 's'} of record
         </div>
       )}
     </div>
@@ -371,13 +373,13 @@ function HowItWorks() {
         single real-estate transaction. You open it when you receive an order,
         examine title, clear any defects, close at the table, fund, record at
         the county, and finally issue a policy. The seven stages below run in
-        order. A file can also be{" "}
+        order. A file can also be{' '}
         <strong className="font-medium">cancelled</strong> at any point.
       </p>
       <ol className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 md:grid-cols-4">
         {STAGES.map((s, i) => (
           <li key={s.id} className="flex items-start gap-2">
-            <span className="font-numerals mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-card text-xs font-semibold tabular-nums text-[#40233f] ring-1 ring-border">
+            <span className="font-numerals mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-card text-xs font-semibold text-[#40233f] tabular-nums ring-1 ring-border">
               {i + 1}
             </span>
             <div className="min-w-0">
@@ -416,27 +418,27 @@ function PipelineStrip({
       <div className="flex flex-wrap items-stretch gap-2">
         <button
           type="button"
-          onClick={() => setStage("active")}
+          onClick={() => setStage('active')}
           className={`group/all flex flex-col items-start gap-0.5 rounded-xl border px-4 py-2.5 text-left transition ${
-            stage === "active"
-              ? "border-[#40233f] bg-[#40233f] text-[#f6e8d9]"
-              : "border-border/70 bg-card text-[#40233f] hover:border-[#40233f]/50"
+            stage === 'active'
+              ? 'border-[#40233f] bg-[#40233f] text-[#f6e8d9]'
+              : 'border-border/70 bg-card text-[#40233f] hover:border-[#40233f]/50'
           }`}
-          aria-pressed={stage === "active"}
+          aria-pressed={stage === 'active'}
         >
           <span
             className={`text-xs font-medium ${
-              stage === "active" ? "text-[#f4d48f]" : "text-[#b78625]"
+              stage === 'active' ? 'text-[#f4d48f]' : 'text-[#b78625]'
             }`}
           >
             Active
           </span>
-          <span className="font-display text-2xl font-semibold leading-none tabular-nums">
-            {String(totals.active).padStart(2, "0")}
+          <span className="font-display text-2xl leading-none font-semibold tabular-nums">
+            {String(totals.active).padStart(2, '0')}
           </span>
           <span
             className={`text-xs leading-snug ${
-              stage === "active" ? "text-white/70" : "text-muted-foreground"
+              stage === 'active' ? 'text-white/70' : 'text-muted-foreground'
             }`}
           >
             in progress
@@ -444,39 +446,39 @@ function PipelineStrip({
         </button>
 
         <div className="flex flex-1 items-stretch overflow-hidden rounded-xl border border-border/70 bg-card ring-1 ring-foreground/5">
-          {STAGES.filter((s) => s.id !== "policied").map((s, i, arr) => {
+          {STAGES.filter((s) => s.id !== 'policied').map((s, i, arr) => {
             const n = counts[s.id] ?? 0
             const selected = stage === s.id
             return (
               <button
                 key={s.id}
                 type="button"
-                onClick={() => setStage(selected ? "active" : s.id)}
+                onClick={() => setStage(selected ? 'active' : s.id)}
                 className={`group/stage relative flex flex-1 flex-col items-start gap-0.5 px-3 py-2.5 text-left transition ${
                   selected
-                    ? "bg-[#40233f] text-[#f6e8d9]"
-                    : "hover:bg-[#fdf6e8]/60"
-                } ${i < arr.length - 1 ? "border-r border-border/60" : ""}`}
+                    ? 'bg-[#40233f] text-[#f6e8d9]'
+                    : 'hover:bg-[#fdf6e8]/60'
+                } ${i < arr.length - 1 ? 'border-r border-border/60' : ''}`}
                 aria-pressed={selected}
                 title={`${s.label} — ${s.caption}`}
               >
                 <span
                   className={`text-xs font-medium ${
-                    selected ? "text-[#f4d48f]" : "text-muted-foreground"
+                    selected ? 'text-[#f4d48f]' : 'text-muted-foreground'
                   }`}
                 >
                   {i + 1} · {s.label}
                 </span>
                 <span
-                  className={`font-display text-xl font-semibold leading-none tabular-nums ${
+                  className={`font-display text-xl leading-none font-semibold tabular-nums ${
                     selected
-                      ? ""
+                      ? ''
                       : n > 0
-                        ? "text-[#40233f]"
-                        : "text-muted-foreground/40"
+                        ? 'text-[#40233f]'
+                        : 'text-muted-foreground/40'
                   }`}
                 >
-                  {String(n).padStart(2, "0")}
+                  {String(n).padStart(2, '0')}
                 </span>
               </button>
             )
@@ -485,20 +487,20 @@ function PipelineStrip({
 
         <button
           type="button"
-          onClick={() => setStage("done")}
+          onClick={() => setStage('done')}
           className={`flex flex-col items-start gap-0.5 rounded-xl border px-4 py-2.5 text-left transition ${
-            stage === "done"
-              ? "border-[#3f7c64] bg-[#e6f3ed] text-[#2f5d4b]"
-              : "border-border/70 bg-card text-[#2f5d4b] hover:border-[#3f7c64]/40"
+            stage === 'done'
+              ? 'border-[#3f7c64] bg-[#e6f3ed] text-[#2f5d4b]'
+              : 'border-border/70 bg-card text-[#2f5d4b] hover:border-[#3f7c64]/40'
           }`}
-          aria-pressed={stage === "done"}
+          aria-pressed={stage === 'done'}
         >
           <span className="flex items-center gap-1 text-xs font-medium text-[#3f7c64]">
             <CheckCircle2 className="size-3" />
             Policied
           </span>
-          <span className="font-display text-2xl font-semibold leading-none tabular-nums">
-            {String(totals.done).padStart(2, "0")}
+          <span className="font-display text-2xl leading-none font-semibold tabular-nums">
+            {String(totals.done).padStart(2, '0')}
           </span>
           <span className="text-xs leading-snug text-[#3f7c64]/80">
             closed out
@@ -507,20 +509,20 @@ function PipelineStrip({
 
         <button
           type="button"
-          onClick={() => setStage("cancelled")}
+          onClick={() => setStage('cancelled')}
           className={`flex flex-col items-start gap-0.5 rounded-xl border px-4 py-2.5 text-left transition ${
-            stage === "cancelled"
-              ? "border-[#b94f58] bg-[#fdecee] text-[#8a3942]"
-              : "border-border/70 bg-card text-[#8a3942] hover:border-[#b94f58]/40"
+            stage === 'cancelled'
+              ? 'border-[#b94f58] bg-[#fdecee] text-[#8a3942]'
+              : 'border-border/70 bg-card text-[#8a3942] hover:border-[#b94f58]/40'
           }`}
-          aria-pressed={stage === "cancelled"}
+          aria-pressed={stage === 'cancelled'}
         >
           <span className="flex items-center gap-1 text-xs font-medium text-[#b94f58]">
             <XCircle className="size-3" />
             Cancelled
           </span>
-          <span className="font-display text-2xl font-semibold leading-none tabular-nums">
-            {String(totals.cancelled).padStart(2, "0")}
+          <span className="font-display text-2xl leading-none font-semibold tabular-nums">
+            {String(totals.cancelled).padStart(2, '0')}
           </span>
           <span className="text-xs leading-snug text-[#b94f58]/80">
             walked away
@@ -529,19 +531,17 @@ function PipelineStrip({
 
         <button
           type="button"
-          onClick={() => setStage("all")}
+          onClick={() => setStage('all')}
           className={`flex flex-col items-start gap-0.5 rounded-xl border px-4 py-2.5 text-left transition ${
-            stage === "all"
-              ? "border-[#40233f] bg-card text-[#40233f]"
-              : "border-border/70 bg-card text-muted-foreground hover:border-[#40233f]/40 hover:text-[#40233f]"
+            stage === 'all'
+              ? 'border-[#40233f] bg-card text-[#40233f]'
+              : 'border-border/70 bg-card text-muted-foreground hover:border-[#40233f]/40 hover:text-[#40233f]'
           }`}
-          aria-pressed={stage === "all"}
+          aria-pressed={stage === 'all'}
         >
-          <span className="text-xs font-medium">
-            All
-          </span>
-          <span className="font-display text-2xl font-semibold leading-none tabular-nums">
-            {String(totals.total).padStart(2, "0")}
+          <span className="text-xs font-medium">All</span>
+          <span className="font-display text-2xl leading-none font-semibold tabular-nums">
+            {String(totals.total).padStart(2, '0')}
           </span>
           <span className="text-xs leading-snug">show everything</span>
         </button>
@@ -575,8 +575,8 @@ function Toolbar({
             onClick={() => setTxFilter(t.id)}
             className={`rounded-full px-3 py-1 text-xs transition ${
               txFilter === t.id
-                ? "bg-[#40233f] text-[#f6e8d9] shadow-sm"
-                : "text-muted-foreground hover:text-[#40233f]"
+                ? 'bg-[#40233f] text-[#f6e8d9] shadow-sm'
+                : 'text-muted-foreground hover:text-[#40233f]'
             }`}
           >
             {t.label}
@@ -595,7 +595,7 @@ function Toolbar({
         {q && (
           <button
             type="button"
-            onClick={() => setQ("")}
+            onClick={() => setQ('')}
             className="rounded-full p-0.5 text-muted-foreground hover:text-[#40233f]"
             aria-label="Clear"
           >
@@ -604,7 +604,7 @@ function Toolbar({
         )}
       </label>
 
-      <span className="font-numerals text-xs tabular-nums text-muted-foreground">
+      <span className="font-numerals text-xs text-muted-foreground tabular-nums">
         Showing {shown} of {total}
       </span>
     </div>
@@ -643,11 +643,11 @@ function RegisterTable({ rows }: { rows: ReadonlyArray<FileRow> }) {
       <ol className="divide-y divide-border/50">
         {rows.map((f) => {
           const days = Math.floor(
-            (Date.now() - f.openedAt) / (24 * 3600 * 1000),
+            (Date.now() - f.openedAt) / (24 * 3600 * 1000)
           )
           const addr = f.propertyAddress
           const addrText = addr
-            ? `${addr.line1}${addr.city ? ` · ${addr.city}, ${addr.state}` : ""}`
+            ? `${addr.line1}${addr.city ? ` · ${addr.city}, ${addr.state}` : ''}`
             : null
           return (
             <li key={f._id}>
@@ -661,11 +661,11 @@ function RegisterTable({ rows }: { rows: ReadonlyArray<FileRow> }) {
                     {f.fileNumber}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {addrText ?? "No property on file yet"}
+                    {addrText ?? 'No property on file yet'}
                   </div>
                 </div>
 
-                <div className="text-xs capitalize text-foreground/85">
+                <div className="text-xs text-foreground/85 capitalize">
                   {f.transactionType}
                 </div>
 
@@ -675,13 +675,13 @@ function RegisterTable({ rows }: { rows: ReadonlyArray<FileRow> }) {
 
                 <div className="min-w-0">
                   <div className="text-xs text-foreground/85">
-                    {new Date(f.openedAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
+                    {new Date(f.openedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
                     })}
                   </div>
-                  <div className="font-numerals text-xs tabular-nums text-muted-foreground">
-                    {days === 0 ? "today" : `${days}d ago`}
+                  <div className="font-numerals text-xs text-muted-foreground tabular-nums">
+                    {days === 0 ? 'today' : `${days}d ago`}
                   </div>
                 </div>
 
@@ -714,12 +714,12 @@ function NewFilePanel({
 }: {
   fileNumber: string
   setFileNumber: (s: string) => void
-  countyId: Id<"counties"> | ""
-  setCountyId: (id: Id<"counties">) => void
+  countyId: Id<'counties'> | ''
+  setCountyId: (id: Id<'counties'>) => void
   transactionType: string
   setTransactionType: (s: string) => void
   countyOptions: ReadonlyArray<{
-    _id: Id<"counties">
+    _id: Id<'counties'>
     name: string
     stateCode: string
   }>
@@ -790,16 +790,16 @@ function NewFilePanel({
         </Field>
 
         {error && (
-          <p className="md:col-span-3 rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
+          <p className="rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942] md:col-span-3">
             {error}
           </p>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-3">
           <div className="text-xs text-muted-foreground">
-            <span className="text-[#b94f58]">*</span> required.{" "}
-            {!fileNumber.trim() && "Add a file number. "}
-            {!countyId && "Pick a county."}
+            <span className="text-[#b94f58]">*</span> required.{' '}
+            {!fileNumber.trim() && 'Add a file number. '}
+            {!countyId && 'Pick a county.'}
           </div>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={onCancel}>
@@ -809,7 +809,7 @@ function NewFilePanel({
               type="submit"
               disabled={pending || !fileNumber.trim() || !countyId}
             >
-              {pending ? "Opening..." : "Open file"}
+              {pending ? 'Opening...' : 'Open file'}
             </Button>
           </div>
         </div>
@@ -851,23 +851,53 @@ function Field({
 
 function StatusStamp({ status }: { status: string }) {
   const tone =
-    status === "policied"
-      ? { ring: "ring-[#3f7c64]/40", text: "text-[#2f5d4b]", bg: "bg-[#e6f3ed]", dot: "bg-[#3f7c64]" }
-      : status === "closing" || status === "funded" || status === "recorded"
-        ? { ring: "ring-[#b78625]/45", text: "text-[#7a5818]", bg: "bg-[#f8eed7]", dot: "bg-[#b78625]" }
-        : status === "cleared"
-          ? { ring: "ring-[#3f668f]/40", text: "text-[#2c4a6b]", bg: "bg-[#e8f0f8]", dot: "bg-[#3f668f]" }
-          : status === "in_exam" || status === "opened"
-            ? { ring: "ring-[#593157]/35", text: "text-[#40233f]", bg: "bg-[#f2e7f1]", dot: "bg-[#593157]" }
-            : status === "cancelled"
-              ? { ring: "ring-[#b94f58]/45", text: "text-[#8a3942]", bg: "bg-[#fdecee]", dot: "bg-[#b94f58]" }
-              : { ring: "ring-border", text: "text-muted-foreground", bg: "bg-muted", dot: "bg-muted-foreground" }
+    status === 'policied'
+      ? {
+          ring: 'ring-[#3f7c64]/40',
+          text: 'text-[#2f5d4b]',
+          bg: 'bg-[#e6f3ed]',
+          dot: 'bg-[#3f7c64]',
+        }
+      : status === 'closing' || status === 'funded' || status === 'recorded'
+        ? {
+            ring: 'ring-[#b78625]/45',
+            text: 'text-[#7a5818]',
+            bg: 'bg-[#f8eed7]',
+            dot: 'bg-[#b78625]',
+          }
+        : status === 'cleared'
+          ? {
+              ring: 'ring-[#3f668f]/40',
+              text: 'text-[#2c4a6b]',
+              bg: 'bg-[#e8f0f8]',
+              dot: 'bg-[#3f668f]',
+            }
+          : status === 'in_exam' || status === 'opened'
+            ? {
+                ring: 'ring-[#593157]/35',
+                text: 'text-[#40233f]',
+                bg: 'bg-[#f2e7f1]',
+                dot: 'bg-[#593157]',
+              }
+            : status === 'cancelled'
+              ? {
+                  ring: 'ring-[#b94f58]/45',
+                  text: 'text-[#8a3942]',
+                  bg: 'bg-[#fdecee]',
+                  dot: 'bg-[#b94f58]',
+                }
+              : {
+                  ring: 'ring-border',
+                  text: 'text-muted-foreground',
+                  bg: 'bg-muted',
+                  dot: 'bg-muted-foreground',
+                }
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs ring-1 ring-inset ${tone.ring} ${tone.text} ${tone.bg}`}
     >
       <span className={`size-1.5 rounded-full ${tone.dot}`} />
-      {STATUS_LABEL[status] ?? status.replace(/_/g, " ")}
+      {STATUS_LABEL[status] ?? status.replace(/_/g, ' ')}
     </span>
   )
 }
@@ -877,10 +907,8 @@ function FirstFileCoach({ onCreate }: { onCreate: () => void }) {
     <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-foreground/5">
       <div className="grid grid-cols-1 gap-8 p-8 md:grid-cols-[1.2fr_1fr] md:p-10">
         <div>
-          <div className="text-xs font-medium text-[#b78625]">
-            Get started
-          </div>
-          <h2 className="font-display mt-2 text-3xl font-semibold leading-tight tracking-tight text-[#40233f]">
+          <div className="text-xs font-medium text-[#b78625]">Get started</div>
+          <h2 className="mt-2 font-display text-3xl leading-tight font-semibold tracking-tight text-[#40233f]">
             Open your first file
           </h2>
           <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
@@ -901,30 +929,30 @@ function FirstFileCoach({ onCreate }: { onCreate: () => void }) {
           {[
             {
               n: 1,
-              t: "Give it a file number",
+              t: 'Give it a file number',
               d: "Your firm's existing reference works fine, e.g. QT-2026-0001.",
             },
             {
               n: 2,
-              t: "Pick the county",
-              d: "We use this to apply the right recording rules.",
+              t: 'Pick the county',
+              d: 'We use this to apply the right recording rules.',
             },
             {
               n: 3,
-              t: "Choose a transaction type",
-              d: "Purchase, refi, commercial, or REO.",
+              t: 'Choose a transaction type',
+              d: 'Purchase, refi, commercial, or REO.',
             },
             {
               n: 4,
-              t: "Work it through the stages",
-              d: "Opened → exam → cleared → closing → funded → recorded → policy.",
+              t: 'Work it through the stages',
+              d: 'Opened → exam → cleared → closing → funded → recorded → policy.',
             },
           ].map((s) => (
             <li
               key={s.n}
               className="flex items-start gap-3 rounded-xl border border-border/60 bg-[#fdf6e8]/40 px-4 py-3"
             >
-              <span className="font-numerals grid size-7 shrink-0 place-items-center rounded-full bg-[#40233f] text-xs font-semibold tabular-nums text-[#f4d48f]">
+              <span className="font-numerals grid size-7 shrink-0 place-items-center rounded-full bg-[#40233f] text-xs font-semibold text-[#f4d48f] tabular-nums">
                 {s.n}
               </span>
               <div className="min-w-0">

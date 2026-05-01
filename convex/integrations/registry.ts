@@ -1,7 +1,7 @@
-import { mockAdapter } from "./mock"
-import { softpro360Adapter } from "./softpro360"
-import { softproStandardAdapter } from "./softproStandard"
-import type { Adapter, IntegrationKind } from "./types"
+import { mockAdapter } from './mock'
+import { softpro360Adapter } from './softpro360'
+import { softproStandardAdapter } from './softproStandard'
+import type { Adapter, IntegrationKind } from './types'
 
 // Single source of truth for "which adapters does this build know about".
 // New adapters land by adding an entry here. Encompass / Qualia / ResWare
@@ -30,5 +30,5 @@ export function listSupportedKinds(): Array<IntegrationKind> {
 // flip this on whenever a real credential has not been wired in, so the
 // dashboard works in dev / test without leaking fetches.
 export function isMockEnv(): boolean {
-  return process.env.INTEGRATIONS_MOCK !== "0"
+  return process.env.INTEGRATIONS_MOCK !== '0'
 }

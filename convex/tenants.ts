@@ -1,13 +1,9 @@
-import { ConvexError, v } from "convex/values"
-import {
-  internalMutation,
-  mutation,
-  query,
-} from "./_generated/server"
-import { components, internal } from "./_generated/api"
-import type { Id } from "./_generated/dataModel"
-import { requireRole, requireTenant } from "./lib/tenant"
-import { recordAudit } from "./lib/audit"
+import { ConvexError, v } from 'convex/values'
+import { internalMutation, mutation, query } from './_generated/server'
+import { components, internal } from './_generated/api'
+import type { Id } from './_generated/dataModel'
+import { requireRole, requireTenant } from './lib/tenant'
+import { recordAudit } from './lib/audit'
 
 // ─────────────────────────────────────────────────────────────────────
 // Better Auth trigger handlers (called from `triggers.organization.onCreate`
@@ -22,27 +18,27 @@ export const provisionFromBetterAuthOrg = internalMutation({
   },
   handler: async (ctx, { betterAuthOrgId, slug, legalName }) => {
     const existing = await ctx.db
-      .query("tenants")
-      .withIndex("by_better_auth_org", (q) =>
-        q.eq("betterAuthOrgId", betterAuthOrgId),
+      .query('tenants')
+      .withIndex('by_better_auth_org', (q) =>
+        q.eq('betterAuthOrgId', betterAuthOrgId)
       )
       .unique()
     if (existing) return { tenantId: existing._id, alreadyProvisioned: true }
 
-    const tenantId = await ctx.db.insert("tenants", {
+    const tenantId = await ctx.db.insert('tenants', {
       slug,
       legalName,
-      status: "trial",
-      plan: "trial",
+      status: 'trial',
+      plan: 'trial',
       betterAuthOrgId,
       createdAt: Date.now(),
     })
 
-    await ctx.db.insert("auditEvents", {
+    await ctx.db.insert('auditEvents', {
       tenantId,
-      actorType: "system",
-      action: "tenant.created",
-      resourceType: "tenant",
+      actorType: 'system',
+      action: 'tenant.created',
+      resourceType: 'tenant',
       resourceId: tenantId,
       metadata: { slug, legalName, betterAuthOrgId },
       occurredAt: Date.now(),
@@ -55,10 +51,10 @@ export const provisionFromBetterAuthOrg = internalMutation({
   },
 })
 
-function mapBetterAuthRole(role: string): "owner" | "admin" | "processor" {
-  if (role === "owner") return "owner"
-  if (role === "admin") return "admin"
-  return "processor"
+function mapBetterAuthRole(role: string): 'owner' | 'admin' | 'processor' {
+  if (role === 'owner') return 'owner'
+  if (role === 'admin') return 'admin'
+  return 'processor'
 }
 
 export const provisionMemberFromBetterAuth = internalMutation({
@@ -69,55 +65,56 @@ export const provisionMemberFromBetterAuth = internalMutation({
   },
   handler: async (
     ctx,
-    { betterAuthOrgId, betterAuthUserId, betterAuthRole },
+    { betterAuthOrgId, betterAuthUserId, betterAuthRole }
   ) => {
     const tenant = await ctx.db
-      .query("tenants")
-      .withIndex("by_better_auth_org", (q) =>
-        q.eq("betterAuthOrgId", betterAuthOrgId),
+      .query('tenants')
+      .withIndex('by_better_auth_org', (q) =>
+        q.eq('betterAuthOrgId', betterAuthOrgId)
       )
       .unique()
     if (!tenant) {
       console.warn(
-        `[authTriggers] member onCreate fired before tenant existed: org=${betterAuthOrgId}`,
+        `[authTriggers] member onCreate fired before tenant existed: org=${betterAuthOrgId}`
       )
       return { memberId: null, alreadyProvisioned: false }
     }
 
     const existing = await ctx.db
-      .query("tenantMembers")
-      .withIndex("by_betterAuthUser_tenant", (q) =>
-        q
-          .eq("betterAuthUserId", betterAuthUserId)
-          .eq("tenantId", tenant._id),
+      .query('tenantMembers')
+      .withIndex('by_betterAuthUser_tenant', (q) =>
+        q.eq('betterAuthUserId', betterAuthUserId).eq('tenantId', tenant._id)
       )
       .unique()
     if (existing) return { memberId: existing._id, alreadyProvisioned: true }
 
     // Best-effort fetch of the Better Auth user to denormalize email.
-    const authUser = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-      model: "user",
-      where: [{ field: "_id", value: betterAuthUserId }],
-    })) as { email?: string } | null
+    const authUser = (await ctx.runQuery(
+      components.betterAuth.adapter.findOne,
+      {
+        model: 'user',
+        where: [{ field: '_id', value: betterAuthUserId }],
+      }
+    )) as { email?: string } | null
     const email = authUser?.email ?? `${betterAuthUserId}@unknown.local`
 
     const role = mapBetterAuthRole(betterAuthRole)
 
-    const memberId = await ctx.db.insert("tenantMembers", {
+    const memberId = await ctx.db.insert('tenantMembers', {
       tenantId: tenant._id,
       betterAuthUserId,
       email,
       role,
-      canViewNpi: role === "owner" || role === "admin",
-      status: "active",
+      canViewNpi: role === 'owner' || role === 'admin',
+      status: 'active',
     })
 
-    await ctx.db.insert("auditEvents", {
+    await ctx.db.insert('auditEvents', {
       tenantId: tenant._id,
       actorMemberId: memberId,
-      actorType: "system",
-      action: "member.added",
-      resourceType: "tenant",
+      actorType: 'system',
+      action: 'member.added',
+      resourceType: 'tenant',
       resourceId: tenant._id,
       metadata: { betterAuthUserId, role, email },
       occurredAt: Date.now(),
@@ -139,10 +136,8 @@ export const amISystemAdmin = query({
     const identity = await ctx.auth.getUserIdentity()
     if (!identity) return false
     const row = await ctx.db
-      .query("systemAdmins")
-      .withIndex("by_user", (q) =>
-        q.eq("betterAuthUserId", identity.subject),
-      )
+      .query('systemAdmins')
+      .withIndex('by_user', (q) => q.eq('betterAuthUserId', identity.subject))
       .unique()
     return !!row
   },
@@ -156,9 +151,9 @@ export const listMine = query({
     const betterAuthUserId = identity.subject
 
     const memberships = await ctx.db
-      .query("tenantMembers")
-      .withIndex("by_betterAuthUser", (q) =>
-        q.eq("betterAuthUserId", betterAuthUserId),
+      .query('tenantMembers')
+      .withIndex('by_betterAuthUser', (q) =>
+        q.eq('betterAuthUserId', betterAuthUserId)
       )
       .take(50)
 
@@ -175,20 +170,20 @@ export const listMine = query({
               betterAuthOrgId: t.betterAuthOrgId,
             }
           : null
-      }),
+      })
     )
 
     const session = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
-      model: "session",
-      where: [{ field: "userId", value: betterAuthUserId }],
+      model: 'session',
+      where: [{ field: 'userId', value: betterAuthUserId }],
     })) as { activeOrganizationId?: string | null } | null
 
-    let activeTenantId: Id<"tenants"> | null = null
+    let activeTenantId: Id<'tenants'> | null = null
     if (session?.activeOrganizationId) {
       const t = await ctx.db
-        .query("tenants")
-        .withIndex("by_better_auth_org", (q) =>
-          q.eq("betterAuthOrgId", session.activeOrganizationId!),
+        .query('tenants')
+        .withIndex('by_better_auth_org', (q) =>
+          q.eq('betterAuthOrgId', session.activeOrganizationId!)
         )
         .unique()
       activeTenantId = t?._id ?? null
@@ -206,7 +201,7 @@ export const current = query({
   handler: async (ctx) => {
     const tc = await requireTenant(ctx)
     const tenant = await ctx.db.get(tc.tenantId)
-    if (!tenant) throw new ConvexError("TENANT_NOT_FOUND")
+    if (!tenant) throw new ConvexError('TENANT_NOT_FOUND')
     return {
       tenantId: tenant._id,
       slug: tenant.slug,
@@ -226,8 +221,8 @@ export const listMembers = query({
   handler: async (ctx) => {
     const tc = await requireTenant(ctx)
     const members = await ctx.db
-      .query("tenantMembers")
-      .withIndex("by_tenant_email", (q) => q.eq("tenantId", tc.tenantId))
+      .query('tenantMembers')
+      .withIndex('by_tenant_email', (q) => q.eq('tenantId', tc.tenantId))
       .take(200)
     return members.map((m) => ({
       _id: m._id,
@@ -242,25 +237,25 @@ export const listMembers = query({
 
 export const setMemberRole = mutation({
   args: {
-    memberId: v.id("tenantMembers"),
+    memberId: v.id('tenantMembers'),
     role: v.union(
-      v.literal("owner"),
-      v.literal("admin"),
-      v.literal("processor"),
-      v.literal("closer"),
-      v.literal("reviewer"),
-      v.literal("readonly"),
+      v.literal('owner'),
+      v.literal('admin'),
+      v.literal('processor'),
+      v.literal('closer'),
+      v.literal('reviewer'),
+      v.literal('readonly')
     ),
   },
   handler: async (ctx, { memberId, role }) => {
     const tc = await requireTenant(ctx)
-    requireRole(tc, "owner", "admin")
+    requireRole(tc, 'owner', 'admin')
     const member = await ctx.db.get(memberId)
     if (!member || member.tenantId !== tc.tenantId) {
-      throw new ConvexError("MEMBER_NOT_FOUND")
+      throw new ConvexError('MEMBER_NOT_FOUND')
     }
     await ctx.db.patch(memberId, { role })
-    await recordAudit(ctx, tc, "member.role_changed", "member", memberId, {
+    await recordAudit(ctx, tc, 'member.role_changed', 'member', memberId, {
       from: member.role,
       to: role,
     })
@@ -269,19 +264,26 @@ export const setMemberRole = mutation({
 })
 
 export const setMemberNpiAccess = mutation({
-  args: { memberId: v.id("tenantMembers"), canViewNpi: v.boolean() },
+  args: { memberId: v.id('tenantMembers'), canViewNpi: v.boolean() },
   handler: async (ctx, { memberId, canViewNpi }) => {
     const tc = await requireTenant(ctx)
-    requireRole(tc, "owner", "admin")
+    requireRole(tc, 'owner', 'admin')
     const member = await ctx.db.get(memberId)
     if (!member || member.tenantId !== tc.tenantId) {
-      throw new ConvexError("MEMBER_NOT_FOUND")
+      throw new ConvexError('MEMBER_NOT_FOUND')
     }
     await ctx.db.patch(memberId, { canViewNpi })
-    await recordAudit(ctx, tc, "member.npi_access_changed", "member", memberId, {
-      from: member.canViewNpi,
-      to: canViewNpi,
-    })
+    await recordAudit(
+      ctx,
+      tc,
+      'member.npi_access_changed',
+      'member',
+      memberId,
+      {
+        from: member.canViewNpi,
+        to: canViewNpi,
+      }
+    )
     return { ok: true }
   },
 })
@@ -292,16 +294,11 @@ export const listPendingInvitations = query({
   handler: async (ctx) => {
     const tc = await requireTenant(ctx)
 
-    const page = (await ctx.runQuery(
-      components.betterAuth.adapter.findMany,
-      {
-        model: "invitation",
-        where: [
-          { field: "organizationId", value: tc.betterAuthOrgId },
-        ],
-        paginationOpts: { numItems: 100, cursor: null },
-      },
-    )) as {
+    const page = (await ctx.runQuery(components.betterAuth.adapter.findMany, {
+      model: 'invitation',
+      where: [{ field: 'organizationId', value: tc.betterAuthOrgId }],
+      paginationOpts: { numItems: 100, cursor: null },
+    })) as {
       page: Array<{
         _id: string
         email: string | null
@@ -312,6 +309,6 @@ export const listPendingInvitations = query({
       }>
     }
 
-    return page.page.filter((i) => i.status === "pending")
+    return page.page.filter((i) => i.status === 'pending')
   },
 })

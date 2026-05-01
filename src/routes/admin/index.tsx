@@ -1,7 +1,7 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router"
-import { useState } from "react"
-import { useQuery } from "@tanstack/react-query"
-import { convexQuery, useConvexMutation } from "@convex-dev/react-query"
+import { createFileRoute, Link, redirect } from '@tanstack/react-router'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   ScrollText,
   Plug,
@@ -11,45 +11,45 @@ import {
   EyeOff,
   Send,
   CheckCircle2,
-} from "lucide-react"
+} from 'lucide-react'
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+} from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
-import { AppShell } from "@/components/app-shell"
-import { authClient } from "@/lib/auth-client"
-import { api } from "../../../convex/_generated/api"
-import type { Id } from "../../../convex/_generated/dataModel"
+} from '@/components/ui/select'
+import { AppShell } from '@/components/app-shell'
+import { authClient } from '@/lib/auth-client'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 
-export const Route = createFileRoute("/admin/")({
+export const Route = createFileRoute('/admin/')({
   head: () => ({
     meta: [
-      { title: "Admin · Title Hub" },
+      { title: 'Admin · Title Hub' },
       {
-        name: "description",
+        name: 'description',
         content:
-          "Workspace administration: members, roles, integrations, and recording rules.",
+          'Workspace administration: members, roles, integrations, and recording rules.',
       },
-      { name: "robots", content: "noindex, nofollow" },
+      { name: 'robots', content: 'noindex, nofollow' },
     ],
   }),
   beforeLoad: ({ context }) => {
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
-      throw redirect({ to: "/signin" })
+      throw redirect({ to: '/signin' })
     }
   },
   component: AdminPage,
@@ -61,9 +61,7 @@ function AdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Admin">
-        <p className="text-sm text-muted-foreground">
-          Loading the bureau...
-        </p>
+        <p className="text-sm text-muted-foreground">Loading the bureau...</p>
       </AppShell>
     )
   }
@@ -91,12 +89,12 @@ function AdminPage() {
     }
     return (
       <AppShell isAuthenticated title="Admin">
-        <p className="text-destructive text-sm">Error: {msg}</p>
+        <p className="text-sm text-destructive">Error: {msg}</p>
       </AppShell>
     )
   }
 
-  if (current.data?.role !== "owner" && current.data?.role !== "admin") {
+  if (current.data?.role !== 'owner' && current.data?.role !== 'admin') {
     return (
       <AppShell isAuthenticated title="Admin">
         <Card className="mx-auto max-w-xl">
@@ -143,14 +141,14 @@ function BureauHeader({ orgName, role }: { orgName: string; role: string }) {
     <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
       <div
         aria-hidden
-        className="paper-grain pointer-events-none absolute inset-0 opacity-60"
+        className="pointer-events-none absolute inset-0 paper-grain opacity-60"
       />
       <div className="relative grid grid-cols-1 items-center gap-6 px-7 py-10 md:grid-cols-[1fr_auto] md:px-10">
         <div>
           <div className="text-xs font-medium text-[#b78625]">
             Volume IV · Bureau of Records
           </div>
-          <h1 className="font-display mt-2 text-5xl font-semibold leading-[0.95] tracking-tight text-[#40233f] md:text-6xl">
+          <h1 className="mt-2 font-display text-5xl leading-[0.95] font-semibold tracking-tight text-[#40233f] md:text-6xl">
             <span>The</span> Administration
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
@@ -159,10 +157,8 @@ function BureauHeader({ orgName, role }: { orgName: string; role: string }) {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2 text-right">
-          <div className="font-display rounded-md border border-[#40233f]/15 bg-[#fdf6e8] px-4 py-3">
-            <div className="text-xs text-[#b78625]">
-              Acting on behalf of
-            </div>
+          <div className="rounded-md border border-[#40233f]/15 bg-[#fdf6e8] px-4 py-3 font-display">
+            <div className="text-xs text-[#b78625]">Acting on behalf of</div>
             <div className="font-display text-base font-semibold text-[#40233f]">
               {orgName}
             </div>
@@ -221,7 +217,7 @@ function SubAreaTile({
     >
       <div
         aria-hidden
-        className="font-display absolute -right-4 -top-6 text-[8rem] font-semibold leading-none text-[#40233f]/[0.05] transition group-hover/tile:text-[#40233f]/[0.08]"
+        className="absolute -top-6 -right-4 font-display text-[8rem] leading-none font-semibold text-[#40233f]/[0.05] transition group-hover/tile:text-[#40233f]/[0.08]"
       >
         {roman}
       </div>
@@ -230,9 +226,7 @@ function SubAreaTile({
           {icon}
         </div>
         <div>
-          <div className="text-xs font-medium text-[#b78625]">
-            {eyebrow}
-          </div>
+          <div className="text-xs font-medium text-[#b78625]">{eyebrow}</div>
           <div className="font-display text-xl font-semibold tracking-tight text-[#40233f]">
             {title}
           </div>
@@ -249,14 +243,14 @@ function SubAreaTile({
 }
 
 const ROLE_OPTIONS = [
-  { id: "owner", label: "Owner", desc: "All powers" },
-  { id: "admin", label: "Admin", desc: "Manage roster + rules" },
-  { id: "processor", label: "Processor", desc: "Open + work files" },
-  { id: "closer", label: "Closer", desc: "Take files to policy" },
-  { id: "reviewer", label: "Reviewer", desc: "Read + comment" },
-  { id: "readonly", label: "Read-only", desc: "View register" },
+  { id: 'owner', label: 'Owner', desc: 'All powers' },
+  { id: 'admin', label: 'Admin', desc: 'Manage roster + rules' },
+  { id: 'processor', label: 'Processor', desc: 'Open + work files' },
+  { id: 'closer', label: 'Closer', desc: 'Take files to policy' },
+  { id: 'reviewer', label: 'Reviewer', desc: 'Read + comment' },
+  { id: 'readonly', label: 'Read-only', desc: 'View register' },
 ] as const
-type RoleId = (typeof ROLE_OPTIONS)[number]["id"]
+type RoleId = (typeof ROLE_OPTIONS)[number]['id']
 
 function MembersPanel() {
   const members = useQuery(convexQuery(api.tenants.listMembers, {}))
@@ -265,7 +259,7 @@ function MembersPanel() {
   const [error, setError] = useState<string | null>(null)
   const list = members.data ?? []
 
-  const onRoleChange = async (memberId: Id<"tenantMembers">, role: RoleId) => {
+  const onRoleChange = async (memberId: Id<'tenantMembers'>, role: RoleId) => {
     try {
       await setRole({ memberId, role })
     } catch (err) {
@@ -274,8 +268,8 @@ function MembersPanel() {
   }
 
   const onNpiChange = async (
-    memberId: Id<"tenantMembers">,
-    canViewNpi: boolean,
+    memberId: Id<'tenantMembers'>,
+    canViewNpi: boolean
   ) => {
     try {
       await setNpi({ memberId, canViewNpi })
@@ -286,7 +280,7 @@ function MembersPanel() {
 
   return (
     <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
-      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pb-4 pt-6">
+      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pt-6 pb-4">
         <div className="flex items-center gap-3">
           <div className="grid size-9 place-items-center rounded-md border border-[#40233f]/20 bg-[#fdf6e8] text-[#40233f]">
             <Users className="size-4" />
@@ -295,12 +289,12 @@ function MembersPanel() {
             <div className="text-xs font-medium text-[#b78625]">
               Section I · Roster
             </div>
-            <h2 className="font-display text-2xl font-semibold leading-none tracking-tight text-[#40233f]">
+            <h2 className="font-display text-2xl leading-none font-semibold tracking-tight text-[#40233f]">
               Members
             </h2>
           </div>
         </div>
-        <div className="font-numerals rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs tabular-nums text-muted-foreground">
+        <div className="font-numerals rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-muted-foreground tabular-nums">
           {list.length} on staff
         </div>
       </header>
@@ -321,7 +315,7 @@ function MembersPanel() {
           </p>
         </div>
       ) : (
-        <ol className="paper-grain divide-y divide-border/50">
+        <ol className="divide-y divide-border/50 paper-grain">
           <li className="hidden grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-7 py-2 text-xs text-muted-foreground sm:grid">
             <span className="text-right">№</span>
             <span>Member</span>
@@ -333,15 +327,15 @@ function MembersPanel() {
               key={m._id}
               className="grid grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-7 py-3 transition hover:bg-[#fdf6e8]/50"
             >
-              <span className="font-numerals text-right text-xs tabular-nums text-muted-foreground/70">
-                {String(i + 1).padStart(2, "0")}
+              <span className="font-numerals text-right text-xs text-muted-foreground/70 tabular-nums">
+                {String(i + 1).padStart(2, '0')}
               </span>
 
               <div className="flex min-w-0 items-center gap-3">
                 <div className="relative grid size-9 shrink-0 place-items-center rounded-full ring-1 ring-[#40233f]/15">
-                  <div className="brass-foil absolute inset-0 rounded-full opacity-90" />
+                  <div className="absolute inset-0 rounded-full brass-foil opacity-90" />
                   <div className="absolute inset-[2px] rounded-full bg-card" />
-                  <span className="font-display relative text-xs font-semibold text-[#40233f]">
+                  <span className="relative font-display text-xs font-semibold text-[#40233f]">
                     {initials(m.email)}
                   </span>
                 </div>
@@ -358,7 +352,7 @@ function MembersPanel() {
               <Select
                 value={m.role}
                 onValueChange={(v) =>
-                  onRoleChange(m._id as Id<"tenantMembers">, v as RoleId)
+                  onRoleChange(m._id as Id<'tenantMembers'>, v as RoleId)
                 }
               >
                 <SelectTrigger size="sm" className="font-numerals text-xs">
@@ -381,7 +375,7 @@ function MembersPanel() {
               <Label
                 htmlFor={`npi-${m._id}`}
                 className={`group/npi flex cursor-pointer items-center justify-end gap-2 text-xs ${
-                  m.canViewNpi ? "text-[#2f5d4b]" : "text-muted-foreground/70"
+                  m.canViewNpi ? 'text-[#2f5d4b]' : 'text-muted-foreground/70'
                 }`}
               >
                 {m.canViewNpi ? (
@@ -393,10 +387,7 @@ function MembersPanel() {
                   id={`npi-${m._id}`}
                   checked={m.canViewNpi}
                   onCheckedChange={(checked) =>
-                    onNpiChange(
-                      m._id as Id<"tenantMembers">,
-                      checked === true,
-                    )
+                    onNpiChange(m._id as Id<'tenantMembers'>, checked === true)
                   }
                 />
               </Label>
@@ -408,8 +399,8 @@ function MembersPanel() {
       <footer className="border-t border-border/60 bg-[#f9f5ef]/50 px-7 py-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Eye className="size-3.5 text-[#3f7c64]" />
-          NPI clearance gates access to tokenized fields. Owner role is required to
-          edit recording rules.
+          NPI clearance gates access to tokenized fields. Owner role is required
+          to edit recording rules.
         </div>
       </footer>
     </article>
@@ -418,8 +409,8 @@ function MembersPanel() {
 
 function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
   const invites = useQuery(convexQuery(api.tenants.listPendingInvitations, {}))
-  const [email, setEmail] = useState("")
-  const [role, setRole] = useState<"owner" | "admin" | "member">("member")
+  const [email, setEmail] = useState('')
+  const [role, setRole] = useState<'owner' | 'admin' | 'member'>('member')
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [sentTo, setSentTo] = useState<string | null>(null)
@@ -435,9 +426,9 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
         role,
         organizationId: betterAuthOrgId,
       })
-      if (res.error) throw new Error(res.error.message ?? "Invite failed")
+      if (res.error) throw new Error(res.error.message ?? 'Invite failed')
       setSentTo(email)
-      setEmail("")
+      setEmail('')
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -449,7 +440,7 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
 
   return (
     <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
-      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pb-4 pt-6">
+      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pt-6 pb-4">
         <div className="flex items-center gap-3">
           <div className="grid size-9 place-items-center rounded-md border border-[#40233f]/20 bg-[#fdf6e8] text-[#40233f]">
             <Mail className="size-4" />
@@ -458,7 +449,7 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
             <div className="text-xs font-medium text-[#b78625]">
               Section II · Dispatches
             </div>
-            <h2 className="font-display text-2xl font-semibold leading-none tracking-tight text-[#40233f]">
+            <h2 className="font-display text-2xl leading-none font-semibold tracking-tight text-[#40233f]">
               Invitations
             </h2>
           </div>
@@ -488,19 +479,17 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label className="text-xs font-medium text-[#40233f]">
-            Capacity
-          </Label>
+          <Label className="text-xs font-medium text-[#40233f]">Capacity</Label>
           <div className="grid grid-cols-3 gap-1.5 rounded-full bg-card p-1 ring-1 ring-border/60">
-            {(["member", "admin", "owner"] as const).map((r) => (
+            {(['member', 'admin', 'owner'] as const).map((r) => (
               <button
                 key={r}
                 type="button"
                 onClick={() => setRole(r)}
                 className={`rounded-full px-3 py-1.5 text-xs transition ${
                   role === r
-                    ? "bg-[#40233f] text-[#f6e8d9] shadow-sm"
-                    : "text-muted-foreground hover:text-[#40233f]"
+                    ? 'bg-[#40233f] text-[#f6e8d9] shadow-sm'
+                    : 'text-muted-foreground hover:text-[#40233f]'
                 }`}
               >
                 {r}
@@ -523,7 +512,7 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
 
         <Button type="submit" disabled={pending} className="gap-2 self-start">
           <Send className="size-4" />
-          {pending ? "Dispatching..." : "Send invitation"}
+          {pending ? 'Dispatching...' : 'Send invitation'}
         </Button>
       </form>
 
@@ -532,7 +521,7 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
           <div className="text-xs font-medium text-[#b78625]">
             Pending dispatches
           </div>
-          <div className="font-numerals text-xs tabular-nums text-muted-foreground">
+          <div className="font-numerals text-xs text-muted-foreground tabular-nums">
             {list.length}
           </div>
         </div>
@@ -553,15 +542,15 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
                     {i.email}
                   </div>
                   <div className="font-numerals text-xs text-muted-foreground">
-                    {i.role ?? "member"}
+                    {i.role ?? 'member'}
                     {i.expiresAt
                       ? ` · expires ${new Date(i.expiresAt).toLocaleDateString()}`
-                      : ""}
+                      : ''}
                   </div>
                 </div>
-                <span className="font-numerals inline-flex items-center gap-1.5 rounded-full bg-[#f8eed7] px-2.5 py-1 text-xs text-[#7a5818] ring-1 ring-inset ring-[#b78625]/40">
+                <span className="font-numerals inline-flex items-center gap-1.5 rounded-full bg-[#f8eed7] px-2.5 py-1 text-xs text-[#7a5818] ring-1 ring-[#b78625]/40 ring-inset">
                   <span className="size-1 rounded-full bg-[#b78625]" />
-                  {i.status ?? "pending"}
+                  {i.status ?? 'pending'}
                 </span>
               </li>
             ))}
@@ -573,8 +562,8 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
 }
 
 function initials(email: string): string {
-  const local = email.split("@")[0] ?? email
+  const local = email.split('@')[0] ?? email
   const parts = local.split(/[._-]+/).filter(Boolean)
   if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
-  return (local.slice(0, 2) || "··").toUpperCase()
+  return (local.slice(0, 2) || '··').toUpperCase()
 }

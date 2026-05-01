@@ -1,8 +1,8 @@
-import { httpRouter } from "convex/server"
-import { internal } from "./_generated/api"
-import { httpAction } from "./_generated/server"
-import { authComponent, createAuth } from "./auth"
-import type { Id } from "./_generated/dataModel"
+import { httpRouter } from 'convex/server'
+import { internal } from './_generated/api'
+import { httpAction } from './_generated/server'
+import { authComponent, createAuth } from './auth'
+import type { Id } from './_generated/dataModel'
 
 const http = httpRouter()
 
@@ -16,27 +16,27 @@ async function verifySignature(
   secret: string,
   rawBody: string,
   timestamp: string,
-  signatureHeader: string,
+  signatureHeader: string
 ): Promise<boolean> {
-  const expectedPrefix = "sha256="
+  const expectedPrefix = 'sha256='
   if (!signatureHeader.startsWith(expectedPrefix)) return false
   const provided = signatureHeader.slice(expectedPrefix.length)
 
   const key = await crypto.subtle.importKey(
-    "raw",
+    'raw',
     new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
+    { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ["sign"],
+    ['sign']
   )
   const sig = await crypto.subtle.sign(
-    "HMAC",
+    'HMAC',
     key,
-    new TextEncoder().encode(`${timestamp}.${rawBody}`),
+    new TextEncoder().encode(`${timestamp}.${rawBody}`)
   )
   const computed = Array.from(new Uint8Array(sig), (b) =>
-    b.toString(16).padStart(2, "0"),
-  ).join("")
+    b.toString(16).padStart(2, '0')
+  ).join('')
 
   if (computed.length !== provided.length) return false
   let mismatch = 0
@@ -51,42 +51,59 @@ async function verifySignature(
 // Returns the verified row or a Response to short-circuit on failure.
 async function authenticateAgentRequest(
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
-  req: Request,
+  req: Request
 ): Promise<
   | {
       ok: true
-      integrationId: Id<"integrations">
-      tenantId: Id<"tenants">
-      status: "active" | "disabled" | "error"
+      integrationId: Id<'integrations'>
+      tenantId: Id<'tenants'>
+      status: 'active' | 'disabled' | 'error'
       rawBody: string
     }
   | { ok: false; response: Response }
 > {
   const url = new URL(req.url)
-  const integrationIdParam = url.searchParams.get("id")
-  const timestamp = req.headers.get("X-Title-Timestamp")
-  const signature = req.headers.get("X-Title-Signature")
+  const integrationIdParam = url.searchParams.get('id')
+  const timestamp = req.headers.get('X-Title-Timestamp')
+  const signature = req.headers.get('X-Title-Signature')
   if (!integrationIdParam || !timestamp || !signature) {
-    return { ok: false, response: new Response("missing headers", { status: 400 }) }
+    return {
+      ok: false,
+      response: new Response('missing headers', { status: 400 }),
+    }
   }
   const rawBody = await req.text()
 
   const ts = Number(timestamp)
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60_000) {
-    return { ok: false, response: new Response("stale timestamp", { status: 400 }) }
+    return {
+      ok: false,
+      response: new Response('stale timestamp', { status: 400 }),
+    }
   }
 
-  const integrationId = integrationIdParam as Id<"integrations">
+  const integrationId = integrationIdParam as Id<'integrations'>
   const row = await ctx.runQuery(
     internal.integrations._loadInboundSecretForVerify,
-    { integrationId },
+    { integrationId }
   )
   if (!row) {
-    return { ok: false, response: new Response("unauthorized", { status: 401 }) }
+    return {
+      ok: false,
+      response: new Response('unauthorized', { status: 401 }),
+    }
   }
-  const ok = await verifySignature(row.inboundSecret, rawBody, timestamp, signature)
+  const ok = await verifySignature(
+    row.inboundSecret,
+    rawBody,
+    timestamp,
+    signature
+  )
   if (!ok) {
-    return { ok: false, response: new Response("unauthorized", { status: 401 }) }
+    return {
+      ok: false,
+      response: new Response('unauthorized', { status: 401 }),
+    }
   }
   return {
     ok: true,
@@ -103,19 +120,19 @@ async function authenticateAgentRequest(
 // run, the runner pulls. Body shape is opaque to us; the work happens
 // inside the adapter.
 http.route({
-  path: "/integrations/webhook",
-  method: "POST",
+  path: '/integrations/webhook',
+  method: 'POST',
   handler: httpAction(async (ctx, req) => {
     const auth = await authenticateAgentRequest(ctx, req)
     if (!auth.ok) return auth.response
-    if (auth.status === "disabled") {
-      return new Response("integration disabled", { status: 409 })
+    if (auth.status === 'disabled') {
+      return new Response('integration disabled', { status: 409 })
     }
     await ctx.runMutation(internal.integrations._enqueueWebhookSync, {
       tenantId: auth.tenantId,
       integrationId: auth.integrationId,
     })
-    return new Response("accepted", { status: 202 })
+    return new Response('accepted', { status: 202 })
   }),
 })
 
@@ -133,23 +150,23 @@ http.route({
 // so the agent can log progress. Returns 4xx on validation/auth issues so
 // the agent surfaces them in its own log.
 http.route({
-  path: "/integrations/agent/sync",
-  method: "POST",
+  path: '/integrations/agent/sync',
+  method: 'POST',
   handler: httpAction(async (ctx, req) => {
     const auth = await authenticateAgentRequest(ctx, req)
     if (!auth.ok) return auth.response
-    if (auth.status === "disabled") {
-      return new Response("integration disabled", { status: 409 })
+    if (auth.status === 'disabled') {
+      return new Response('integration disabled', { status: 409 })
     }
 
     let body: { snapshots?: unknown; watermark?: unknown }
     try {
       body = JSON.parse(auth.rawBody) as typeof body
     } catch {
-      return new Response("invalid json", { status: 400 })
+      return new Response('invalid json', { status: 400 })
     }
     if (!Array.isArray(body.snapshots)) {
-      return new Response("missing snapshots array", { status: 400 })
+      return new Response('missing snapshots array', { status: 400 })
     }
 
     try {
@@ -159,18 +176,18 @@ http.route({
           integrationId: auth.integrationId,
           snapshots: body.snapshots as Array<never>,
           watermark:
-            typeof body.watermark === "string" ? body.watermark : undefined,
-        },
+            typeof body.watermark === 'string' ? body.watermark : undefined,
+        }
       )
       return new Response(JSON.stringify(result), {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { 'Content-Type': 'application/json' },
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       return new Response(JSON.stringify({ error: msg }), {
         status: 400,
-        headers: { "Content-Type": "application/json" },
+        headers: { 'Content-Type': 'application/json' },
       })
     }
   }),
@@ -188,8 +205,8 @@ http.route({
 // Server records lastHeartbeatAt + agent metadata. The dashboard uses
 // this to render an offline badge if the agent stops checking in.
 http.route({
-  path: "/integrations/agent/heartbeat",
-  method: "POST",
+  path: '/integrations/agent/heartbeat',
+  method: 'POST',
   handler: httpAction(async (ctx, req) => {
     const auth = await authenticateAgentRequest(ctx, req)
     if (!auth.ok) return auth.response
@@ -198,12 +215,12 @@ http.route({
     try {
       body = JSON.parse(auth.rawBody) as typeof body
     } catch {
-      return new Response("invalid json", { status: 400 })
+      return new Response('invalid json', { status: 400 })
     }
     const agentVersion =
-      typeof body.agentVersion === "string" ? body.agentVersion : "unknown"
+      typeof body.agentVersion === 'string' ? body.agentVersion : 'unknown'
     const hostname =
-      typeof body.hostname === "string" ? body.hostname : "unknown"
+      typeof body.hostname === 'string' ? body.hostname : 'unknown'
 
     await ctx.runMutation(internal.integrations._agentRecordHeartbeat, {
       integrationId: auth.integrationId,
@@ -216,7 +233,7 @@ http.route({
         // Echo server time so the agent can detect clock skew early.
         serverTime: Date.now(),
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
     )
   }),
 })
