@@ -507,6 +507,224 @@ function compareVesting(
   }
 }
 
+// ─── County-records comparators ────────────────────────────────────────
+// Each takes the latest propertySnapshot and compares it against the file
+// (or the cross-document extraction set). All return early when the
+// relevant snapshot field is null/empty so partial ATTOM responses don't
+// generate spurious findings.
+
+function compareOwnerOfRecord(
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  snapshot: Doc<'propertySnapshots'>,
+  out: Pending[]
+) {
+  const ownerName = snapshot.property?.owner.name
+  if (!ownerName) return
+  const ownerCanonical = normalizeLegalName(ownerName).canonical
+
+  type SellerHit = {
+    documentId: Id<'documents'>
+    documentKind?: string
+    legalName: string
+  }
+  const sellers: SellerHit[] = []
+  for (const e of extractions) {
+    for (const p of e.view.parties ?? []) {
+      if (!p.legalName) continue
+      const role = (p.role ?? '').toLowerCase()
+      if (role === 'seller' || role === 'grantor') {
+        sellers.push({
+          documentId: e.documentId,
+          documentKind: e.view.documentKind,
+          legalName: p.legalName,
+        })
+      }
+    }
+  }
+  if (sellers.length === 0) return
+
+  const matches = sellers.some(
+    (s) => normalizeLegalName(s.legalName).canonical === ownerCanonical
+  )
+  if (matches) return
+
+  out.push({
+    findingType: 'owner_of_record_mismatch',
+    // Warn (not block) — county data legitimately lags real transfers in
+    // probate, divorce, and recent-sale cases. The processor reviews,
+    // confirms via independent search, and acknowledges or escalates.
+    severity: 'warn',
+    message: `County records show ${ownerName} as the current owner of record, but the file names ${sellers[0]!.legalName} as seller. Confirm the chain of title — there may be an unrecorded transfer, name change, or stale county data.`,
+    involvedDocumentIds: sellers.map((s) => s.documentId),
+    involvedFields: ['parties.legalName'],
+    rawDetail: {
+      ownerOfRecord: ownerName,
+      sellersInFile: sellers.map((s) => s.legalName),
+      provider: snapshot.provider,
+      fetchedAt: snapshot.fetchedAt,
+    },
+  })
+}
+
+function compareApn(
+  file: Doc<'files'>,
+  snapshot: Doc<'propertySnapshots'>,
+  out: Pending[]
+) {
+  const fileApn = (file.propertyApn ?? '').trim()
+  const snapApn = (snapshot.property?.apn ?? '').trim()
+  if (!fileApn || !snapApn) return
+  // Strip non-alphanumerics so format differences don't fire a false
+  // positive (e.g. "49-15-17-124-083.000-500" vs "491517124083000500").
+  const stripped = (s: string) => s.replace(/[^A-Z0-9]/gi, '').toUpperCase()
+  if (stripped(fileApn) === stripped(snapApn)) return
+
+  out.push({
+    findingType: 'parcel_apn_mismatch',
+    severity: 'warn',
+    message: `Parcel on file (${fileApn}) doesn't match the parcel ATTOM returned (${snapApn}). The address may have resolved to the wrong parcel — verify before relying on the chain or tax data.`,
+    involvedDocumentIds: [],
+    involvedFields: ['propertyApn'],
+    rawDetail: {
+      fileApn,
+      snapshotApn: snapApn,
+      provider: snapshot.provider,
+    },
+  })
+}
+
+// Pairs each lien (mortgage / deed of trust) to a release recorded later
+// where the lender (grantee on the lien) appears as the grantor on the
+// release. FIFO so an older lien claims an older release. A lien left
+// unpaired is reported. More accurate than counting because real chains
+// often span decades with multiple unrelated lenders.
+function flagOpenLiens(
+  snapshot: Doc<'propertySnapshots'>,
+  out: Pending[]
+) {
+  const docs = snapshot.documents ?? []
+  if (docs.length === 0) return
+
+  const isLien = (t: string) =>
+    /\b(mortgage|deed of trust|lien|security instrument)\b/i.test(t) &&
+    !/\b(release|satisfaction|reconvey)\b/i.test(t)
+  const isRelease = (t: string) =>
+    /\b(release|satisfaction|reconvey)\b/i.test(t)
+
+  type Recorded = (typeof docs)[number]
+  const liens = docs.filter((d) => isLien(d.documentType))
+  if (liens.length === 0) return
+
+  // Sort ascending so older liens match older releases first.
+  const cmp = (a: Recorded, b: Recorded) => {
+    const da = a.recordingDate ?? '9999-99-99'
+    const db = b.recordingDate ?? '9999-99-99'
+    return da < db ? -1 : da > db ? 1 : 0
+  }
+  const sortedLiens = [...liens].sort(cmp)
+  const remainingReleases = docs.filter((d) => isRelease(d.documentType)).sort(cmp)
+
+  // Lender-name normalization: drop common entity suffixes and the word
+  // "BANK" so "Old National Bank, NA" matches "OLD NATIONAL".
+  const normLender = (s: string | null) =>
+    (s ?? '')
+      .toUpperCase()
+      .replace(/[,.&]/g, ' ')
+      .replace(/\b(LLC|INC|CORP|CO|N\.A\.|NA|BANK|TRUST|LP|LLP)\b/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const unmatched: Recorded[] = []
+  for (const lien of sortedLiens) {
+    const lender = normLender(lien.grantee)
+    if (!lender) {
+      unmatched.push(lien)
+      continue
+    }
+    const idx = remainingReleases.findIndex((r) => {
+      if (normLender(r.grantor) !== lender) return false
+      if (
+        lien.recordingDate &&
+        r.recordingDate &&
+        r.recordingDate < lien.recordingDate
+      ) {
+        return false
+      }
+      return true
+    })
+    if (idx >= 0) {
+      remainingReleases.splice(idx, 1)
+    } else {
+      unmatched.push(lien)
+    }
+  }
+
+  if (unmatched.length === 0) return
+
+  const open = unmatched.length
+  out.push({
+    findingType: 'open_lien_no_release',
+    severity: 'warn',
+    message: `${open} recorded lien${open === 1 ? '' : 's'} on this parcel ${open === 1 ? 'has' : 'have'} no matching release in the chain. Confirm payoff and recorded satisfaction before closing.`,
+    involvedDocumentIds: [],
+    involvedFields: [],
+    rawDetail: {
+      unmatched: unmatched.map((d) => ({
+        recordingDate: d.recordingDate,
+        documentNumber: d.documentNumber,
+        grantor: d.grantor,
+        grantee: d.grantee,
+        amount: d.amount,
+      })),
+      lienCount: liens.length,
+      pairedReleases: liens.length - unmatched.length,
+      provider: snapshot.provider,
+    },
+  })
+}
+
+function flagSalePriceVariance(
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  snapshot: Doc<'propertySnapshots'>,
+  out: Pending[]
+) {
+  const market = snapshot.tax?.marketValue
+  if (market === null || market === undefined || market <= 0) return
+  const latest = pickLatestPrice(extractions)
+  if (!latest) return
+  const ratio = latest.price / market
+  // Widened to ±40% (was ±25%) — flip-heavy markets like Indianapolis and
+  // non-disclosure states routinely produce 25–35% gaps without anything
+  // being wrong. Tighten if you see false-positive volume; widen if real
+  // flips are getting flagged.
+  if (ratio >= 0.6 && ratio <= 1.4) return
+
+  const direction = ratio < 0.6 ? 'below' : 'above'
+  const pct = Math.round(Math.abs(ratio - 1) * 100)
+  out.push({
+    findingType: 'sale_price_variance_market',
+    severity: 'info',
+    message: `Contract price ($${latest.price.toLocaleString()}) is ${pct}% ${direction} the county market value ($${market.toLocaleString()}). Common for distressed / family / portfolio transfers — confirm transaction type.`,
+    involvedDocumentIds: [latest.documentId],
+    involvedFields: ['financial.purchasePrice'],
+    rawDetail: {
+      contractPrice: latest.price,
+      marketValue: market,
+      ratio,
+      direction,
+      provider: snapshot.provider,
+    },
+  })
+}
+
 function checkRequiredDocs(
   ctx: MutationCtx,
   file: Doc<'files'>,
@@ -588,6 +806,23 @@ async function runReconciliationCore(
   compareFinancingWindow(usable, findings)
   compareParties(usable, findings)
   compareVesting(usable, findings)
+
+  // County-records evidence (from the latest propertySnapshot, populated by
+  // countyConnect.runForFile). All four checks no-op when no snapshot exists,
+  // so files without a county pull reconcile exactly as before.
+  const snapshot = await ctx.db
+    .query('propertySnapshots')
+    .withIndex('by_tenant_file_fetched', (q) =>
+      q.eq('tenantId', tenantId).eq('fileId', fileId)
+    )
+    .order('desc')
+    .first()
+  if (snapshot) {
+    compareOwnerOfRecord(usable, snapshot, findings)
+    compareApn(file, snapshot, findings)
+    flagOpenLiens(snapshot, findings)
+    flagSalePriceVariance(usable, snapshot, findings)
+  }
 
   const uploadedDocTypes = new Set(usable.map((e) => e.docType))
   await checkRequiredDocs(ctx, file, uploadedDocTypes, findings)
