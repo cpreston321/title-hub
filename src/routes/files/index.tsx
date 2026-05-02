@@ -227,32 +227,32 @@ function FilesListPage() {
           ? `${current.data.legalName} · ${current.data.role}`
           : undefined
       }
-      actions={
-        <>
-          {countyOptions.length === 0 && (
-            <Button variant="outline" size="sm" onClick={seedIfEmpty}>
-              Seed Indiana counties
-            </Button>
-          )}
-          <Button onClick={() => setShowForm((s) => !s)} className="gap-2">
-            {showForm ? (
-              <>
-                <X className="size-4" />
-                Cancel
-              </>
-            ) : (
-              <>
-                <Plus className="size-4" />
-                New file
-              </>
-            )}
-          </Button>
-        </>
-      }
     >
       <div className="flex flex-col gap-6 pb-12">
         <PageHeader
           totalFiles={allFiles.length}
+          actions={
+            <>
+              {countyOptions.length === 0 && (
+                <Button variant="outline" size="sm" onClick={seedIfEmpty}>
+                  Seed Indiana counties
+                </Button>
+              )}
+              <Button onClick={() => setShowForm((s) => !s)} className="gap-2">
+                {showForm ? (
+                  <>
+                    <X className="size-4" />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <Plus className="size-4" />
+                    New file
+                  </>
+                )}
+              </Button>
+            </>
+          }
           showHelp={showHelp}
           setShowHelp={setShowHelp}
         />
@@ -322,10 +322,12 @@ function FilesListPage() {
 
 function PageHeader({
   totalFiles,
+  actions,
   showHelp,
   setShowHelp,
 }: {
   totalFiles: number
+  actions?: React.ReactNode
   showHelp: boolean
   setShowHelp: (b: boolean) => void
 }) {
@@ -346,14 +348,17 @@ function PageHeader({
             . Click any row below to open its docket.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowHelp(!showHelp)}
-          className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs text-muted-foreground ring-1 ring-border/70 transition hover:text-[#40233f]"
-        >
-          <HelpCircle className="size-3.5" />
-          {showHelp ? 'Hide' : 'How files work'}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowHelp(!showHelp)}
+            className="flex items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs text-muted-foreground ring-1 ring-border/70 transition hover:text-[#40233f]"
+          >
+            <HelpCircle className="size-3.5" />
+            {showHelp ? 'Hide' : 'How files work'}
+          </button>
+          {actions}
+        </div>
       </div>
       {totalFiles > 0 && (
         <div className="font-numerals text-xs text-muted-foreground tabular-nums">

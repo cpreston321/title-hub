@@ -247,43 +247,50 @@ function IntegrationsAdminPage() {
       isAuthenticated
       title="Integrations"
       subtitle="External title-stack systems syncing files into this tenant."
-      actions={
-        <>
-          <Button asChild variant="outline" size="sm" className="gap-1.5">
-            <Link to="/admin">
-              <ChevronLeft className="size-3.5" />
-              Admin
-            </Link>
-          </Button>
-          <Button
-            onClick={() => {
-              if (showForm) {
-                setShowForm(false)
-                setPrefillKind(null)
-              } else {
-                setShowForm(true)
-              }
-            }}
-            className="gap-1.5"
-            variant={showForm ? 'outline' : 'default'}
-          >
-            {showForm ? (
-              <>
-                <X className="size-3.5" />
-                Cancel
-              </>
-            ) : (
-              <>
-                <Plus className="size-3.5" />
-                New integration
-              </>
-            )}
-          </Button>
-        </>
-      }
     >
       <div className="flex flex-col gap-6 pb-12">
-        <PageHeader />
+        <PageHeader
+          actions={
+            <>
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+              >
+                <Link to="/admin">
+                  <ChevronLeft className="size-3.5" />
+                  Admin
+                </Link>
+              </Button>
+              <Button
+                onClick={() => {
+                  if (showForm) {
+                    setShowForm(false)
+                    setPrefillKind(null)
+                  } else {
+                    setShowForm(true)
+                  }
+                }}
+                size="sm"
+                className="gap-1.5"
+                variant={showForm ? 'outline' : 'default'}
+              >
+                {showForm ? (
+                  <>
+                    <X className="size-3.5" />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <Plus className="size-3.5" />
+                    New integration
+                  </>
+                )}
+              </Button>
+            </>
+          }
+        />
 
         {error && (
           <p className="rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
@@ -379,7 +386,7 @@ function countByKind(list: ReadonlyArray<IntegrationRow>): Record<Kind, number> 
   return out as Record<Kind, number>
 }
 
-function PageHeader() {
+function PageHeader({ actions }: { actions?: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -395,6 +402,9 @@ function PageHeader() {
             integration to exercise the pipeline before wiring real credentials.
           </p>
         </div>
+        {actions && (
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        )}
       </div>
     </div>
   )

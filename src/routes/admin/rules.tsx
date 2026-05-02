@@ -105,19 +105,25 @@ function RulesAdminPage() {
       isAuthenticated
       title="Recording rules"
       subtitle="Versioned per county + document type. New versions supersede the previous one at their effective date."
-      actions={
-        <>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/admin">← Admin</Link>
-          </Button>
-          <Button variant="outline" onClick={onSeedPilot} disabled={seeding}>
-            {seeding ? 'Seeding...' : 'Seed Marion + Hamilton'}
-          </Button>
-        </>
-      }
     >
       <div className="flex flex-col gap-8 pb-12">
-        <CodexHeader />
+        <CodexHeader
+          actions={
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link to="/admin">← Admin</Link>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onSeedPilot}
+                disabled={seeding}
+              >
+                {seeding ? 'Seeding...' : 'Seed Marion + Hamilton'}
+              </Button>
+            </>
+          }
+        />
 
         {seedMsg && (
           <p className="font-numerals rounded-md border border-border/60 bg-card px-3 py-2 text-xs text-muted-foreground">
@@ -147,7 +153,7 @@ function RulesAdminPage() {
   )
 }
 
-function CodexHeader() {
+function CodexHeader({ actions }: { actions?: React.ReactNode }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
       <div
@@ -162,18 +168,25 @@ function CodexHeader() {
             <ScrollText className="relative size-8 text-[#40233f]" />
           </div>
         </div>
-        <div>
-          <div className="text-xs font-medium text-[#b78625]">
-            Codex · Liber Recordationis
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="text-xs font-medium text-[#b78625]">
+              Codex · Liber Recordationis
+            </div>
+            <h1 className="mt-2 font-display text-5xl leading-[0.95] font-semibold tracking-tight text-[#40233f] md:text-6xl">
+              <span>Recording</span> Rules
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
+              Margins, fees, exhibits, notarial requirements — versioned per
+              county and document type. New versions supersede the previous one on
+              their effective date.
+            </p>
           </div>
-          <h1 className="mt-2 font-display text-5xl leading-[0.95] font-semibold tracking-tight text-[#40233f] md:text-6xl">
-            <span>Recording</span> Rules
-          </h1>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Margins, fees, exhibits, notarial requirements — versioned per
-            county and document type. New versions supersede the previous one on
-            their effective date.
-          </p>
+          {actions && (
+            <div className="flex flex-wrap items-center gap-2 self-start">
+              {actions}
+            </div>
+          )}
         </div>
       </div>
     </div>

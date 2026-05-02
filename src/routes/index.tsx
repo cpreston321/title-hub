@@ -1230,13 +1230,6 @@ function Dashboard() {
       isAuthenticated
       title={isNewTenant ? "Welcome" : "Dashboard"}
       subtitle={subtitle}
-      actions={
-        !isNewTenant && (
-          <Button asChild>
-            <Link to="/files">Open files</Link>
-          </Button>
-        )
-      }
     >
       {isNewTenant ? (
         <WelcomeOnboarding tenant={current.data!} />

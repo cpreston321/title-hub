@@ -205,13 +205,6 @@ function OrdersPage() {
           ? `${current.data.legalName} · ${current.data.role}`
           : undefined
       }
-      actions={
-        <Button asChild variant="outline" size="sm" className="gap-2">
-          <Link to="/files" search={{ new: true }}>
-            New manual order
-          </Link>
-        </Button>
-      }
     >
       <div className="flex flex-col gap-6 pb-12">
         <PageHeader />
@@ -291,6 +284,11 @@ function PageHeader() {
             Triage them, send the clean ones into exam, and cancel the noise.
           </p>
         </div>
+        <Button asChild variant="outline" size="sm" className="gap-2">
+          <Link to="/files" search={{ new: true }}>
+            New manual order
+          </Link>
+        </Button>
       </div>
     </div>
   )

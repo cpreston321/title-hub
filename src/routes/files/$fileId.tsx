@@ -274,7 +274,6 @@ function FileDetailContent({
           { label: file.fileNumber },
         ]}
         subtitle={subtitle}
-        actions={<HeaderStatus fileId={id} status={file.status} />}
       >
         <div className="flex flex-col gap-6 pb-12">
           <FileHero
@@ -285,6 +284,7 @@ function FileDetailContent({
             allClear={allClear}
             inFlightExtractions={inFlightExtractions}
             fileBusy={fileBusy}
+            statusControl={<HeaderStatus fileId={id} status={file.status} />}
           />
 
           <LiveActivityRail
@@ -543,6 +543,7 @@ function FileHero({
   allClear,
   inFlightExtractions,
   fileBusy,
+  statusControl,
 }: {
   file: Doc<"files">;
   countyName: string;
@@ -551,6 +552,7 @@ function FileHero({
   allClear: boolean;
   inFlightExtractions: number;
   fileBusy: boolean;
+  statusControl?: React.ReactNode;
 }) {
   const addr = file.propertyAddress;
   const addrLine = addr
@@ -570,11 +572,11 @@ function FileHero({
       />
       <div className="relative grid grid-cols-1 gap-6 px-6 py-6 md:grid-cols-[1.4fr_auto] md:items-center md:gap-10 md:px-8 md:py-7">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs font-semibold text-[#b78625]">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#b78625]">
             <FileText className="size-3.5" />
             File of record
             {fileBusy && (
-              <span className="ml-1 inline-flex items-center gap-1.5 rounded-full bg-[#fdf6e8] px-2 py-0.5 text-[11px] font-medium text-[#7a5818] ring-1 ring-[#b78625]/30 ring-inset">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#fdf6e8] px-2 py-0.5 text-[11px] font-medium text-[#7a5818] ring-1 ring-[#b78625]/30 ring-inset">
                 <Sparkles className="tk-soft-pulse size-3" />
                 Processing {inFlightExtractions}{" "}
                 {inFlightExtractions === 1 ? "doc" : "docs"}
@@ -588,6 +590,9 @@ function FileHero({
                   </span>
                 </span>
               </span>
+            )}
+            {statusControl && (
+              <span className="ml-auto md:ml-2">{statusControl}</span>
             )}
           </div>
           <h1 className="font-numerals mt-1.5 text-3xl leading-none font-semibold tracking-tight text-[#40233f] md:text-4xl">
