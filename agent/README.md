@@ -75,14 +75,15 @@ both talk to the same .convex.site URL), use the legacy two-step path:
 
 ## CLI reference
 
-| Command            | What it does                                                  |
-| ------------------ | ------------------------------------------------------------- |
-| `agent install`    | Redeems a one-time install token, writes the config (preferred) |
-| `agent init`       | Reads install-token TOML from stdin, writes it to disk          |
-| `agent doctor`     | Preflight: config valid, server reachable, HMAC + skew          |
-| `agent push`       | One-shot push from a JSON fixture (testing the wire)            |
-| `agent heartbeat`  | One-shot heartbeat                                              |
-| `agent run`        | Long-running loop: heartbeat + (if `[proform]` set) polling     |
+| Command              | What it does                                                  |
+| -------------------- | ------------------------------------------------------------- |
+| `agent install`      | Redeems a one-time install token, writes the config (preferred) |
+| `agent init`         | Reads install-token TOML from stdin, writes it to disk          |
+| `agent doctor`       | Preflight: config valid, server reachable, HMAC + skew          |
+| `agent push`         | One-shot push from a JSON fixture (testing the snapshot wire)   |
+| `agent push-document`| One-shot upload of a single PDF against an existing file        |
+| `agent heartbeat`    | One-shot heartbeat                                              |
+| `agent run`          | Long-running loop: heartbeat + (if `[proform]` set) polling     |
 
 `--config <PATH>` overrides the default config location for any command.
 
@@ -109,6 +110,65 @@ Body:
 
 The `FileSnapshot` Rust types in `src/snapshot.rs` mirror
 `convex/integrations/types.ts`. Wire is camelCase via serde rename.
+
+## Document uploads
+
+ProForm stores order documents (PA, counter offer, lender instructions,
+ID copies) on a file system share — `\\AGENCY-FS\ProForm\Documents\<OrderNumber>\`
+on most installs — with pointers in SQL. The agent ships those bytes
+through a separate, signed endpoint:
+
+```
+POST /integrations/agent/document
+     ?id=<integrationId>
+     &fileNumber=<file number>
+     &docType=<purchase_agreement|counter_offer|...>
+     &title=<filename>
+     &sha256=<hex>
+Headers:
+  X-Title-Timestamp: <unix ms>
+  X-Title-Signature: sha256=<hex(HMAC-SHA256(secret, message))>
+Body: <raw bytes>
+```
+
+The signed message is pipe-delimited and binds every URL field plus the
+body checksum:
+
+```
+${ts}|${integrationId}|${fileNumber}|${docType}|${title}|${sha256}
+```
+
+Server verifies HMAC, recomputes sha256 of the body to confirm it
+matches the signed value, stores the blob, inserts a `documents` row
+attributed to the integration's owner-or-admin, and schedules the same
+Claude extraction the manual upload path uses. **De-dup is automatic**
+on `(file, sha256)` — re-uploading an unchanged file returns `deduped:
+true` and creates no new rows.
+
+Constraints to know:
+
+- Convex's HTTP body limit is **20 MB**. The agent should skip + log
+  files larger than that. Agency closing packages occasionally exceed
+  this, but they're output (not extraction input), so it's acceptable.
+- The file must already exist on the server (push the snapshot first
+  via `agent push` or the SQL poller) — uploading against an unknown
+  `fileNumber` returns 404 with `FILE_NOT_FOUND_FOR_DOCUMENT`.
+- NPI lives in these PDFs (SSNs on borrower IDs, EINs on entity docs).
+  Bytes land in `_storage` server-side; the existing tokenization story
+  takes over once extraction runs. Per-tenant storage encryption is on
+  the deferred list.
+
+Try the wire end-to-end without writing the SQL mapping:
+
+```sh
+agent push-document \
+  --file /path/to/PA.pdf \
+  --file-number QT-2026-0001 \
+  --doc-type purchase_agreement
+```
+
+The companion `agent push --snapshots fixtures/sample.json` ensures the
+matching file row exists first.
 
 ## Wiring up the SQL poller
 
@@ -177,15 +237,26 @@ ProForm install. Path forward:
      for the watermark.
    - `dbo.OrderName` for parties (buyer/seller).
    - `dbo.OrderProperty` for the property address.
+   - `dbo.OrderDocument` (or whatever ProForm names it) for document
+     pointers — filename + path on the documents share, doc type code,
+     last-modified timestamp.
 3. The query has to be **bounded by `batch_size`** and **ordered by
    `Rowversion ASC`** — the watermark loop assumes monotonic progress.
-4. Add a per-mapping integration test against a recorded fixture (anonymized
+4. After upserting the snapshot, walk the document pointers and call
+   `client.upload_document(...)` for each new one. The wire format is
+   already done (see "Document uploads" above) and the server de-dupes
+   on `(file, sha256)`, so resyncing an unchanged file is a no-op.
+5. Add a per-mapping integration test against a recorded fixture (anonymized
    real data is fine; checked into `agent/tests/fixtures/`).
 
 ⚠ **Schema drift.** SoftPro renames columns between releases. Wrap each
 table read in a small mapper and unit-test it; that way a service-pack
 upgrade on the agency's machine fails one mapper instead of blowing up
 the whole sync.
+
+⚠ **Documents share access.** The agent's service account needs read
+access to the UNC path that ProForm stores documents under. SoftPro
+service accounts usually have it; verify during pilot setup.
 
 ### 3. Run as a Windows Service
 
@@ -264,6 +335,8 @@ These don't need code; they need calendar reminders.
 These are checked off so future-you doesn't redo them:
 
 - ✅ HTTP + HMAC + heartbeat (`agent push`/`heartbeat`/`run`)
+- ✅ Document upload wire (`agent push-document`, server-side de-dup,
+  triggers extraction)
 - ✅ SQL poller scaffold (connection, watermark loop, batching)
 - ✅ `agent init` (paste TOML)
 - ✅ `agent install` (one-line redeem flow)

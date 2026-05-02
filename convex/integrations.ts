@@ -6,6 +6,7 @@ import {
   mutation,
   query,
 } from './_generated/server'
+import { scheduleExtractionFor } from './files'
 import { recordAudit } from './lib/audit'
 import { requireRole, requireTenant } from './lib/tenant'
 import type { Doc, Id } from './_generated/dataModel'
@@ -573,6 +574,170 @@ export const _upsertFileFromSnapshot = internalMutation({
     }
 
     return { fileId, inserted }
+  },
+})
+
+// Pre-flight check the agent calls before uploading a document. Lets a
+// retrying / restarting agent skip multi-MB uploads against snapshots that
+// haven't landed yet, instead of paying for the bytes and getting a 404
+// back. Returned shape is intentionally minimal — just enough for the
+// agent to decide "ship or wait."
+export const _fileExistsForAgent = internalQuery({
+  args: {
+    integrationId: v.id('integrations'),
+    fileNumber: v.string(),
+  },
+  handler: async (
+    ctx,
+    { integrationId, fileNumber }
+  ): Promise<{ exists: boolean }> => {
+    const integration = await ctx.db.get(integrationId)
+    if (!integration) throw new ConvexError('INTEGRATION_NOT_FOUND')
+    if (!PUSH_MODE_KINDS.has(integration.kind)) {
+      throw new ConvexError('INTEGRATION_NOT_PUSH_MODE')
+    }
+    const file = await ctx.db
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', integration.tenantId).eq('fileNumber', fileNumber)
+      )
+      .unique()
+    return { exists: file != null }
+  },
+})
+
+// Customer-side agent has just stored a document blob in `_storage` and
+// is asking us to register it against an existing file. Resolves the
+// file by tenant + fileNumber, de-dups against the same `(file, sha256)`
+// pair, attributes the upload to the integration's owner-or-admin, and
+// schedules the same Claude extraction the manual upload path uses.
+//
+// Called by /integrations/agent/document in convex/http.ts after that
+// route has verified HMAC + body sha256.
+export const _uploadAgentDocument = internalMutation({
+  args: {
+    integrationId: v.id('integrations'),
+    fileNumber: v.string(),
+    docType: v.string(),
+    title: v.optional(v.string()),
+    sha256: v.string(),
+    sizeBytes: v.number(),
+    contentType: v.optional(v.string()),
+    storageId: v.id('_storage'),
+  },
+  handler: async (
+    ctx,
+    args
+  ): Promise<{
+    documentId: Id<'documents'>
+    extractionId: Id<'documentExtractions'> | null
+    deduped: boolean
+  }> => {
+    const integration = await ctx.db.get(args.integrationId)
+    if (!integration) throw new ConvexError('INTEGRATION_NOT_FOUND')
+    if (!PUSH_MODE_KINDS.has(integration.kind)) {
+      throw new ConvexError('INTEGRATION_NOT_PUSH_MODE')
+    }
+    if (integration.status === 'disabled') {
+      throw new ConvexError('INTEGRATION_DISABLED')
+    }
+
+    const file = await ctx.db
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', integration.tenantId).eq('fileNumber', args.fileNumber)
+      )
+      .unique()
+    if (!file) {
+      // The agent should ship the snapshot before the documents — fail
+      // loudly so this surfaces as a misordered upload, not silent loss.
+      try {
+        await ctx.storage.delete(args.storageId)
+      } catch {
+        /* best-effort cleanup */
+      }
+      throw new ConvexError('FILE_NOT_FOUND_FOR_DOCUMENT')
+    }
+
+    // De-dup: same checksum on the same file = same document. Discard the
+    // freshly-uploaded blob (we already have the bytes via `existing`) and
+    // return the prior id so the agent can checkpoint and move on.
+    const existing = (
+      await ctx.db
+        .query('documents')
+        .withIndex('by_tenant_file', (q) =>
+          q.eq('tenantId', integration.tenantId).eq('fileId', file._id)
+        )
+        .collect()
+    ).find((d) => d.checksum === args.sha256)
+    if (existing) {
+      try {
+        await ctx.storage.delete(args.storageId)
+      } catch {
+        /* best-effort */
+      }
+      return {
+        documentId: existing._id,
+        extractionId: null,
+        deduped: true,
+      }
+    }
+
+    // documents.uploadedByMemberId is required. Use the same fallback as
+    // the mock-seeder: prefer owner, then any active member.
+    const members = await ctx.db
+      .query('tenantMembers')
+      .withIndex('by_tenant_email', (q) => q.eq('tenantId', integration.tenantId))
+      .collect()
+    const member =
+      members.find((m) => m.role === 'owner' && m.status === 'active') ??
+      members.find((m) => m.status === 'active')
+    if (!member) {
+      try {
+        await ctx.storage.delete(args.storageId)
+      } catch {
+        /* best-effort */
+      }
+      throw new ConvexError('NO_ACTIVE_MEMBER')
+    }
+
+    const documentId = await ctx.db.insert('documents', {
+      tenantId: integration.tenantId,
+      fileId: file._id,
+      docType: args.docType,
+      title: args.title,
+      storageId: args.storageId,
+      contentType: args.contentType ?? 'application/pdf',
+      sizeBytes: args.sizeBytes,
+      checksum: args.sha256,
+      uploadedByMemberId: member._id,
+      uploadedAt: Date.now(),
+    })
+
+    await ctx.db.insert('auditEvents', {
+      tenantId: integration.tenantId,
+      actorMemberId: member._id,
+      actorType: 'integration',
+      action: 'document.uploaded_by_agent',
+      resourceType: 'file',
+      resourceId: file._id,
+      metadata: {
+        documentId,
+        docType: args.docType,
+        sizeBytes: args.sizeBytes,
+        sha256: args.sha256,
+        integrationId: args.integrationId,
+      },
+      occurredAt: Date.now(),
+    })
+
+    const extractionId = await scheduleExtractionFor(ctx, integration.tenantId, {
+      documentId,
+      fileId: file._id,
+      storageId: args.storageId,
+      docType: args.docType,
+    })
+    return { documentId, extractionId, deduped: false }
   },
 })
 

@@ -13,20 +13,11 @@ const http = httpRouter()
 
 authComponent.registerRoutes(http, createAuth)
 
-// HMAC-SHA256 of `${timestamp}.${rawBody}`, hex-encoded with the
-// integration's `inboundSecret`. We accept "sha256=<hex>" in the
-// X-Title-Signature header. Length-checked first, then constant-time-ish
-// XOR compare.
-async function verifySignature(
+// HMAC-SHA256(secret, message), hex-encoded.
+async function computeHmacHex(
   secret: string,
-  rawBody: string,
-  timestamp: string,
-  signatureHeader: string
-): Promise<boolean> {
-  const expectedPrefix = 'sha256='
-  if (!signatureHeader.startsWith(expectedPrefix)) return false
-  const provided = signatureHeader.slice(expectedPrefix.length)
-
+  message: string
+): Promise<string> {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -37,18 +28,91 @@ async function verifySignature(
   const sig = await crypto.subtle.sign(
     'HMAC',
     key,
-    new TextEncoder().encode(`${timestamp}.${rawBody}`)
+    new TextEncoder().encode(message)
   )
-  const computed = Array.from(new Uint8Array(sig), (b) =>
+  return Array.from(new Uint8Array(sig), (b) =>
     b.toString(16).padStart(2, '0')
   ).join('')
+}
 
-  if (computed.length !== provided.length) return false
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
   let mismatch = 0
-  for (let i = 0; i < computed.length; i++) {
-    mismatch |= computed.charCodeAt(i) ^ provided.charCodeAt(i)
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
   }
   return mismatch === 0
+}
+
+// Verifies a `sha256=<hex>` header against HMAC-SHA256(secret, message).
+async function verifyHmacHeader(
+  secret: string,
+  message: string,
+  header: string
+): Promise<boolean> {
+  const prefix = 'sha256='
+  if (!header.startsWith(prefix)) return false
+  const provided = header.slice(prefix.length)
+  const computed = await computeHmacHex(secret, message)
+  return constantTimeEqual(computed, provided)
+}
+
+// JSON-body endpoints sign `${timestamp}.${rawBody}`. Document uploads
+// have binary bodies + metadata-in-query-params, so they sign a different
+// canonical message — see `documentSignedMessage` below.
+async function verifySignature(
+  secret: string,
+  rawBody: string,
+  timestamp: string,
+  signatureHeader: string
+): Promise<boolean> {
+  return verifyHmacHeader(secret, `${timestamp}.${rawBody}`, signatureHeader)
+}
+
+// Hex SHA-256 of a byte buffer. Used to verify the body of a document
+// upload matches the sha256 the agent claimed (and signed).
+async function hexSha256(bytes: Uint8Array): Promise<string> {
+  // Copy into a fresh ArrayBuffer to keep crypto.subtle's BufferSource
+  // type-narrow (it rejects SharedArrayBuffer-tagged views).
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  const buf = await crypto.subtle.digest('SHA-256', copy.buffer)
+  return Array.from(new Uint8Array(buf), (b) =>
+    b.toString(16).padStart(2, '0')
+  ).join('')
+}
+
+// Canonical signed-message format for `/integrations/agent/document`.
+// Every field is signed so neither the URL params nor the body can be
+// tampered with independently. Pipe is the separator (rather than `.`)
+// so a doc title containing a period doesn't break field boundaries.
+// Server reconstructs this from the request and compares HMACs.
+function documentSignedMessage(parts: {
+  timestamp: string
+  integrationId: string
+  fileNumber: string
+  docType: string
+  title: string
+  sha256: string
+}): string {
+  return [
+    parts.timestamp,
+    parts.integrationId,
+    parts.fileNumber,
+    parts.docType,
+    parts.title,
+    parts.sha256,
+  ].join('|')
+}
+
+// Canonical signed-message format for `/integrations/agent/file/exists`.
+// No body, so just the metadata pieces.
+function fileExistsSignedMessage(parts: {
+  timestamp: string
+  integrationId: string
+  fileNumber: string
+}): string {
+  return [parts.timestamp, parts.integrationId, parts.fileNumber].join('|')
 }
 
 // Common entry: pulls `id` query param + X-Title-* headers, body bytes,
@@ -240,6 +304,226 @@ http.route({
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     )
+  }),
+})
+
+// ─── Agent document upload ──────────────────────────────────────────────
+//
+// Customer-side agent ships a single document blob. Metadata rides in
+// the query string so the server can verify everything before reading
+// the (potentially large) body. Wire format:
+//
+//   POST /integrations/agent/document
+//        ?id=<integrationId>
+//        &fileNumber=<file number on the integration's tenant>
+//        &docType=<purchase_agreement|counter_offer|...>
+//        &title=<optional, may be empty>
+//        &sha256=<hex>
+//   Headers:
+//     X-Title-Timestamp: <unix ms>
+//     X-Title-Signature: sha256=<hex(HMAC-SHA256(secret, message))>
+//   Body: <raw bytes>
+//
+// where `message` is `documentSignedMessage` over those fields. The
+// signature binds every parameter so URL tampering and body tampering
+// both fail the verify step. The body's actual sha256 is recomputed and
+// must match the param.
+//
+// Convex's httpAction limit (20 MB body) bounds doc size — the agent
+// skips + logs anything larger. That's fine for PA, counter offers,
+// lender instructions, ID copies; it'd cap closing packages, but
+// closing packages are output, not input to extraction.
+http.route({
+  path: '/integrations/agent/document',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const url = new URL(req.url)
+    const integrationIdParam = url.searchParams.get('id')
+    const fileNumber = url.searchParams.get('fileNumber')
+    const docType = url.searchParams.get('docType')
+    const title = url.searchParams.get('title') ?? ''
+    const sha256Claimed = url.searchParams.get('sha256')
+    const timestamp = req.headers.get('X-Title-Timestamp')
+    const signature = req.headers.get('X-Title-Signature')
+
+    if (
+      !integrationIdParam ||
+      !fileNumber ||
+      !docType ||
+      !sha256Claimed ||
+      !timestamp ||
+      !signature
+    ) {
+      return new Response('missing required params or headers', { status: 400 })
+    }
+    const ts = Number(timestamp)
+    if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60_000) {
+      return new Response('stale timestamp', { status: 400 })
+    }
+    if (!/^[a-f0-9]{64}$/.test(sha256Claimed)) {
+      return new Response('sha256 must be 64 hex chars', { status: 400 })
+    }
+
+    const integrationId = integrationIdParam as Id<'integrations'>
+    const row = await ctx.runQuery(
+      internal.integrations._loadInboundSecretForVerify,
+      { integrationId }
+    )
+    if (!row) return new Response('unauthorized', { status: 401 })
+    if (row.status === 'disabled') {
+      return new Response('integration disabled', { status: 409 })
+    }
+
+    const message = documentSignedMessage({
+      timestamp,
+      integrationId,
+      fileNumber,
+      docType,
+      title,
+      sha256: sha256Claimed,
+    })
+    const sigOk = await verifyHmacHeader(row.inboundSecret, message, signature)
+    if (!sigOk) return new Response('unauthorized', { status: 401 })
+
+    // Read + verify body. Stale-timestamp + HMAC checks come first so a
+    // bogus request short-circuits before paying the body-read cost.
+    const bodyBuf = await req.arrayBuffer()
+    const bodyBytes = new Uint8Array(bodyBuf)
+    if (bodyBytes.byteLength === 0) {
+      return new Response('empty body', { status: 400 })
+    }
+    const sha256Actual = await hexSha256(bodyBytes)
+    if (sha256Actual !== sha256Claimed) {
+      return new Response(
+        JSON.stringify({
+          error: 'BODY_SHA256_MISMATCH',
+          claimed: sha256Claimed,
+          actual: sha256Actual,
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Persist the blob first so the mutation only inserts a documents row
+    // pointing at an already-stored object. ContentType is best-effort
+    // from the request header; the mutation falls back to application/pdf.
+    const blob = new Blob([bodyBuf], {
+      type: req.headers.get('Content-Type') ?? 'application/octet-stream',
+    })
+    const storageId = await ctx.storage.store(blob)
+
+    try {
+      const result = await ctx.runMutation(
+        internal.integrations._uploadAgentDocument,
+        {
+          integrationId,
+          fileNumber,
+          docType,
+          title: title.length > 0 ? title : undefined,
+          sha256: sha256Claimed,
+          sizeBytes: bodyBytes.byteLength,
+          contentType: req.headers.get('Content-Type') ?? undefined,
+          storageId,
+        }
+      )
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } catch (err) {
+      // The mutation cleans up its own storage on the dedup/error paths;
+      // here we only need to clean up if the mutation never ran.
+      try {
+        await ctx.storage.delete(storageId)
+      } catch {
+        /* best-effort */
+      }
+      const msg = err instanceof Error ? err.message : String(err)
+      const status = /FILE_NOT_FOUND_FOR_DOCUMENT/.test(msg)
+        ? 404
+        : /INTEGRATION_NOT_FOUND|NOT_PUSH_MODE/.test(msg)
+          ? 401
+          : /DISABLED/.test(msg)
+            ? 409
+            : 500
+      return new Response(JSON.stringify({ error: msg }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }),
+})
+
+// ─── Agent file-exists precheck ─────────────────────────────────────────
+//
+// Cheap GET the agent calls before shipping a document body. Lets a
+// resuming / retrying agent skip the multi-MB upload when the snapshot
+// hasn't landed yet, instead of eating the bandwidth and getting a 404
+// back. HMAC scheme is the document upload's, minus the body fields.
+//
+// Wire format:
+//
+//   GET /integrations/agent/file/exists
+//        ?id=<integrationId>
+//        &fileNumber=<file number>
+//   Headers:
+//     X-Title-Timestamp: <unix ms>
+//     X-Title-Signature: sha256=<hex(HMAC-SHA256(secret,
+//                                  ts|integrationId|fileNumber))>
+//
+//   200: { "exists": true | false }
+//   400: missing params or stale timestamp
+//   401: bad signature / unknown integration / pull-mode kind
+http.route({
+  path: '/integrations/agent/file/exists',
+  method: 'GET',
+  handler: httpAction(async (ctx, req) => {
+    const url = new URL(req.url)
+    const integrationIdParam = url.searchParams.get('id')
+    const fileNumber = url.searchParams.get('fileNumber')
+    const timestamp = req.headers.get('X-Title-Timestamp')
+    const signature = req.headers.get('X-Title-Signature')
+
+    if (!integrationIdParam || !fileNumber || !timestamp || !signature) {
+      return new Response('missing required params or headers', { status: 400 })
+    }
+    const ts = Number(timestamp)
+    if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60_000) {
+      return new Response('stale timestamp', { status: 400 })
+    }
+
+    const integrationId = integrationIdParam as Id<'integrations'>
+    const row = await ctx.runQuery(
+      internal.integrations._loadInboundSecretForVerify,
+      { integrationId }
+    )
+    if (!row) return new Response('unauthorized', { status: 401 })
+
+    const message = fileExistsSignedMessage({
+      timestamp,
+      integrationId,
+      fileNumber,
+    })
+    const sigOk = await verifyHmacHeader(row.inboundSecret, message, signature)
+    if (!sigOk) return new Response('unauthorized', { status: 401 })
+
+    try {
+      const result = await ctx.runQuery(
+        internal.integrations._fileExistsForAgent,
+        { integrationId, fileNumber }
+      )
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      const status = /NOT_FOUND|NOT_PUSH_MODE/.test(msg) ? 401 : 500
+      return new Response(JSON.stringify({ error: msg }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
   }),
 })
 

@@ -613,6 +613,293 @@ describe('Sprint 6 integrations foundation', () => {
     ).rejects.toThrow(/INSTALL_TOKEN_ALREADY_USED/)
   })
 
+  test('agent document upload: registers, schedules extraction, audits', async () => {
+    const { t, alice } = await setup()
+    const { integrationId } = await alice.asUser.mutation(
+      api.integrations.create,
+      { kind: 'softpro_standard', name: 'Standard' }
+    )
+
+    // The file has to exist before docs can land on it — that's what
+    // FILE_NOT_FOUND_FOR_DOCUMENT enforces. Push a snapshot first.
+    await t.mutation(internal.integrations._agentPushSnapshots, {
+      integrationId,
+      snapshots: [
+        {
+          externalId: 'QT-2026-0001',
+          fileNumber: 'QT-2026-0001',
+          stateCode: 'IN',
+          countyFips: '18097',
+          transactionType: 'purchase',
+          parties: [],
+          updatedAt: 1_730_000_000_000,
+        },
+      ],
+    })
+
+    // Stage a placeholder blob — the http route does this in production.
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(['hello pa'], { type: 'application/pdf' }))
+    )
+
+    const result = await t.mutation(
+      internal.integrations._uploadAgentDocument,
+      {
+        integrationId,
+        fileNumber: 'QT-2026-0001',
+        docType: 'purchase_agreement',
+        title: 'PA - QT-2026-0001.pdf',
+        sha256: 'a'.repeat(64),
+        sizeBytes: 8,
+        contentType: 'application/pdf',
+        storageId,
+      }
+    )
+    expect(result.deduped).toBe(false)
+    expect(result.documentId).toBeDefined()
+    expect(result.extractionId).toBeDefined()
+
+    // Document row exists, attributes the upload, and an extraction was
+    // scheduled (status pending — the runner picks it up async).
+    const docs = await t.run((ctx) =>
+      ctx.db
+        .query('documents')
+        .withIndex('by_tenant_uploadedAt')
+        .collect()
+    )
+    expect(docs).toHaveLength(1)
+    expect(docs[0]).toMatchObject({
+      docType: 'purchase_agreement',
+      title: 'PA - QT-2026-0001.pdf',
+      checksum: 'a'.repeat(64),
+      contentType: 'application/pdf',
+      sizeBytes: 8,
+    })
+
+    const extractions = await t.run((ctx) =>
+      ctx.db.query('documentExtractions').collect()
+    )
+    expect(extractions).toHaveLength(1)
+    expect(extractions[0].status).toBe('pending')
+
+    const audits = await t.run((ctx) =>
+      ctx.db
+        .query('auditEvents')
+        .filter((q) =>
+          q.eq(q.field('action'), 'document.uploaded_by_agent')
+        )
+        .collect()
+    )
+    expect(audits).toHaveLength(1)
+  })
+
+  test('agent document upload: same checksum on same file dedups', async () => {
+    const { t, alice } = await setup()
+    const { integrationId } = await alice.asUser.mutation(
+      api.integrations.create,
+      { kind: 'softpro_standard', name: 'Standard' }
+    )
+    await t.mutation(internal.integrations._agentPushSnapshots, {
+      integrationId,
+      snapshots: [
+        {
+          externalId: 'QT-2026-0002',
+          fileNumber: 'QT-2026-0002',
+          stateCode: 'IN',
+          countyFips: '18097',
+          transactionType: 'purchase',
+          parties: [],
+          updatedAt: 1_730_000_000_000,
+        },
+      ],
+    })
+
+    const sha = 'b'.repeat(64)
+
+    const stage = async () =>
+      t.run((ctx) =>
+        ctx.storage.store(new Blob(['payload'], { type: 'application/pdf' }))
+      )
+
+    const first = await t.mutation(
+      internal.integrations._uploadAgentDocument,
+      {
+        integrationId,
+        fileNumber: 'QT-2026-0002',
+        docType: 'purchase_agreement',
+        sha256: sha,
+        sizeBytes: 7,
+        storageId: await stage(),
+      }
+    )
+    expect(first.deduped).toBe(false)
+
+    const dup = await t.mutation(internal.integrations._uploadAgentDocument, {
+      integrationId,
+      fileNumber: 'QT-2026-0002',
+      docType: 'purchase_agreement',
+      sha256: sha,
+      sizeBytes: 7,
+      storageId: await stage(),
+    })
+    expect(dup.deduped).toBe(true)
+    expect(dup.documentId).toBe(first.documentId)
+    expect(dup.extractionId).toBeNull()
+
+    // Still only one document row.
+    const docs = await t.run((ctx) => ctx.db.query('documents').collect())
+    expect(docs).toHaveLength(1)
+  })
+
+  test('agent document upload: rejects when the file does not exist yet', async () => {
+    const { t, alice } = await setup()
+    const { integrationId } = await alice.asUser.mutation(
+      api.integrations.create,
+      { kind: 'softpro_standard', name: 'Standard' }
+    )
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(['x'], { type: 'application/pdf' }))
+    )
+    await expect(
+      t.mutation(internal.integrations._uploadAgentDocument, {
+        integrationId,
+        fileNumber: 'NOPE',
+        docType: 'purchase_agreement',
+        sha256: 'c'.repeat(64),
+        sizeBytes: 1,
+        storageId,
+      })
+    ).rejects.toThrow(/FILE_NOT_FOUND_FOR_DOCUMENT/)
+    // No documents row should have been created for the missing file.
+    const docs = await t.run((ctx) => ctx.db.query('documents').collect())
+    expect(docs).toHaveLength(0)
+  })
+
+  test('file exists precheck: returns true after snapshot lands', async () => {
+    const { t, alice } = await setup()
+    const { integrationId } = await alice.asUser.mutation(
+      api.integrations.create,
+      { kind: 'softpro_standard', name: 'Standard' }
+    )
+
+    // Before any snapshot: false.
+    const before = await t.query(internal.integrations._fileExistsForAgent, {
+      integrationId,
+      fileNumber: 'QT-2026-9999',
+    })
+    expect(before.exists).toBe(false)
+
+    // Push the snapshot, then re-check: true.
+    await t.mutation(internal.integrations._agentPushSnapshots, {
+      integrationId,
+      snapshots: [
+        {
+          externalId: 'QT-2026-9999',
+          fileNumber: 'QT-2026-9999',
+          stateCode: 'IN',
+          countyFips: '18097',
+          transactionType: 'purchase',
+          parties: [],
+          updatedAt: 1_730_000_000_000,
+        },
+      ],
+    })
+    const after = await t.query(internal.integrations._fileExistsForAgent, {
+      integrationId,
+      fileNumber: 'QT-2026-9999',
+    })
+    expect(after.exists).toBe(true)
+  })
+
+  test('file exists precheck: refuses pull-mode integrations', async () => {
+    const { t, alice } = await setup()
+    const { integrationId } = await alice.asUser.mutation(
+      api.integrations.create,
+      { kind: 'mock', name: 'Pull-mode' }
+    )
+    await expect(
+      t.query(internal.integrations._fileExistsForAgent, {
+        integrationId,
+        fileNumber: 'whatever',
+      })
+    ).rejects.toThrow(/INTEGRATION_NOT_PUSH_MODE/)
+  })
+
+  test('file exists precheck: scoped to the integration tenant', async () => {
+    // Same fileNumber on two different tenants should be visible only to
+    // the integration on its own tenant.
+    const { t, alice } = await setup()
+    const { integrationId: aliceIntegration } = await alice.asUser.mutation(
+      api.integrations.create,
+      { kind: 'softpro_standard', name: 'A-Standard' }
+    )
+    await t.mutation(internal.integrations._agentPushSnapshots, {
+      integrationId: aliceIntegration,
+      snapshots: [
+        {
+          externalId: 'SHARED-001',
+          fileNumber: 'SHARED-001',
+          stateCode: 'IN',
+          countyFips: '18097',
+          transactionType: 'purchase',
+          parties: [],
+          updatedAt: 1_730_000_000_000,
+        },
+      ],
+    })
+
+    const bob = await makeBetterAuthUser(t, 'bob@b.example', 'Bob')
+    await createOrganizationAsUser(t, bob.userId, bob.sessionId, {
+      slug: 'agency-b',
+      name: 'Agency B LLC',
+    })
+    const { integrationId: bobIntegration } = await bob.asUser.mutation(
+      api.integrations.create,
+      { kind: 'softpro_standard', name: 'B-Standard' }
+    )
+
+    // Alice can see hers.
+    expect(
+      (
+        await t.query(internal.integrations._fileExistsForAgent, {
+          integrationId: aliceIntegration,
+          fileNumber: 'SHARED-001',
+        })
+      ).exists
+    ).toBe(true)
+
+    // Bob cannot — same fileNumber, different tenant.
+    expect(
+      (
+        await t.query(internal.integrations._fileExistsForAgent, {
+          integrationId: bobIntegration,
+          fileNumber: 'SHARED-001',
+        })
+      ).exists
+    ).toBe(false)
+  })
+
+  test('agent document upload: refuses pull-mode integrations', async () => {
+    const { t, alice } = await setup()
+    const { integrationId } = await alice.asUser.mutation(
+      api.integrations.create,
+      { kind: 'mock', name: 'Pull-mode' }
+    )
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(['x'], { type: 'application/pdf' }))
+    )
+    await expect(
+      t.mutation(internal.integrations._uploadAgentDocument, {
+        integrationId,
+        fileNumber: 'whatever',
+        docType: 'purchase_agreement',
+        sha256: 'd'.repeat(64),
+        sizeBytes: 1,
+        storageId,
+      })
+    ).rejects.toThrow(/INTEGRATION_NOT_PUSH_MODE/)
+  })
+
   test("cross-tenant isolation: tenant B cannot see tenant A's integrations", async () => {
     const { t, alice } = await setup()
     await alice.asUser.mutation(api.integrations.create, {

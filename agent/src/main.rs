@@ -85,6 +85,35 @@ enum Command {
         #[arg(short, long)]
         watermark: Option<String>,
     },
+    /// One-shot: upload a single document file against an existing file
+    /// number. The companion to `push` for the binary side of the pipeline
+    /// — useful for verifying the document wire format end-to-end before
+    /// the SQL document-pointer mapping is wired up.
+    PushDocument {
+        /// Path to the document on disk (PDF, etc.).
+        #[arg(long)]
+        file: PathBuf,
+        /// File number on the server tenant — must already exist (push the
+        /// snapshot first via `agent push`).
+        #[arg(long)]
+        file_number: String,
+        /// Document type tag, e.g. purchase_agreement / counter_offer /
+        /// lender_instructions. Used to seed the extractor's hint and to
+        /// surface in the UI.
+        #[arg(long)]
+        doc_type: String,
+        /// Optional human-readable title; defaults to the file's basename.
+        #[arg(long)]
+        title: Option<String>,
+        /// Optional Content-Type override; defaults to application/pdf.
+        #[arg(long)]
+        content_type: Option<String>,
+        /// Skip the cheap precheck that confirms the file row exists on
+        /// the server before shipping the body. Use only when testing the
+        /// 404 path or when you've already confirmed externally.
+        #[arg(long)]
+        skip_precheck: bool,
+    },
     /// One-shot heartbeat ping.
     Heartbeat,
     /// Long-running loop: heartbeat + (if [proform] is set) SQL polling,
@@ -153,6 +182,25 @@ async fn main() -> Result<()> {
             snapshots,
             watermark,
         } => cmd_push(&client, &snapshots, watermark.as_deref()).await,
+        Command::PushDocument {
+            file,
+            file_number,
+            doc_type,
+            title,
+            content_type,
+            skip_precheck,
+        } => {
+            cmd_push_document(
+                &client,
+                &file,
+                &file_number,
+                &doc_type,
+                title.as_deref(),
+                content_type.as_deref(),
+                skip_precheck,
+            )
+            .await
+        }
         Command::Heartbeat => cmd_heartbeat(&client).await,
         Command::Run { heartbeat_interval } => {
             cmd_run(&client, heartbeat_interval, proform_cfg).await
@@ -189,6 +237,67 @@ async fn cmd_push(
         errors = res.error_count,
         "push succeeded"
     );
+    Ok(())
+}
+
+async fn cmd_push_document(
+    client: &AgentClient,
+    path: &std::path::Path,
+    file_number: &str,
+    doc_type: &str,
+    title: Option<&str>,
+    content_type: Option<&str>,
+    skip_precheck: bool,
+) -> Result<()> {
+    if !skip_precheck {
+        match client.file_exists(file_number).await {
+            Ok(true) => {} // fall through to the upload
+            Ok(false) => {
+                warn!(
+                    %file_number,
+                    "skipping upload: server has no file row for this fileNumber yet. \
+                     Push the snapshot first (agent push --snapshots ...) or pass \
+                     --skip-precheck to force.",
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                warn!(
+                    %file_number,
+                    "precheck failed: {e:#}. Re-run with --skip-precheck to attempt the upload anyway.",
+                );
+                return Err(e);
+            }
+        }
+    }
+
+    let bytes = tokio::fs::read(path)
+        .await
+        .with_context(|| format!("reading document at {}", path.display()))?;
+    let title = title
+        .map(str::to_string)
+        .or_else(|| {
+            path.file_name()
+                .and_then(|os| os.to_str())
+                .map(str::to_string)
+        });
+    let meta = crate::client::DocumentMeta {
+        file_number: file_number.to_string(),
+        doc_type: doc_type.to_string(),
+        title,
+        content_type: content_type.map(str::to_string),
+    };
+    info!(bytes = bytes.len(), %file_number, %doc_type, "uploading document");
+    let res = client.upload_document(&meta, &bytes).await?;
+    if res.deduped {
+        info!(document_id = %res.document_id, "already on server (deduped)");
+    } else {
+        info!(
+            document_id = %res.document_id,
+            extraction_id = ?res.extraction_id,
+            "uploaded; extraction scheduled"
+        );
+    }
     Ok(())
 }
 
