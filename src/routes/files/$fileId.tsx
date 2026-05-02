@@ -1,6 +1,13 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { createContext, useContext, useMemo, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAction } from "convex/react";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import {
   Drawer,
@@ -20,18 +27,22 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   ArrowRight,
+  Building2,
   Check,
   ChevronDown,
   CircleAlert,
   CircleHelp,
+  Database,
   ExternalLink,
   Eye,
   EyeOff,
   FileText,
   History,
+  Loader2,
   Lock,
   MapPin,
   Plus,
+  RefreshCw,
   ScrollText,
   Sparkles,
   Stamp,
@@ -276,6 +287,12 @@ function FileDetailContent({
             fileBusy={fileBusy}
           />
 
+          <LiveActivityRail
+            documents={documents}
+            extractions={extractions}
+            events={events}
+          />
+
           <WorkflowRibbon
             property={hasProperty}
             partiesCount={partiesCount}
@@ -294,6 +311,8 @@ function FileDetailContent({
           <PartiesPanel fileId={id} parties={parties} />
 
           <DocumentsPanel fileId={id} documents={documents} />
+
+          <PublicRecordsPanel fileId={id} hasProperty={hasProperty} />
 
           <ReconciliationPanel
             fileId={id}
@@ -1980,6 +1999,204 @@ function ProcessingTracker({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// LiveActivityRail — file-level, ambient view of the cascade as it runs.
+// Two sources:
+//   1. In-flight: documentExtractions in pending/running state. Yellow,
+//      animated, one chip per doc.
+//   2. Recently settled: system audit events from the cascade in the last
+//      90s — extraction.succeeded/failed, reconciliation.run, county
+//      snapshot stored. Green, with relative-time updates each second.
+// Renders nothing when both sources are empty so the layout doesn't
+// reserve space for the rail when the file is idle.
+// ─────────────────────────────────────────────────────────────────────
+
+const RAIL_RECENT_MS = 90_000;
+
+function pickRailSummary(
+  e: AuditEvent,
+): { tone: "ok" | "warn"; label: string; sub?: string } | null {
+  const md = (e.metadata ?? {}) as Record<string, unknown>;
+  switch (e.action) {
+    case "extraction.succeeded":
+      return { tone: "ok", label: "Document read" };
+    case "extraction.failed":
+      return { tone: "warn", label: "Extraction failed" };
+    case "reconciliation.run": {
+      const counts = (md.bySeverity ?? {}) as {
+        block?: number;
+        warn?: number;
+        info?: number;
+      };
+      const blockers = counts.block ?? 0;
+      const warns = counts.warn ?? 0;
+      const total = blockers + warns + (counts.info ?? 0);
+      if (total === 0) {
+        return { tone: "ok", label: "All clear" };
+      }
+      const partsBits: string[] = [];
+      if (blockers > 0)
+        partsBits.push(`${blockers} blocker${blockers === 1 ? "" : "s"}`);
+      if (warns > 0)
+        partsBits.push(`${warns} warning${warns === 1 ? "" : "s"}`);
+      return {
+        tone: blockers > 0 ? "warn" : "ok",
+        label: "Cross-checked",
+        sub: partsBits.join(" · ") || `${total} note${total === 1 ? "" : "s"}`,
+      };
+    }
+    case "county_connect.snapshot.stored":
+      return { tone: "ok", label: "Pulled county records" };
+    default:
+      return null;
+  }
+}
+
+function LiveActivityRail({
+  documents,
+  extractions,
+  events,
+}: {
+  documents: ReadonlyArray<Doc<"documents">>;
+  extractions: ReadonlyArray<ExtractionLite>;
+  events: ReadonlyArray<AuditEvent>;
+}) {
+  const extractionStatusByDoc = useMemo(() => {
+    const m = new Map<string, "pending" | "running" | "succeeded" | "failed">();
+    for (const e of extractions) {
+      m.set(
+        e.documentId,
+        e.status as "pending" | "running" | "succeeded" | "failed",
+      );
+    }
+    return m;
+  }, [extractions]);
+
+  const inFlight = useMemo(
+    () =>
+      documents.filter((d) => {
+        const s = extractionStatusByDoc.get(d._id);
+        return s === "pending" || s === "running";
+      }),
+    [documents, extractionStatusByDoc],
+  );
+
+  const [now, setNow] = useState(() => Date.now());
+
+  // Settled chips: only system-actor events of cascade kinds, freshly enough
+  // to be interesting. Filtered against `now` so each tick ages stale ones
+  // off without remounting the component.
+  const recent = useMemo(() => {
+    const out: Array<{
+      _id: string;
+      occurredAt: number;
+      summary: NonNullable<ReturnType<typeof pickRailSummary>>;
+    }> = [];
+    for (const e of events) {
+      if (now - e.occurredAt >= RAIL_RECENT_MS) break; // events are desc by time
+      if (e.actor?.kind !== "system") continue;
+      const summary = pickRailSummary(e);
+      if (!summary) continue;
+      out.push({ _id: e._id, occurredAt: e.occurredAt, summary });
+      if (out.length >= 4) break;
+    }
+    return out;
+  }, [events, now]);
+
+  const hasContent = inFlight.length > 0 || recent.length > 0;
+
+  // Tick only while the rail has anything to show — no need to re-render
+  // every second on idle files.
+  useEffect(() => {
+    if (!hasContent) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasContent]);
+
+  if (!hasContent) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {inFlight.map((d) => (
+        <RailChip
+          key={`flight-${d._id}`}
+          tone="busy"
+          icon={<Sparkles className="tk-soft-pulse size-3.5" />}
+          label="Reading"
+          sub={d.title ?? d.docType.replace(/_/g, " ")}
+          showDots
+        />
+      ))}
+      {recent.map((r) => (
+        <RailChip
+          key={`recent-${r._id}`}
+          tone={r.summary.tone}
+          icon={
+            r.summary.tone === "warn" ? (
+              <CircleAlert className="size-3.5" />
+            ) : (
+              <Check className="size-3.5" />
+            )
+          }
+          label={r.summary.label}
+          sub={r.summary.sub}
+          time={formatRelative(r.occurredAt)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function RailChip({
+  tone,
+  icon,
+  label,
+  sub,
+  time,
+  showDots,
+}: {
+  tone: "busy" | "ok" | "warn";
+  icon: React.ReactNode;
+  label: string;
+  sub?: string;
+  time?: string;
+  showDots?: boolean;
+}) {
+  const palette =
+    tone === "busy"
+      ? "bg-[#fdf6e8] text-[#7a5818] ring-[#b78625]/30"
+      : tone === "warn"
+        ? "bg-[#fdecee] text-[#8a3942] ring-[#b94f58]/30"
+        : "bg-[#e6f3ed] text-[#2f5d4b] ring-[#3f7c64]/30";
+  return (
+    <span
+      className={`inline-flex max-w-[24rem] items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset ${palette}`}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">
+        {label}
+        {sub && <span className="font-normal opacity-80"> · {sub}</span>}
+      </span>
+      {showDots && (
+        <span className="inline-flex shrink-0 gap-0.5 leading-none">
+          <span className="tk-dot inline-block">.</span>
+          <span className="tk-dot inline-block" data-i="1">
+            .
+          </span>
+          <span className="tk-dot inline-block" data-i="2">
+            .
+          </span>
+        </span>
+      )}
+      {time && (
+        <span className="font-numerals shrink-0 tabular-nums opacity-70">
+          {time}
+        </span>
+      )}
+    </span>
+  );
+}
+
 type FindingDoc = ReadonlyArray<{
   _id: string;
   title?: string;
@@ -2217,6 +2434,238 @@ type Fact = {
   isAmendment: boolean;
   confidenceFieldPath: string | null;
 };
+
+function PublicRecordsPanel({
+  fileId,
+  hasProperty,
+}: {
+  fileId: Id<"files">;
+  hasProperty: boolean;
+}) {
+  const snapshotQ = useQuery(
+    convexQuery(api.countyConnect.getSnapshotForFile, { fileId }),
+  );
+  const runForFile = useAction(api.countyConnect.runForFile);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onPull = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await runForFile({ fileId });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg.replace(/^.*ConvexError:\s*/, ""));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const snap = snapshotQ.data ?? null;
+  const fetchedLabel = snap ? formatRelative(snap.fetchedAt) : null;
+  const openLienCount = snap ? countOpenLiens(snap.documents) : 0;
+
+  return (
+    <SectionShell
+      id="step-public-records"
+      icon={<Building2 className="size-4" />}
+      eyebrow="Public records"
+      title="County data"
+      description="Owner-of-record, recorded liens, and tax data pulled directly from public-records sources. Re-run after the property address changes."
+      actions={
+        <div className="flex items-center gap-2">
+          {snap && (
+            <span className="text-xs text-muted-foreground">
+              {snap.provider === "mock" ? "Demo data · " : ""}
+              {fetchedLabel}
+            </span>
+          )}
+          <Button
+            onClick={onPull}
+            disabled={busy || !hasProperty}
+            size="sm"
+            variant={snap ? "outline" : "default"}
+            className="gap-1.5"
+            title={
+              hasProperty
+                ? "Pull fresh county records and re-run reconciliation"
+                : "Set the property address first"
+            }
+          >
+            {busy ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : snap ? (
+              <RefreshCw className="size-3.5" />
+            ) : (
+              <Database className="size-3.5" />
+            )}
+            {busy
+              ? "Pulling..."
+              : snap
+                ? "Refresh"
+                : "Pull county records & reconcile"}
+          </Button>
+        </div>
+      }
+    >
+      {!hasProperty ? (
+        <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+          Set the property address to enable county-records lookups.
+        </div>
+      ) : error ? (
+        <div className="rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
+          {error}
+        </div>
+      ) : !snap ? (
+        <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+          No public-records snapshot yet. Click <strong>Pull county records</strong>{" "}
+          to fetch property profile, recorded documents, and tax data — then
+          reconcile against the file.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {snap.status !== "ok" && snap.errorMessage && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <strong>Partial data:</strong> {snap.errorMessage}
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <RecordCell
+              label="Owner of record"
+              primary={snap.property?.owner.name ?? "—"}
+              secondary={
+                snap.property?.lastSale?.date
+                  ? `Last sale ${snap.property.lastSale.date}${
+                      snap.property.lastSale.price !== null
+                        ? ` · $${snap.property.lastSale.price.toLocaleString()}`
+                        : ""
+                    }`
+                  : null
+              }
+            />
+            <RecordCell
+              label="Recorded liens (open)"
+              primary={String(openLienCount)}
+              secondary={
+                snap.documents.length > 0
+                  ? `${snap.documents.length} total documents on record`
+                  : "No documents on record"
+              }
+            />
+            <RecordCell
+              label="Property tax"
+              primary={
+                snap.tax?.taxAmount !== null && snap.tax?.taxAmount !== undefined
+                  ? `$${snap.tax.taxAmount.toLocaleString()}`
+                  : "—"
+              }
+              secondary={
+                snap.tax?.taxYear
+                  ? `Tax year ${snap.tax.taxYear}${
+                      snap.tax.assessedValue !== null
+                        ? ` · Assessed $${snap.tax.assessedValue.toLocaleString()}`
+                        : ""
+                    }`
+                  : null
+              }
+            />
+          </div>
+          {snap.documents.length > 0 && (
+            <details className="rounded-md border bg-card">
+              <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-foreground">
+                Recorded documents ({snap.documents.length})
+              </summary>
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2">Type</th>
+                    <th className="px-3 py-2">Recorded</th>
+                    <th className="px-3 py-2">Doc #</th>
+                    <th className="px-3 py-2">Grantor</th>
+                    <th className="px-3 py-2">Grantee</th>
+                    <th className="px-3 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {snap.documents.map((d, i) => (
+                    <tr key={`${d.documentNumber ?? i}-${d.recordingDate ?? i}`}>
+                      <td className="px-3 py-2">{d.documentType}</td>
+                      <td className="px-3 py-2">{d.recordingDate ?? "—"}</td>
+                      <td className="px-3 py-2 font-mono text-xs">
+                        {d.documentNumber ?? d.bookPage ?? "—"}
+                      </td>
+                      <td className="px-3 py-2">{d.grantor ?? "—"}</td>
+                      <td className="px-3 py-2">{d.grantee ?? "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {d.amount !== null
+                          ? `$${d.amount.toLocaleString()}`
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
+        </div>
+      )}
+    </SectionShell>
+  );
+}
+
+function RecordCell({
+  label,
+  primary,
+  secondary,
+}: {
+  label: string;
+  primary: string;
+  secondary: string | null;
+}) {
+  return (
+    <div className="rounded-md border bg-card px-3 py-2.5">
+      <div className="text-xs uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-0.5 text-sm font-medium text-foreground">
+        {primary}
+      </div>
+      {secondary && (
+        <div className="mt-0.5 text-xs text-muted-foreground">{secondary}</div>
+      )}
+    </div>
+  );
+}
+
+// Counts mortgage/lien-style documents that don't have a corresponding
+// release recorded later. Strict naming match for v1 — a smarter matcher
+// (link by grantor identity + amount) lands when the comparator goes in.
+function countOpenLiens(
+  documents: ReadonlyArray<{
+    documentType: string;
+    recordingDate: string | null;
+  }>,
+): number {
+  const releases = documents.filter((d) =>
+    /release|satisfaction|reconveyance/i.test(d.documentType),
+  );
+  const liens = documents.filter((d) =>
+    /mortgage|deed of trust|lien/i.test(d.documentType),
+  );
+  return Math.max(0, liens.length - releases.length);
+}
+
+function formatRelative(ts: number): string {
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 // The ordering reconciliation surfaces facts in: needs-attention first
 // (block → warn → info), then settled (agreed / single-source / resolved).

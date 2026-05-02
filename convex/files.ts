@@ -285,6 +285,21 @@ export const update = mutation({
     await recordAudit(ctx, tc, 'file.updated', 'file', args.fileId, {
       fields: Object.keys(patch).filter((k) => k !== 'searchText'),
     })
+
+    // Fan out so reconciliation reflects the new file fields. Only an
+    // address change triggers a County Connect refetch — APN and
+    // transactionType don't drive ATTOM lookups, so they stay in the
+    // cheaper "field_changed" bucket (reconcile only).
+    const addressChanged = patch.propertyAddress !== undefined
+    const otherDownstreamChanged =
+      patch.propertyApn !== undefined || patch.transactionType !== undefined
+    if (addressChanged || otherDownstreamChanged) {
+      await ctx.scheduler.runAfter(0, internal.pipeline.onFileChange, {
+        tenantId: tc.tenantId,
+        fileId: args.fileId,
+        reason: addressChanged ? 'file_address_changed' : 'file_field_changed',
+      })
+    }
     return { ok: true }
   },
 })
@@ -332,6 +347,12 @@ export const addParty = mutation({
       filePartyId,
       role: args.role,
       legalName: args.legalName,
+    })
+
+    await ctx.scheduler.runAfter(0, internal.pipeline.onFileChange, {
+      tenantId: tc.tenantId,
+      fileId: args.fileId,
+      reason: 'party_changed',
     })
 
     return { partyId, filePartyId }

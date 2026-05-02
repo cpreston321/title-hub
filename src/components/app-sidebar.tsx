@@ -305,10 +305,12 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 active={location.pathname.startsWith("/orders")}
                 disabled={!hasActiveOrg}
               />
-              <DisabledNavItem
+              <NavLink
+                to="/county-connect"
                 label="County connect"
                 icon={<Building2 className="size-4" />}
-                badge="soon"
+                active={location.pathname.startsWith("/county-connect")}
+                disabled={!hasActiveOrg}
               />
               <DisabledNavItem
                 label="Analytics"

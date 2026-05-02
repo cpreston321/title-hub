@@ -14,6 +14,7 @@ import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as OrdersRouteImport } from './routes/orders'
+import { Route as CountyConnectRouteImport } from './routes/county-connect'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -45,6 +46,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const OrdersRoute = OrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CountyConnectRoute = CountyConnectRouteImport.update({
+  id: '/county-connect',
+  path: '/county-connect',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -85,6 +91,7 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/county-connect': typeof CountyConnectRoute
   '/orders': typeof OrdersRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
@@ -99,6 +106,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/county-connect': typeof CountyConnectRoute
   '/orders': typeof OrdersRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
@@ -114,6 +122,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/county-connect': typeof CountyConnectRoute
   '/orders': typeof OrdersRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/county-connect'
     | '/orders'
     | '/settings'
     | '/sign-up'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/county-connect'
     | '/orders'
     | '/settings'
     | '/sign-up'
@@ -158,6 +169,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/county-connect'
     | '/orders'
     | '/settings'
     | '/sign-up'
@@ -173,6 +185,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CountyConnectRoute: typeof CountyConnectRoute
   OrdersRoute: typeof OrdersRoute
   SettingsRoute: typeof SettingsRoute
   SignUpRoute: typeof SignUpRoute
@@ -221,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/orders'
       fullPath: '/orders'
       preLoaderRoute: typeof OrdersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/county-connect': {
+      id: '/county-connect'
+      path: '/county-connect'
+      fullPath: '/county-connect'
+      preLoaderRoute: typeof CountyConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -277,6 +297,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CountyConnectRoute: CountyConnectRoute,
   OrdersRoute: OrdersRoute,
   SettingsRoute: SettingsRoute,
   SignUpRoute: SignUpRoute,

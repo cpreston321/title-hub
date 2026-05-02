@@ -84,9 +84,10 @@ export const markSucceeded = internalMutation({
     // file's findings always reflect the latest set of extracted facts. If
     // multiple docs land at once they each schedule, but the run is idempotent
     // (wipes existing open findings and re-creates them).
-    await ctx.scheduler.runAfter(0, internal.reconciliation.runForFileAuto, {
+    await ctx.scheduler.runAfter(0, internal.pipeline.onFileChange, {
       tenantId: ext.tenantId,
       fileId: ext.fileId,
+      reason: 'extraction_succeeded',
     })
 
     // Lifecycle nudge: opened → in_exam on the first successful extraction.

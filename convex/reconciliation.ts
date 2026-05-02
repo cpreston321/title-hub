@@ -924,6 +924,17 @@ export const resolveWith = mutation({
       },
     })
 
+    // Promoting a value to ground truth can change what reconciliation
+    // produces on the next pass — re-run via the unified fan-out so other
+    // findings that share the same field clear automatically.
+    if (promoted) {
+      await ctx.scheduler.runAfter(0, internal.pipeline.onFileChange, {
+        tenantId: tc.tenantId,
+        fileId: finding.fileId,
+        reason: 'finding_resolved',
+      })
+    }
+
     return { ok: true, promoted }
   },
 })

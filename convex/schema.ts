@@ -45,6 +45,60 @@ export const propertyAddress = v.object({
   zip: v.string(),
 })
 
+// ───── County Connect snapshot shapes ─────────────────────────────
+// Provider-agnostic record shapes for the propertySnapshots table and the
+// public actions in countyConnect.ts. Keep both in sync — TS types are
+// derived via `Infer<typeof xxxV>` in countyConnect.ts so drift is
+// caught at compile time.
+
+export const propertyProfileV = v.object({
+  attomId: v.union(v.string(), v.null()),
+  apn: v.union(v.string(), v.null()),
+  address: v.object({
+    line1: v.string(),
+    city: v.string(),
+    state: v.string(),
+    zip: v.string(),
+  }),
+  owner: v.object({
+    name: v.union(v.string(), v.null()),
+    mailingAddress: v.union(v.string(), v.null()),
+  }),
+  characteristics: v.object({
+    yearBuilt: v.union(v.number(), v.null()),
+    livingAreaSqft: v.union(v.number(), v.null()),
+    lotSizeSqft: v.union(v.number(), v.null()),
+    propertyType: v.union(v.string(), v.null()),
+  }),
+  lastSale: v.union(
+    v.object({
+      date: v.union(v.string(), v.null()),
+      price: v.union(v.number(), v.null()),
+      documentType: v.union(v.string(), v.null()),
+    }),
+    v.null()
+  ),
+})
+
+export const recordedDocumentV = v.object({
+  documentType: v.string(),
+  recordingDate: v.union(v.string(), v.null()),
+  documentNumber: v.union(v.string(), v.null()),
+  bookPage: v.union(v.string(), v.null()),
+  grantor: v.union(v.string(), v.null()),
+  grantee: v.union(v.string(), v.null()),
+  amount: v.union(v.number(), v.null()),
+})
+
+export const taxDataV = v.object({
+  taxYear: v.union(v.number(), v.null()),
+  taxAmount: v.union(v.number(), v.null()),
+  assessedValue: v.union(v.number(), v.null()),
+  marketValue: v.union(v.number(), v.null()),
+  taxRateAreaCode: v.union(v.string(), v.null()),
+  exemptions: v.array(v.string()),
+})
+
 export default defineSchema({
   // ───── Tenancy ────────────────────────────────────────────────
   // 1:1 with Better Auth `organization` rows in the betterAuth component.
@@ -322,6 +376,68 @@ export default defineSchema({
       searchField: 'message',
       filterFields: ['tenantId'],
     }),
+
+  // Per-member search history for the standalone /county-connect page.
+  // Stores the full bundle so re-clicking a recent renders without a paid
+  // ATTOM call. Capped per member by `recordSearch` (oldest beyond N
+  // dropped). Tenant-scoped + member-scoped — a processor's history is
+  // private to them within the tenant.
+  countyConnectSearches: defineTable({
+    tenantId: v.id('tenants'),
+    memberId: v.id('tenantMembers'),
+    query: v.string(),
+    ownerName: v.union(v.string(), v.null()),
+    fetchedAt: v.number(),
+    provider: v.union(v.literal('attom'), v.literal('mock')),
+    property: v.union(propertyProfileV, v.null()),
+    documents: v.array(recordedDocumentV),
+    tax: v.union(taxDataV, v.null()),
+    // Untyped raw provider responses, kept per-endpoint for debugging only.
+    // Never returned by the public query — inspect via the Convex dashboard
+    // or an internal helper. Optional so historical rows remain valid.
+    rawResponse: v.optional(
+      v.object({
+        property: v.optional(v.any()),
+        documents: v.optional(v.any()),
+        tax: v.optional(v.any()),
+      })
+    ),
+  })
+    .index('by_tenant_member_fetched', ['tenantId', 'memberId', 'fetchedAt'])
+    .index('by_tenant_member_query', ['tenantId', 'memberId', 'query']),
+
+  // County Connect snapshots — public-records lookup result cached per file.
+  // One row per fetch; the most recent (by `fetchedAt`) is what reconciliation
+  // and the file UI consume. Older rows kept for audit until a tenant-level
+  // retention policy lands.
+  propertySnapshots: defineTable({
+    tenantId: v.id('tenants'),
+    fileId: v.id('files'),
+    provider: v.union(v.literal('attom'), v.literal('mock')),
+    fetchedAt: v.number(),
+    fetchedByMemberId: v.optional(v.id('tenantMembers')),
+    queryAddress: propertyAddress,
+    property: v.union(propertyProfileV, v.null()),
+    documents: v.array(recordedDocumentV),
+    tax: v.union(taxDataV, v.null()),
+    status: v.union(
+      v.literal('ok'),
+      v.literal('partial'),
+      v.literal('error')
+    ),
+    errorMessage: v.optional(v.string()),
+    // Untyped raw provider responses, kept per-endpoint for debugging only.
+    // See countyConnectSearches.rawResponse — same contract.
+    rawResponse: v.optional(
+      v.object({
+        property: v.optional(v.any()),
+        documents: v.optional(v.any()),
+        tax: v.optional(v.any()),
+      })
+    ),
+  })
+    .index('by_tenant_file', ['tenantId', 'fileId'])
+    .index('by_tenant_file_fetched', ['tenantId', 'fileId', 'fetchedAt']),
 
   webhookEndpoints: defineTable({
     tenantId: v.id('tenants'),
