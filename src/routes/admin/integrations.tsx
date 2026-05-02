@@ -3,17 +3,21 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
+  ArrowRight,
   Check,
   CheckCircle2,
   ChevronLeft,
   CircleAlert,
   Copy,
+  Layers,
   Plug,
   Plus,
   Power,
   RotateCw,
+  Sparkles,
   Trash2,
   X,
+  Zap,
 } from 'lucide-react'
 import {
   Card,
@@ -109,6 +113,7 @@ function IntegrationsAdminPage() {
   )
 
   const [showForm, setShowForm] = useState(false)
+  const [prefillKind, setPrefillKind] = useState<Kind | null>(null)
   const [pending, setPending] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Per-integration UI state: an "Agent install" panel can show either
@@ -251,7 +256,14 @@ function IntegrationsAdminPage() {
             </Link>
           </Button>
           <Button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => {
+              if (showForm) {
+                setShowForm(false)
+                setPrefillKind(null)
+              } else {
+                setShowForm(true)
+              }
+            }}
             className="gap-1.5"
             variant={showForm ? 'outline' : 'default'}
           >
@@ -271,7 +283,7 @@ function IntegrationsAdminPage() {
       }
     >
       <div className="flex flex-col gap-6 pb-12">
-        <PageHeader stats={stats} />
+        <PageHeader />
 
         {error && (
           <p className="rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
@@ -279,62 +291,95 @@ function IntegrationsAdminPage() {
           </p>
         )}
 
-        {showForm && (
+        {list.length > 0 && <KpiStrip stats={stats} />}
+
+        {showForm ? (
           <NewIntegrationForm
+            initialKind={prefillKind ?? 'mock'}
             onCreate={async (args) => {
               await create(args)
               setShowForm(false)
+              setPrefillKind(null)
             }}
-            onCancel={() => setShowForm(false)}
+            onCancel={() => {
+              setShowForm(false)
+              setPrefillKind(null)
+            }}
           />
-        )}
-
-        {list.length === 0 ? (
-          <FirstIntegrationCoach onCreate={() => setShowForm(true)} />
+        ) : list.length === 0 ? (
+          <FirstIntegrationCoach
+            onConnect={(kind) => {
+              setPrefillKind(kind)
+              setShowForm(true)
+            }}
+          />
         ) : (
-          <SectionShell
-            eyebrow="Section · connected"
-            title="Connected systems"
-            description="One row per source. Toggle a row off to pause its sync; remove a row to drop the configuration (history is preserved)."
-            icon={<Plug className="size-4" />}
-          >
-            <ul className="flex flex-col gap-3">
-              {list.map((i) => (
-                <li key={i._id}>
-                  <IntegrationCard
-                    integration={i}
-                    pending={pending === i._id}
-                    onToggle={(enabled) =>
-                      onToggle(i._id as Id<'integrations'>, enabled)
-                    }
-                    onSync={() => onSync(i._id as Id<'integrations'>)}
-                    onRemove={() => onRemove(i._id as Id<'integrations'>)}
-                    onShowAgentInfo={() =>
-                      onShowAgentInfo(i._id as Id<'integrations'>)
-                    }
-                    onHideAgentInfo={() => setAgentInfo(null)}
-                    onGenerateInstallToken={() =>
-                      onGenerateInstallToken(i._id as Id<'integrations'>)
-                    }
-                    onClearInstallToken={() => setInstallToken(null)}
-                    agentInfo={agentInfo}
-                    installToken={installToken}
-                  />
-                </li>
-              ))}
-            </ul>
-          </SectionShell>
+          <>
+            <SectionShell
+              eyebrow="Section · connected"
+              title="Connected systems"
+              description="One row per source. Toggle a row off to pause its sync; remove a row to drop the configuration (history is preserved)."
+              icon={<Plug className="size-4" />}
+            >
+              <ul className="flex flex-col gap-3">
+                {list.map((i) => (
+                  <li key={i._id}>
+                    <IntegrationCard
+                      integration={i}
+                      pending={pending === i._id}
+                      onToggle={(enabled) =>
+                        onToggle(i._id as Id<'integrations'>, enabled)
+                      }
+                      onSync={() => onSync(i._id as Id<'integrations'>)}
+                      onRemove={() => onRemove(i._id as Id<'integrations'>)}
+                      onShowAgentInfo={() =>
+                        onShowAgentInfo(i._id as Id<'integrations'>)
+                      }
+                      onHideAgentInfo={() => setAgentInfo(null)}
+                      onGenerateInstallToken={() =>
+                        onGenerateInstallToken(i._id as Id<'integrations'>)
+                      }
+                      onClearInstallToken={() => setInstallToken(null)}
+                      agentInfo={agentInfo}
+                      installToken={installToken}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </SectionShell>
+
+            <SectionShell
+              eyebrow="Section · marketplace"
+              title="Add another connection"
+              description="Every supported source. Click Connect to prefill the new-integration form with the kind you want."
+              icon={<Layers className="size-4" />}
+            >
+              <MarketplaceGrid
+                connectedByKind={countByKind(list)}
+                onConnect={(kind) => {
+                  setPrefillKind(kind)
+                  setShowForm(true)
+                }}
+              />
+            </SectionShell>
+          </>
         )}
       </div>
     </AppShell>
   )
 }
 
-function PageHeader({
-  stats,
-}: {
-  stats: { total: number; active: number; error: number; syncedTotal: number }
-}) {
+// Kinds that have an actual adapter today. Coming-soon kinds are filtered
+// out of the marketplace until they're implemented.
+function countByKind(list: ReadonlyArray<IntegrationRow>): Record<Kind, number> {
+  const out: Partial<Record<Kind, number>> = {}
+  for (const i of list) {
+    out[i.kind] = (out[i.kind] ?? 0) + 1
+  }
+  return out as Record<Kind, number>
+}
+
+function PageHeader() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -343,63 +388,81 @@ function PageHeader({
             Integrations
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Connect external order systems — SoftPro, Qualia, Encompass — so
-            their files flow into this tenant. Each row is one connection. Use a{' '}
+            Connect external order systems — SoftPro, Qualia, Encompass — and
+            inbound mail. Each connection feeds files and documents into this
+            tenant. Use a{' '}
             <strong className="font-medium text-[#40233f]">mock</strong>{' '}
-            integration to try the pipeline before wiring real credentials.
+            integration to exercise the pipeline before wiring real credentials.
           </p>
         </div>
       </div>
-
-      {stats.total > 0 && (
-        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-border/70 ring-1 ring-foreground/5 sm:grid-cols-4">
-          <Stat
-            label="Connected"
-            value={String(stats.total).padStart(2, '0')}
-          />
-          <Stat
-            label="Active"
-            value={String(stats.active).padStart(2, '0')}
-            tone="good"
-          />
-          <Stat
-            label="Errors"
-            value={String(stats.error).padStart(2, '0')}
-            tone={stats.error > 0 ? 'warn' : undefined}
-          />
-          <Stat
-            label="Files synced (total)"
-            value={String(stats.syncedTotal).padStart(2, '0')}
-          />
-        </div>
-      )}
     </div>
   )
 }
 
-function Stat({
-  label,
-  value,
-  tone,
+function KpiStrip({
+  stats,
 }: {
-  label: string
-  value: string
-  tone?: 'good' | 'warn'
+  stats: { total: number; active: number; error: number; syncedTotal: number }
 }) {
-  const valueClass =
-    tone === 'good'
-      ? 'text-[#2f5d4b]'
-      : tone === 'warn'
-        ? 'text-[#8a3942]'
-        : 'text-[#40233f]'
+  const tiles: ReadonlyArray<{
+    label: string
+    value: number
+    caption: string
+    icon: React.ReactNode
+    accent: string
+  }> = [
+    {
+      label: 'Connected',
+      value: stats.total,
+      caption: stats.total === 1 ? '1 source wired in' : 'sources wired in',
+      icon: <Plug className="size-3.5" />,
+      accent: 'text-[#40233f]',
+    },
+    {
+      label: 'Active',
+      value: stats.active,
+      caption: 'flowing into the tenant',
+      icon: <Zap className="size-3.5" />,
+      accent: 'text-[#2f5d4b]',
+    },
+    {
+      label: 'Errors',
+      value: stats.error,
+      caption:
+        stats.error > 0
+          ? 'attention needed'
+          : 'every adapter healthy',
+      icon: <CircleAlert className="size-3.5" />,
+      accent: stats.error > 0 ? 'text-[#8a3942]' : 'text-[#7a5818]',
+    },
+    {
+      label: 'Files synced',
+      value: stats.syncedTotal,
+      caption: 'lifetime, all sources',
+      icon: <Sparkles className="size-3.5" />,
+      accent: 'text-[#2c4a6b]',
+    },
+  ]
   return (
-    <div className="bg-card px-4 py-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div
-        className={`mt-1 font-display text-2xl leading-none font-semibold tabular-nums ${valueClass}`}
-      >
-        {value}
-      </div>
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {tiles.map((t) => (
+        <div
+          key={t.label}
+          className="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/5"
+        >
+          <div
+            className={`flex items-center gap-1.5 text-xs font-medium ${t.accent}`}
+          >
+            {t.icon}
+            {t.label}
+          </div>
+          <div className="font-display text-2xl leading-none font-semibold tabular-nums text-[#40233f]">
+            {String(t.value).padStart(2, '0')}
+          </div>
+          <div className="text-xs text-muted-foreground">{t.caption}</div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -1338,81 +1401,262 @@ function Field({
   )
 }
 
-function FirstIntegrationCoach({ onCreate }: { onCreate: () => void }) {
+function FirstIntegrationCoach({
+  onConnect,
+}: {
+  onConnect: (kind: Kind) => void
+}) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-foreground/5">
-      <div className="grid grid-cols-1 gap-8 p-8 md:grid-cols-[1.2fr_1fr] md:p-10">
-        <div>
-          <div className="text-xs font-semibold text-[#b78625]">
-            Get started
-          </div>
-          <h2 className="mt-2 font-display text-3xl leading-tight font-semibold tracking-tight text-[#40233f]">
-            Connect your first system
-          </h2>
-          <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-            An integration is a connection to a system that produces title files
-            — SoftPro, Qualia, Encompass, and so on. Each connection has
-            credentials, a status, and a sync history. You can also stand up a{' '}
-            <strong className="font-medium text-[#40233f]">mock</strong>{' '}
-            integration to try the pipeline before wiring up real credentials.
-          </p>
-          <Button onClick={onCreate} className="mt-5 gap-1.5">
-            <Plus className="size-4" />
-            New integration
-          </Button>
-          <div className="mt-3 text-xs text-muted-foreground">
-            Takes about a minute.
-          </div>
-        </div>
-
-        <ol className="flex flex-col gap-3">
-          {[
-            {
-              n: 1,
-              t: 'Pick the system',
-              d: 'Choose SoftPro 360 for the standard transactional integration, or Mock for a synthetic source.',
-            },
-            {
-              n: 2,
-              t: 'Give it a display name',
-              d: 'Anything descriptive — "SoftPro production" or "QA mock" — used in the UI.',
-            },
-            {
-              n: 3,
-              t: 'Add config (optional)',
-              d: 'Base URL and account ID for SoftPro 360. Without these, the row runs in stub mode.',
-            },
-            {
-              n: 4,
-              t: 'Run a sync',
-              d: 'Click Run sync to pull files. The history shows on each row.',
-            },
-          ].map((s) => (
-            <li
-              key={s.n}
-              className="flex items-start gap-3 rounded-xl border border-border/60 bg-[#fdf6e8]/40 px-4 py-3"
-            >
-              <span className="font-numerals grid size-7 shrink-0 place-items-center rounded-full bg-[#40233f] text-xs font-semibold text-[#f4d48f] tabular-nums">
-                {s.n}
+    <div className="flex flex-col gap-6">
+      <article className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-foreground/5">
+        <div className="grid grid-cols-1 gap-6 p-6 md:grid-cols-[1.4fr_1fr] md:gap-8 md:p-8">
+          <div>
+            <div className="text-xs font-semibold text-[#b78625]">
+              Get started
+            </div>
+            <h2 className="mt-2 font-display text-3xl leading-tight font-semibold tracking-tight text-[#40233f]">
+              Pick a source to connect
+            </h2>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
+              An integration is one connection to a system that produces title
+              files — SoftPro, inbound mail, Qualia, Encompass, and so on. Pick
+              one from the marketplace below to start, or stand up a{' '}
+              <strong className="font-medium text-[#40233f]">mock</strong>{' '}
+              source to exercise the pipeline first.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#fdf6e8] px-2 py-0.5 ring-1 ring-[#b78625]/30 ring-inset text-[#7a5818]">
+                <Sparkles className="size-3" />
+                Takes about a minute
               </span>
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-[#40233f]">{s.t}</div>
-                <div className="text-xs leading-snug text-muted-foreground">
-                  {s.d}
+              <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f0f8] px-2 py-0.5 ring-1 ring-[#3f668f]/30 ring-inset text-[#2c4a6b]">
+                <Plug className="size-3" />
+                No credentials? Stub mode works
+              </span>
+            </div>
+          </div>
+
+          <ol className="flex flex-col gap-2">
+            {[
+              { n: 1, t: 'Pick the source', d: 'Click Connect on a tile.' },
+              {
+                n: 2,
+                t: 'Name it',
+                d: '"SoftPro production", "QA mock", anything descriptive.',
+              },
+              {
+                n: 3,
+                t: 'Wire credentials (optional)',
+                d: 'Base URL + account ID for SoftPro 360. Skip it for stub mode.',
+              },
+              {
+                n: 4,
+                t: 'Run a sync or send a test message',
+                d: 'Each kind shows the right next step on its card.',
+              },
+            ].map((s) => (
+              <li
+                key={s.n}
+                className="flex items-start gap-3 rounded-xl border border-border/60 bg-[#fdf6e8]/40 px-3.5 py-2.5"
+              >
+                <span className="font-numerals grid size-6 shrink-0 place-items-center rounded-full bg-[#40233f] text-[10px] font-semibold text-[#f4d48f] tabular-nums">
+                  {s.n}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-[#40233f]">
+                    {s.t}
+                  </div>
+                  <div className="text-[11px] leading-snug text-muted-foreground">
+                    {s.d}
+                  </div>
                 </div>
-              </div>
-            </li>
-          ))}
-        </ol>
-      </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </article>
+
+      <SectionShell
+        eyebrow="Section · marketplace"
+        title="Available sources"
+        description="One tile per kind. Click Connect to open the new-integration form pre-set to that source."
+        icon={<Layers className="size-4" />}
+      >
+        <MarketplaceGrid
+          connectedByKind={{} as Record<Kind, number>}
+          onConnect={onConnect}
+        />
+      </SectionShell>
     </div>
   )
 }
 
+// Marketplace grid: every supported adapter as a tile. Tiles for kinds
+// already configured surface a small "connected · N" caption so the user
+// knows they can add a second of that kind (e.g. two SoftPro orgs).
+function MarketplaceGrid({
+  connectedByKind,
+  onConnect,
+}: {
+  connectedByKind: Record<Kind, number>
+  onConnect: (kind: Kind) => void
+}) {
+  return (
+    <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {SUPPORTED_KINDS.map((k) => (
+        <li key={k}>
+          <MarketplaceTile
+            kind={k}
+            existing={connectedByKind[k] ?? 0}
+            onConnect={() => onConnect(k)}
+          />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function MarketplaceTile({
+  kind,
+  existing,
+  onConnect,
+}: {
+  kind: Kind
+  existing: number
+  onConnect: () => void
+}) {
+  const comingSoon = COMING_SOON.has(kind)
+  const tone = kindTone(kind)
+  return (
+    <button
+      type="button"
+      onClick={comingSoon ? undefined : onConnect}
+      disabled={comingSoon}
+      aria-label={`Connect ${KIND_LABEL[kind]}`}
+      className={`group/tile flex h-full w-full flex-col gap-3 rounded-xl border border-border/70 bg-card p-4 text-left ring-1 ring-foreground/5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#593157]/40 ${
+        comingSoon
+          ? 'cursor-not-allowed opacity-60'
+          : 'hover:-translate-y-0.5 hover:border-[#593157]/30 hover:shadow-md'
+      }`}
+    >
+      <div className="flex items-start gap-3">
+        <KindBadge kind={kind} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-display text-base font-semibold tracking-tight text-[#40233f]">
+              {KIND_LABEL[kind]}
+            </span>
+            {existing > 0 && (
+              <span className={`font-numerals text-[10px] tabular-nums ${tone.text}`}>
+                connected · {existing}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground">
+            {KIND_DESCRIPTION[kind]}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        {comingSoon ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-[#fdf6e8] px-2 py-0.5 text-[10px] font-medium text-[#7a5818] ring-1 ring-[#b78625]/30 ring-inset">
+            Coming soon
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+            {kindModeHint(kind)}
+          </span>
+        )}
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition ${
+            comingSoon
+              ? 'bg-muted text-muted-foreground'
+              : `${tone.bg} ${tone.text} ring-1 ring-inset ${tone.ring} group-hover/tile:bg-[#40233f] group-hover/tile:text-[#f6e8d9] group-hover/tile:ring-transparent`
+          }`}
+        >
+          {existing > 0 ? 'Connect another' : 'Connect'}
+          <ArrowRight className="size-3" />
+        </span>
+      </div>
+    </button>
+  )
+}
+
+function kindTone(kind: Kind): {
+  bg: string
+  text: string
+  ring: string
+} {
+  switch (kind) {
+    case 'softpro_360':
+      return {
+        bg: 'bg-[#e8f0f8]',
+        text: 'text-[#2c4a6b]',
+        ring: 'ring-[#3f668f]/30',
+      }
+    case 'softpro_standard':
+      return {
+        bg: 'bg-[#f2e7f1]',
+        text: 'text-[#40233f]',
+        ring: 'ring-[#593157]/30',
+      }
+    case 'qualia':
+      return {
+        bg: 'bg-[#e6f3ed]',
+        text: 'text-[#2f5d4b]',
+        ring: 'ring-[#3f7c64]/30',
+      }
+    case 'resware':
+      return {
+        bg: 'bg-[#fde9dc]',
+        text: 'text-[#7a3d18]',
+        ring: 'ring-[#c9652e]/30',
+      }
+    case 'encompass':
+      return {
+        bg: 'bg-[#f8eed7]',
+        text: 'text-[#7a5818]',
+        ring: 'ring-[#b78625]/30',
+      }
+    case 'email_inbound':
+      return {
+        bg: 'bg-[#e8f0f8]',
+        text: 'text-[#2c4a6b]',
+        ring: 'ring-[#3f668f]/30',
+      }
+    default:
+      return {
+        bg: 'bg-muted',
+        text: 'text-muted-foreground',
+        ring: 'ring-border',
+      }
+  }
+}
+
+function kindModeHint(kind: Kind): string {
+  switch (kind) {
+    case 'softpro_360':
+    case 'qualia':
+    case 'resware':
+    case 'encompass':
+      return 'Pull · runs on a schedule'
+    case 'softpro_standard':
+      return 'Push · customer-side agent'
+    case 'email_inbound':
+      return 'Webhook · forwarded mail'
+    case 'mock':
+      return 'Synthetic · for testing'
+    default:
+      return ''
+  }
+}
+
 function NewIntegrationForm({
+  initialKind,
   onCreate,
   onCancel,
 }: {
+  initialKind?: Kind
   onCreate: (args: {
     kind: Kind
     name: string
@@ -1420,7 +1664,7 @@ function NewIntegrationForm({
   }) => Promise<void>
   onCancel: () => void
 }) {
-  const [kind, setKind] = useState<Kind>('mock')
+  const [kind, setKind] = useState<Kind>(initialKind ?? 'mock')
   const [name, setName] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [accountId, setAccountId] = useState('')

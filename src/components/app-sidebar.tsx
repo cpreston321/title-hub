@@ -11,6 +11,7 @@ import {
   ScanLine,
   Wallet,
   Mail,
+  Plug,
   ChartLine,
   ChevronsUpDown,
   Building,
@@ -300,13 +301,6 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 icon={<Wallet className="size-4" />}
               />
               <NavLink
-                to="/mail"
-                label="Mail"
-                icon={<Mail className="size-4" />}
-                active={location.pathname.startsWith("/mail")}
-                disabled={!hasActiveOrg}
-              />
-              <NavLink
                 to="/orders"
                 label="Order management"
                 icon={<ScanLine className="size-4" />}
@@ -327,6 +321,11 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        <IntegrationsGroup
+          hasActiveOrg={hasActiveOrg}
+          pathname={location.pathname}
+        />
       </SidebarContent>
 
       <SidebarFooter>
@@ -421,6 +420,68 @@ function NewFileCTA({ hasActiveOrg }: { hasActiveOrg: boolean }) {
         New file
       </Link>
     </div>
+  );
+}
+
+// Integrations sidebar group — only renders when the tenant has at
+// least one integration configured. Each kind that has a tenant-facing
+// page (today: email_inbound → Mail) lights up a child link. Kinds
+// without a dedicated page (mock, softpro_*) just count toward the
+// "configured" footer note so the group still feels populated.
+function IntegrationsGroup({
+  hasActiveOrg,
+  pathname,
+}: {
+  hasActiveOrg: boolean;
+  pathname: string;
+}) {
+  const integrations = useQuery({
+    ...convexQuery(api.integrations.list, {}),
+    enabled: hasActiveOrg,
+  });
+
+  if (!hasActiveOrg) return null;
+
+  type IntegrationRow = {
+    _id: string;
+    kind: string;
+    status: "active" | "disabled" | "error";
+  };
+  const list = ((integrations.data ?? []) as Array<IntegrationRow>).filter(
+    (i) => i.status !== "disabled",
+  );
+  const hasEmail = list.some((i) => i.kind === "email_inbound");
+
+  // Don't render the group at all until something is configured —
+  // keeps the sidebar tidy on a brand-new tenant. The Admin → Integrations
+  // page is still reachable via the Main group.
+  if (list.length === 0) return null;
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupLabel className="text-white/45">
+        Integrations
+      </SidebarGroupLabel>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {hasEmail && (
+            <NavLink
+              to="/mail"
+              label="Mail"
+              icon={<Mail className="size-4" />}
+              active={pathname.startsWith("/mail")}
+            />
+          )}
+          <NavLink
+            to="/admin/integrations"
+            label="Manage"
+            icon={<Plug className="size-4" />}
+            active={pathname.startsWith("/admin/integrations")}
+            badge={String(list.length)}
+          />
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
