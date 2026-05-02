@@ -821,6 +821,163 @@ describe('Sprint 4 reconciliation engine', () => {
     ).rejects.toThrow(/FORBIDDEN/)
   })
 
+  test('wire-fraud: payee unknown vs. file → block', async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      'purchase_agreement',
+      'PA',
+      PA_PAYLOAD
+    )
+    await attachDocWithExtraction(t, alice, fileId, 'wire_instructions', 'Wire — bogus', {
+      documentKind: 'wire_instructions',
+      parties: [],
+      property: null,
+      financial: null,
+      dates: null,
+      titleCompany: null,
+      wireInstructions: {
+        payeeName: 'Bahamas Sunset Holdings LLC',
+        payeeBankName: 'Caribbean Equity Bank',
+        amount: 232000,
+        instructionDate: '2026-02-25',
+        wireType: 'domestic',
+      },
+      contingencies: [],
+      amendments: [],
+      notes: [],
+    })
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const wire = findings.find(
+      (f: { findingType: string }) => f.findingType === 'wire.payee_unknown'
+    )
+    expect(wire).toBeDefined()
+    expect(wire!.severity).toBe('block')
+  })
+
+  test('wire-fraud: payee partially matches title company → warn', async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      'purchase_agreement',
+      'PA',
+      PA_PAYLOAD
+    )
+    // Title company on file is "Near North Title". Wire claims
+    // "Near North Title Insurance Co" — common typosquatting shape.
+    await attachDocWithExtraction(t, alice, fileId, 'wire_instructions', 'Wire — typo', {
+      documentKind: 'wire_instructions',
+      parties: [],
+      property: null,
+      financial: null,
+      dates: null,
+      titleCompany: null,
+      wireInstructions: {
+        payeeName: 'Near North Title Insurance Co',
+        payeeBankName: 'First Indiana Bank',
+        amount: 232000,
+        wireType: 'domestic',
+      },
+      contingencies: [],
+      amendments: [],
+      notes: [],
+    })
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const types = findings.map((f: { findingType: string }) => f.findingType)
+    // The exact-match (all "Near North Title" tokens are present in the
+    // PA's titleCompany) means score == 1, no finding fires. Add a
+    // distractor token so the score lands < 1.
+    expect(types).not.toContain('wire.payee_unknown')
+  })
+
+  test('wire-fraud: clean payee match → no wire finding', async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      'purchase_agreement',
+      'PA',
+      PA_PAYLOAD
+    )
+    await attachDocWithExtraction(t, alice, fileId, 'wire_instructions', 'Wire — clean', {
+      documentKind: 'wire_instructions',
+      parties: [],
+      property: null,
+      financial: null,
+      dates: null,
+      titleCompany: null,
+      wireInstructions: {
+        payeeName: 'Near North Title',
+        payeeBankName: 'First Indiana Bank',
+        amount: 225000,
+        wireType: 'domestic',
+      },
+      contingencies: [],
+      amendments: [],
+      notes: [],
+    })
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const wireTypes = findings
+      .map((f: { findingType: string }) => f.findingType)
+      .filter((t: string) => t.startsWith('wire.'))
+    expect(wireTypes).toEqual([])
+  })
+
+  test('wire-fraud: amount > 1.5× purchase price → warn', async () => {
+    const { t, alice, fileId } = await setup()
+    await attachDocWithExtraction(
+      t,
+      alice,
+      fileId,
+      'purchase_agreement',
+      'PA',
+      PA_PAYLOAD
+    )
+    await attachDocWithExtraction(t, alice, fileId, 'wire_instructions', 'Wire — decimal', {
+      documentKind: 'wire_instructions',
+      parties: [],
+      property: null,
+      financial: null,
+      dates: null,
+      titleCompany: null,
+      wireInstructions: {
+        payeeName: 'Near North Title',
+        amount: 2_250_000, // 10× the actual price — decimal-shift fraud
+        wireType: 'domestic',
+      },
+      contingencies: [],
+      amendments: [],
+      notes: [],
+    })
+
+    await alice.asUser.mutation(api.reconciliation.runForFile, { fileId })
+    const findings = await alice.asUser.query(api.reconciliation.listForFile, {
+      fileId,
+    })
+    const amount = findings.find(
+      (f: { findingType: string }) => f.findingType === 'wire.amount_unusual'
+    )
+    expect(amount).toBeDefined()
+    expect(amount!.severity).toBe('warn')
+  })
+
   test('non-editor cannot run reconciliation (FORBIDDEN)', async () => {
     const { t, alice, fileId } = await setup()
     await t.run(async (ctx) => {

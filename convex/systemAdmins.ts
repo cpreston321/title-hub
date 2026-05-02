@@ -893,3 +893,80 @@ export const setUserPassword = internalAction({
     return { email: normalizedEmail, userId: user._id, accountCreated }
   },
 })
+
+// Admin-only: find or provision an `email_inbound` integration for a
+// tenant and surface the inbound HMAC secret. Used by the
+// `bun run admin simulate-email` CLI to drive an end-to-end test of the
+// inbound webhook locally without going through the dashboard UI.
+export const adminGetOrCreateEmailIntegration = internalMutation({
+  args: { tenantSlug: v.string(), name: v.optional(v.string()) },
+  handler: async (ctx, { tenantSlug, name }) => {
+    const tenant = await tenantBySlug(ctx, tenantSlug)
+    if (!tenant) {
+      throw new ConvexError(`No tenant with slug ${tenantSlug}`)
+    }
+
+    const existing = await ctx.db
+      .query('integrations')
+      .withIndex('by_tenant_kind', (q) =>
+        q.eq('tenantId', tenant._id).eq('kind', 'email_inbound'),
+      )
+      .first()
+    if (existing) {
+      return {
+        integrationId: existing._id,
+        inboundSecret: existing.inboundSecret,
+        alreadyExisted: true,
+        tenantSlug,
+        tenantId: tenant._id,
+        name: existing.name,
+        status: existing.status,
+      }
+    }
+
+    // 32 bytes hex == same shape as `inboundSecret` in integrations.ts.
+    // Duplicated inline to avoid pulling integrations.ts into systemAdmins's
+    // import graph.
+    const buf = new Uint8Array(32)
+    crypto.getRandomValues(buf)
+    const inboundSecret = Array.from(buf, (b) =>
+      b.toString(16).padStart(2, '0'),
+    ).join('')
+
+    const integrationName = name?.trim() || 'Email Inbound (test)'
+    const integrationId = await ctx.db.insert('integrations', {
+      tenantId: tenant._id,
+      kind: 'email_inbound',
+      name: integrationName,
+      status: 'active',
+      config: { forwardAddressLocalPart: tenant.slug },
+      inboundSecret,
+      filesSyncedTotal: 0,
+      createdAt: Date.now(),
+    })
+
+    await ctx.db.insert('auditEvents', {
+      tenantId: tenant._id,
+      actorType: 'system',
+      action: 'integration.created',
+      resourceType: 'integration',
+      resourceId: integrationId,
+      metadata: {
+        kind: 'email_inbound',
+        name: integrationName,
+        via: 'admin_cli',
+      },
+      occurredAt: Date.now(),
+    })
+
+    return {
+      integrationId,
+      inboundSecret,
+      alreadyExisted: false,
+      tenantSlug,
+      tenantId: tenant._id,
+      name: integrationName,
+      status: 'active' as const,
+    }
+  },
+})

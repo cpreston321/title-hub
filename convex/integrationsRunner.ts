@@ -20,7 +20,25 @@ export const runSync = internalAction({
     })
     if (!loaded) return
 
-    const adapter = getAdapter(loaded.kind)
+    // Some integration kinds (email_inbound) have no sync adapter — data
+    // arrives via dedicated HTTP routes, not the periodic sync runner.
+    // Mark the attempt as a no-op failure so a misconfigured cron / manual
+    // trigger doesn't crash the action.
+    let adapter
+    try {
+      adapter = getAdapter(loaded.kind)
+    } catch (err) {
+      await ctx.runMutation(internal.integrations._markRunFinished, {
+        runId,
+        success: false,
+        filesProcessed: 0,
+        filesUpserted: 0,
+        errorCount: 1,
+        errorSample: err instanceof Error ? err.message : String(err),
+        nextCursor: null,
+      })
+      return
+    }
 
     // Push-mode integrations don't run a server-side sync. Data arrives
     // via the agent endpoints; `runSync` here is a no-op that records the

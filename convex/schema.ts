@@ -480,6 +480,7 @@ export default defineSchema({
       v.literal('qualia'),
       v.literal('resware'),
       v.literal('encompass'),
+      v.literal('email_inbound'),
       v.literal('mock')
     ),
     name: v.string(),
@@ -538,6 +539,95 @@ export default defineSchema({
   })
     .index('by_tenant_integration', ['tenantId', 'integrationId'])
     .index('by_tenant_startedAt', ['tenantId', 'startedAt']),
+
+  // ───── Inbound email ingest ──────────────────────────────────
+  // One row per email that arrives at a tenant's forwarding address. The
+  // .eml (or provider JSON envelope) lives in `_storage` keyed by
+  // `rawStorageId`; attachments that have been auto-attached to a file are
+  // represented as `documents` rows whose ids are listed in
+  // `attachmentDocumentIds`. Attachments on a `quarantined` row exist as
+  // `documents` rows with `fileId` undefined until a processor routes them.
+  //
+  // Status flow:
+  //   pending      – inserted by the inbound HTTP route, not yet classified.
+  //   classifying  – the classifier action is mid-flight.
+  //   auto_attached – classifier matched a file at high confidence and
+  //                   created/linked attachments to it.
+  //   quarantined  – no high-confidence match; awaits human triage.
+  //   archived     – processor dismissed the row (no file action).
+  //   spam         – processor flagged sender; future mail from this sender
+  //                   skips classification (left as a follow-up).
+  //   failed       – ingest threw; surfaced in the Mail UI for retry.
+  inboundEmails: defineTable({
+    tenantId: v.id('tenants'),
+    integrationId: v.id('integrations'),
+    // Provider's stable id (Postmark MessageID, SES messageId, etc.). Used
+    // for dedup if the provider retries delivery.
+    providerMessageId: v.string(),
+    fromAddress: v.string(),
+    fromName: v.optional(v.string()),
+    toAddress: v.string(),
+    subject: v.string(),
+    bodyText: v.optional(v.string()),
+    // Provider-supplied HTML body. Rendered in a sandboxed iframe in the
+    // Mail detail sheet; never injected as raw markup. Some providers send
+    // only HTML, some only text — both fields are optional and the UI
+    // prefers HTML when present (with a "Show plain text" fallback).
+    bodyHtml: v.optional(v.string()),
+    receivedAt: v.number(),
+    rawStorageId: v.optional(v.id('_storage')),
+    status: v.union(
+      v.literal('pending'),
+      v.literal('classifying'),
+      v.literal('auto_attached'),
+      v.literal('quarantined'),
+      v.literal('archived'),
+      v.literal('spam'),
+      v.literal('failed')
+    ),
+    matchedFileId: v.optional(v.id('files')),
+    matchConfidence: v.optional(v.number()),
+    matchReason: v.optional(v.string()),
+    // Bounded by MAX_ATTACHMENTS_PER_EMAIL in inboundEmail.ts. A staff-style
+    // closing package with 100 PDFs would exceed it; that's an outlier we
+    // surface as `failed` rather than silently truncating.
+    attachmentDocumentIds: v.array(v.id('documents')),
+    attachmentCount: v.number(),
+    classifiedAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    // Authenticity / spam scoring — see convex/lib/spamScore.ts. Score is
+    // 0..100; tier is the bucket the score falls into. Signals are an
+    // array of short labels explaining what fired so the UI can render
+    // a why-list without re-running the scorer.
+    spamScore: v.optional(v.number()),
+    spamTier: v.optional(
+      v.union(
+        v.literal('clean'),
+        v.literal('suspicious'),
+        v.literal('high_risk')
+      )
+    ),
+    spamSignals: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          label: v.string(),
+          weight: v.number(),
+        })
+      )
+    ),
+    replyToAddress: v.optional(v.string()),
+    spfResult: v.optional(v.string()),
+    dkimResult: v.optional(v.string()),
+    dmarcResult: v.optional(v.string()),
+  })
+    .index('by_tenant_status_received', ['tenantId', 'status', 'receivedAt'])
+    .index('by_tenant_received', ['tenantId', 'receivedAt'])
+    .index('by_tenant_message', [
+      'tenantId',
+      'integrationId',
+      'providerMessageId',
+    ]),
 
   // ───── Sprint 2: NPI tokenization ─────────────────────────────
   npiSecrets: defineTable({

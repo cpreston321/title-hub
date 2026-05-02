@@ -11,13 +11,13 @@ import { internal } from './_generated/api'
 
 const SCHEMA_VERSION = 'v2'
 
-const SYSTEM_PROMPT = `You extract structured fields from US real-estate transaction documents: purchase agreements, counter offers, title commitments, title search reports, closing disclosures, deeds, and seller's disclosures.
+const SYSTEM_PROMPT = `You extract structured fields from US real-estate transaction documents: purchase agreements, counter offers, title commitments, title search reports, closing disclosures, deeds, seller's disclosures, and wire instructions.
 
 Read the document and emit a single JSON object matching the schema below. Output ONLY the JSON object — no prose, no markdown fences, no commentary before or after.
 
 Schema:
 {
-  "documentKind": "purchase_agreement" | "counter_offer" | "title_search" | "commitment" | "closing_disclosure" | "deed" | "sellers_disclosure" | "other",
+  "documentKind": "purchase_agreement" | "counter_offer" | "title_search" | "commitment" | "closing_disclosure" | "deed" | "sellers_disclosure" | "wire_instructions" | "other",
   "parties": Array<{
     "role": "buyer" | "seller" | "lender" | "borrower" | "trustee" | "signer" | "broker" | "title_company" | "escrow_agent" | "other",
     "legalName": string,
@@ -47,6 +47,16 @@ Schema:
     "name"?: string,
     "phone"?: string,
     "selectedBy"?: "buyer" | "seller" | "shared"
+  } | null,
+  "wireInstructions": {                // populate ONLY for documentKind: "wire_instructions"
+    "payeeName"?: string,               // exact entity getting wired funds (closing/title co., seller, etc.)
+    "payeeBankName"?: string,           // bank holding the receiving account
+    "beneficiaryName"?: string,         // beneficiary listed on the instructions if different from payee
+    "amount"?: number,                  // wire amount, USD
+    "instructionDate"?: string,         // ISO 8601 date the instructions were issued
+    "wireType"?: "domestic" | "international",
+    "senderRole"?: "buyer" | "seller" | "lender" | "broker" | "title_company" | "escrow_agent" | "other"
+    // SECURITY: do NOT extract or echo routing numbers or account numbers. Skip those fields entirely.
   } | null,
   "contingencies": string[],          // freeform tags: "appraisal", "inspection", "sale_of_buyer_property", "financing"
   "amendments": string[],             // for counter offers: each modification as a one-line summary
@@ -102,6 +112,15 @@ export type ExtractionPayload = {
     expirationOfOffer?: string
   } | null
   titleCompany: { name?: string; phone?: string; selectedBy?: string } | null
+  wireInstructions: {
+    payeeName?: string
+    payeeBankName?: string
+    beneficiaryName?: string
+    amount?: number
+    instructionDate?: string
+    wireType?: 'domestic' | 'international'
+    senderRole?: string
+  } | null
   contingencies: string[]
   amendments: string[]
   notes: string[]
@@ -192,6 +211,7 @@ const MOCK_BY_DOCTYPE: Record<string, ExtractionPayload> = {
       expirationOfOffer: '2026-02-03',
     },
     titleCompany: { name: 'Near North Title', selectedBy: 'buyer' },
+    wireInstructions: null,
     contingencies: [
       'financing',
       'inspection',
@@ -207,6 +227,26 @@ const MOCK_BY_DOCTYPE: Record<string, ExtractionPayload> = {
       'financial.earnestMoney.refundable': 0.7,
       'parties[1].capacity': 0.8,
     },
+  },
+  wire_instructions: {
+    documentKind: 'wire_instructions',
+    parties: [],
+    property: null,
+    financial: null,
+    dates: null,
+    titleCompany: null,
+    wireInstructions: {
+      payeeName: 'Near North Title',
+      payeeBankName: 'First Indiana Bank',
+      beneficiaryName: 'Near North Title Escrow Account',
+      amount: 232000,
+      instructionDate: '2026-02-25',
+      wireType: 'domestic',
+      senderRole: 'title_company',
+    },
+    contingencies: [],
+    amendments: [],
+    notes: ['Wire instructions sent for closing on 3324 Corey Dr.'],
   },
   counter_offer: {
     documentKind: 'counter_offer',
@@ -233,6 +273,7 @@ const MOCK_BY_DOCTYPE: Record<string, ExtractionPayload> = {
       phone: '317-780-5700',
       selectedBy: 'seller',
     },
+    wireInstructions: null,
     contingencies: ['financing', 'inspection'],
     amendments: [
       'Purchase price raised to $233,600 (from $225,000).',
@@ -266,6 +307,7 @@ function mockExtraction(docTypeHint?: string): ExtractionPayload {
     financial: null,
     dates: null,
     titleCompany: null,
+    wireInstructions: null,
     contingencies: [],
     amendments: [],
     notes: [],

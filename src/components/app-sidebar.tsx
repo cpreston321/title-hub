@@ -10,6 +10,7 @@ import {
   Building2,
   ScanLine,
   Wallet,
+  Mail,
   ChartLine,
   ChevronsUpDown,
   Building,
@@ -297,6 +298,13 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
               <DisabledNavItem
                 label="Escrow"
                 icon={<Wallet className="size-4" />}
+              />
+              <NavLink
+                to="/mail"
+                label="Mail"
+                icon={<Mail className="size-4" />}
+                active={location.pathname.startsWith("/mail")}
+                disabled={!hasActiveOrg}
               />
               <NavLink
                 to="/orders"

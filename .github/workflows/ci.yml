@@ -65,7 +65,7 @@ jobs:
           echo "URL last 4: ${CONVEX_SELF_HOSTED_URL: -4}"
           echo "KEY last 4: ${CONVEX_SELF_HOSTED_ADMIN_KEY: -4}"
         env:
-          CONVEX_SELF_HOSTED_URL: ${{ secrets.CONVEX_SELF_HOSTED_URL }}
+          CONVEX_SELF_HOSTED_URL: ${{ vars.CONVEX_SELF_HOSTED_URL }}
           CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.CONVEX_SELF_HOSTED_ADMIN_KEY }}
 
       - name: Deploy Convex functions
@@ -74,7 +74,7 @@ jobs:
           bun install --frozen-lockfile
           bunx convex deploy
         env:
-          CONVEX_SELF_HOSTED_URL: ${{ secrets.CONVEX_SELF_HOSTED_URL }}
+          CONVEX_SELF_HOSTED_URL: ${{ vars.CONVEX_SELF_HOSTED_URL }}
           CONVEX_SELF_HOSTED_ADMIN_KEY: ${{ secrets.CONVEX_SELF_HOSTED_ADMIN_KEY }}
 
       - name: Deploy to Coolify

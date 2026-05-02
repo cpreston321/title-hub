@@ -16,6 +16,27 @@ import { spawnSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { extname } from 'node:path'
+import { Buffer } from 'node:buffer'
+
+// HMAC-SHA256(secret, message) -> lowercase hex. Web Crypto, no node:crypto
+// dependency, so the helper matches the server-side scheme verbatim.
+async function hmacHex(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  )
+  const sig = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(message)
+  )
+  return Array.from(new Uint8Array(sig), (b) =>
+    b.toString(16).padStart(2, '0')
+  ).join('')
+}
 
 type CommandHandler = (args: Array<string>) => Promise<void> | void
 
@@ -390,6 +411,219 @@ const COMMANDS: ReadonlyArray<Command> = [
           ` ${c.bold(String(r.totalInserted))} rule${
             r.totalInserted === 1 ? '' : 's'
           } inserted, ${c.dim(`${r.totalSkipped} already present`)}.`
+      )
+    },
+  },
+  {
+    name: 'simulate-email',
+    args: '[tenant-slug] [--file=<file-number>] [--from=<email>] [--subject=<text>] [--body=<text>] [--attach=<path>]... [--suspicious=1] [--spf=pass|fail] [--dkim=pass|fail] [--dmarc=pass|fail] [--reply-to=<email>] [--site-url=<url>]',
+    description:
+      'Send a Postmark-shaped inbound email to /integrations/email/inbound (HMAC-signed). Auto-creates an email_inbound integration if missing. Defaults to the first tenant.',
+    run: async (args) => {
+      const positionals: Array<string> = []
+      const flags: Record<string, string> = {}
+      const attachments: Array<string> = []
+      for (const arg of args) {
+        if (arg.startsWith('--attach=')) {
+          attachments.push(arg.slice('--attach='.length))
+        } else if (arg.startsWith('--')) {
+          const eq = arg.indexOf('=')
+          if (eq < 0) {
+            console.error(c.red(`Flag without value: ${arg}`))
+            process.exit(2)
+          }
+          flags[arg.slice(2, eq)] = arg.slice(eq + 1)
+        } else {
+          positionals.push(arg)
+        }
+      }
+
+      const tenantSlug = positionals[0] ?? (await pickFirstTenantSlug())
+      if (!tenantSlug) {
+        console.error(
+          c.red('No tenants on this deployment. Sign up and create one first.')
+        )
+        process.exit(1)
+      }
+
+      const integration = runConvex<{
+        integrationId: string
+        inboundSecret: string
+        alreadyExisted: boolean
+        tenantSlug: string
+        name: string
+        status: string
+      }>('systemAdmins:adminGetOrCreateEmailIntegration', { tenantSlug })
+
+      console.log(
+        c.bold('Email integration: ') +
+          (integration.alreadyExisted ? c.dim('· reused') : c.green('+ created')) +
+          ' ' +
+          c.dim(integration.integrationId)
+      )
+
+      const siteUrl =
+        flags['site-url'] ??
+        process.env.VITE_CONVEX_SITE_URL ??
+        process.env.CONVEX_SITE_URL
+      if (!siteUrl) {
+        console.error(
+          c.red(
+            'Site URL not found. Set VITE_CONVEX_SITE_URL in .env.local or pass --site-url=<url>'
+          )
+        )
+        process.exit(1)
+      }
+
+      const fromAddress = flags.from ?? 'agent@example.com'
+      const fileNumber = flags.file
+      const subject =
+        flags.subject ??
+        (fileNumber
+          ? `Re: file ${fileNumber} — signed docs attached`
+          : 'No file number — please route')
+      const body =
+        flags.body ??
+        (fileNumber
+          ? `Hi,\n\nAttaching the latest for file ${fileNumber}.\n\nThanks`
+          : 'Attaching docs — please route to the right file.')
+
+      const decodedAttachments: Array<{
+        Name: string
+        ContentType: string
+        Content: string
+        ContentLength: number
+      }> = []
+      for (const path of attachments) {
+        if (!existsSync(path)) {
+          console.error(c.red(`Attachment not found: ${path}`))
+          process.exit(1)
+        }
+        const buf = await readFile(path)
+        const ext = extname(path).toLowerCase()
+        const mime =
+          ext === '.pdf'
+            ? 'application/pdf'
+            : ext === '.txt'
+              ? 'text/plain'
+              : ext === '.docx'
+                ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                : 'application/octet-stream'
+        decodedAttachments.push({
+          Name: path.split('/').pop() ?? 'attachment',
+          ContentType: mime,
+          Content: buf.toString('base64'),
+          ContentLength: buf.length,
+        })
+      }
+
+      // If no real attachment was provided, ship a tiny fake PDF so the
+      // ingest path exercises end-to-end (storage write + extraction
+      // schedule). Skip it if the user asked for a no-attachment test
+      // explicitly via --no-attachment.
+      if (decodedAttachments.length === 0 && flags['no-attachment'] !== '1') {
+        const fake = Buffer.from(
+          '%PDF-1.4\n% simulate-email synthetic attachment\n',
+          'utf-8'
+        )
+        decodedAttachments.push({
+          Name: 'simulated.pdf',
+          ContentType: 'application/pdf',
+          Content: fake.toString('base64'),
+          ContentLength: fake.length,
+        })
+      }
+
+      const payload: Record<string, unknown> = {
+        MessageID: `sim-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        From: fromAddress,
+        FromName: flags['from-name'] ?? '',
+        To:
+          flags.to ?? `inbox+${integration.tenantSlug}@title.example.com`,
+        Subject: subject,
+        TextBody: body,
+        Date: new Date().toISOString(),
+        Attachments: decodedAttachments,
+      }
+      // Authenticity-test convenience flags. --suspicious sets DMARC=fail
+      // so the spam scorer rates the message as high_risk. Pass any of
+      // --spf / --dkim / --dmarc to override individual verdicts.
+      if (flags.suspicious === '1') {
+        payload.SpfResult = flags.spf ?? 'fail'
+        payload.DkimResult = flags.dkim ?? 'fail'
+        payload.DmarcResult = flags.dmarc ?? 'fail'
+        if (!flags['reply-to']) payload.ReplyTo = 'phisher@elsewhere.example'
+      } else {
+        payload.SpfResult = flags.spf ?? 'pass'
+        payload.DkimResult = flags.dkim ?? 'pass'
+        payload.DmarcResult = flags.dmarc ?? 'pass'
+      }
+      if (flags['reply-to']) payload.ReplyTo = flags['reply-to']
+      const rawBody = JSON.stringify(payload)
+      const ts = String(Date.now())
+      const sig = await hmacHex(integration.inboundSecret, `${ts}.${rawBody}`)
+
+      const url = `${siteUrl.replace(/\/+$/, '')}/integrations/email/inbound?id=${integration.integrationId}`
+
+      console.log(c.bold('POST ') + c.dim(url))
+      console.log(
+        c.dim(
+          `  subject: ${subject}\n  from: ${fromAddress}\n  attachments: ${decodedAttachments.length}`
+        )
+      )
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Title-Timestamp': ts,
+          'X-Title-Signature': `sha256=${sig}`,
+        },
+        body: rawBody,
+      })
+      const text = await res.text()
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(text)
+      } catch {
+        parsed = text
+      }
+
+      if (!res.ok) {
+        console.log(c.red(`✗ ${res.status} ${res.statusText}`))
+        console.log(c.dim(typeof parsed === 'string' ? parsed : JSON.stringify(parsed, null, 2)))
+        process.exit(1)
+      }
+
+      const r = parsed as {
+        inboundEmailId?: string
+        autoAttached?: boolean
+        deduped?: boolean
+        confidence?: number
+        matchedFileId?: string | null
+      }
+      console.log(
+        c.green('✓') +
+          ` ${res.status} ${res.statusText} ${c.dim('·')} ${r.inboundEmailId ?? ''}`
+      )
+      const verdict = r.deduped
+        ? c.dim('deduped (already ingested)')
+        : r.autoAttached
+          ? c.green(
+              `auto-attached → ${r.matchedFileId ?? '?'}` +
+                (typeof r.confidence === 'number'
+                  ? ` (${Math.round(r.confidence * 100)}%)`
+                  : '')
+            )
+          : c.amber('quarantined') +
+            (typeof r.confidence === 'number'
+              ? c.dim(` (best ${Math.round(r.confidence * 100)}%)`)
+              : '')
+      console.log(`  ${verdict}`)
+      console.log(
+        c.dim(
+          '  Open http://localhost:3000/mail to see the row in the inbox.'
+        )
       )
     },
   },

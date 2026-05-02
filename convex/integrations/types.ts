@@ -19,6 +19,7 @@ export type IntegrationKind =
   | 'qualia'
   | 'resware'
   | 'encompass'
+  | 'email_inbound'
   | 'mock'
 
 export type FileSnapshotParty = {

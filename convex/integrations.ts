@@ -17,6 +17,7 @@ const integrationKind = v.union(
   v.literal('qualia'),
   v.literal('resware'),
   v.literal('encompass'),
+  v.literal('email_inbound'),
   v.literal('mock')
 )
 
@@ -33,6 +34,13 @@ const PUSH_MODE_KINDS = new Set<Doc<'integrations'>['kind']>([
   'softpro_standard',
 ])
 
+// Inbound-only kinds: data lands via a dedicated HTTP webhook (not pull,
+// not agent push). The dashboard suppresses the Run sync / Agent install
+// affordances for these and shows a kind-specific setup panel instead.
+const INBOUND_MODE_KINDS = new Set<Doc<'integrations'>['kind']>([
+  'email_inbound',
+])
+
 // Heartbeat older than this is considered stale — the dashboard renders
 // the agent as offline, and a sync attempt will note the staleness.
 const HEARTBEAT_STALE_AFTER_MS = 5 * 60_000
@@ -42,11 +50,17 @@ const HEARTBEAT_STALE_AFTER_MS = 5 * 60_000
 // requests it via `revealInboundSecret`).
 function publicShape(row: Doc<'integrations'>) {
   const isPush = PUSH_MODE_KINDS.has(row.kind)
+  const isInbound = INBOUND_MODE_KINDS.has(row.kind)
   const heartbeatAt = row.agentLastHeartbeatAt ?? null
   const agentStale =
     isPush &&
     (heartbeatAt === null ||
       Date.now() - heartbeatAt > HEARTBEAT_STALE_AFTER_MS)
+  const mode: 'push' | 'pull' | 'inbound' = isPush
+    ? 'push'
+    : isInbound
+      ? 'inbound'
+      : 'pull'
   return {
     _id: row._id,
     kind: row.kind,
@@ -60,7 +74,7 @@ function publicShape(row: Doc<'integrations'>) {
     lastError: row.lastError ?? null,
     filesSyncedTotal: row.filesSyncedTotal,
     createdAt: row.createdAt,
-    mode: isPush ? ('push' as const) : ('pull' as const),
+    mode,
     agentLastHeartbeatAt: heartbeatAt,
     agentVersion: row.agentVersion ?? null,
     agentHostname: row.agentHostname ?? null,
@@ -241,6 +255,12 @@ export const runSync = mutation({
       throw new ConvexError('INTEGRATION_NOT_FOUND')
     }
     if (row.status === 'disabled') throw new ConvexError('INTEGRATION_DISABLED')
+    // email_inbound has no pull/sync model — data arrives via the inbound
+    // email HTTP route. Reject the click rather than enqueue a guaranteed
+    // no-op run so the user gets a clear error.
+    if (row.kind === 'email_inbound') {
+      throw new ConvexError('INTEGRATION_NOT_SYNCABLE')
+    }
 
     const runId: Id<'integrationSyncRuns'> = await ctx.db.insert(
       'integrationSyncRuns',
@@ -409,6 +429,7 @@ export const _upsertFileFromSnapshot = internalMutation({
         | 'qualia'
         | 'resware'
         | 'encompass'
+        | 'email_inbound'
         | 'mock'
       snapshot: {
         externalId: string

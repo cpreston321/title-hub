@@ -62,6 +62,7 @@ type Kind =
   | 'qualia'
   | 'resware'
   | 'encompass'
+  | 'email_inbound'
   | 'mock'
 
 const KIND_LABEL: Record<Kind, string> = {
@@ -70,6 +71,7 @@ const KIND_LABEL: Record<Kind, string> = {
   qualia: 'Qualia',
   resware: 'ResWare',
   encompass: 'Encompass',
+  email_inbound: 'Inbound mail',
   mock: 'Mock (testing)',
 }
 
@@ -81,10 +83,17 @@ const KIND_DESCRIPTION: Record<Kind, string> = {
   qualia: 'Qualia Connect — coming soon.',
   resware: 'ResWare title production — coming soon.',
   encompass: 'Encompass loan files — coming soon.',
+  email_inbound:
+    'A unique forwarding address for this tenant. Auto-forward agency mail to it; we classify each message and pull attachments onto the right file.',
   mock: 'A fake source that produces synthetic files. Use this to try the sync pipeline end-to-end without real credentials.',
 }
 
-const SUPPORTED_KINDS: Array<Kind> = ['softpro_360', 'softpro_standard', 'mock']
+const SUPPORTED_KINDS: Array<Kind> = [
+  'softpro_360',
+  'softpro_standard',
+  'email_inbound',
+  'mock',
+]
 const COMING_SOON: ReadonlySet<Kind> = new Set()
 
 function IntegrationsAdminPage() {
@@ -447,13 +456,14 @@ type IntegrationRow = {
   kind: Kind
   name: string
   status: 'active' | 'disabled' | 'error'
+  config: unknown
   hasCredentials: boolean
   lastSyncAt: number | null
   lastSyncStatus: 'succeeded' | 'failed' | null
   lastError: string | null
   filesSyncedTotal: number
   createdAt: number
-  mode: 'pull' | 'push'
+  mode: 'pull' | 'push' | 'inbound'
   agentLastHeartbeatAt: number | null
   agentVersion: string | null
   agentHostname: string | null
@@ -497,7 +507,10 @@ function IntegrationCard({
         timeStyle: 'short',
       })
     : 'never'
-  const stub = !integration.hasCredentials && integration.kind !== 'mock'
+  const stub =
+    !integration.hasCredentials &&
+    integration.kind !== 'mock' &&
+    integration.mode !== 'inbound'
 
   return (
     <div className="overflow-hidden rounded-xl border border-border/70 bg-card ring-1 ring-foreground/5">
@@ -527,31 +540,33 @@ function IntegrationCard({
       </header>
 
       <div className="px-5 py-4">
-        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field label="Last sync" value={lastSync} />
-          <Field
-            label="Last outcome"
-            value={
-              integration.lastSyncStatus === 'succeeded'
-                ? 'Succeeded'
-                : integration.lastSyncStatus === 'failed'
-                  ? 'Failed'
-                  : '—'
-            }
-            tone={
-              integration.lastSyncStatus === 'failed'
-                ? 'warn'
-                : integration.lastSyncStatus === 'succeeded'
-                  ? 'good'
-                  : undefined
-            }
-          />
-          <Field
-            label="Files synced (total)"
-            value={String(integration.filesSyncedTotal)}
-            mono
-          />
-        </dl>
+        {integration.mode !== 'inbound' && (
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Last sync" value={lastSync} />
+            <Field
+              label="Last outcome"
+              value={
+                integration.lastSyncStatus === 'succeeded'
+                  ? 'Succeeded'
+                  : integration.lastSyncStatus === 'failed'
+                    ? 'Failed'
+                    : '—'
+              }
+              tone={
+                integration.lastSyncStatus === 'failed'
+                  ? 'warn'
+                  : integration.lastSyncStatus === 'succeeded'
+                    ? 'good'
+                    : undefined
+              }
+            />
+            <Field
+              label="Files synced (total)"
+              value={String(integration.filesSyncedTotal)}
+              mono
+            />
+          </dl>
+        )}
 
         {integration.lastError && (
           <div className="mt-4 rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-xs text-[#8a3942]">
@@ -571,6 +586,10 @@ function IntegrationCard({
             onHideAgentInfo={onHideAgentInfo}
             onClearInstallToken={onClearInstallToken}
           />
+        )}
+
+        {integration.mode === 'inbound' && (
+          <EmailPanel integration={integration} />
         )}
       </div>
 
@@ -990,11 +1009,17 @@ function KindBadge({ kind }: { kind: Kind }) {
                   text: 'text-[#7a5818]',
                   ring: 'ring-[#b78625]/30',
                 }
-              : {
-                  bg: 'bg-muted',
-                  text: 'text-muted-foreground',
-                  ring: 'ring-border',
-                }
+              : kind === 'email_inbound'
+                ? {
+                    bg: 'bg-[#e8f0f8]',
+                    text: 'text-[#2c4a6b]',
+                    ring: 'ring-[#3f668f]/30',
+                  }
+                : {
+                    bg: 'bg-muted',
+                    text: 'text-muted-foreground',
+                    ring: 'ring-border',
+                  }
 
   const initials =
     kind === 'softpro_360'
@@ -1007,7 +1032,9 @@ function KindBadge({ kind }: { kind: Kind }) {
             ? 'Rw'
             : kind === 'encompass'
               ? 'En'
-              : 'Mk'
+              : kind === 'email_inbound'
+                ? '@'
+                : 'Mk'
 
   return (
     <div
@@ -1015,6 +1042,235 @@ function KindBadge({ kind }: { kind: Kind }) {
     >
       {initials}
     </div>
+  )
+}
+
+// ─── Email-inbound setup panel ──────────────────────────────────────────
+//
+// One-screen onboarding for the email_inbound integration. Surfaces:
+//   1. The unique forwarding address the agency should auto-forward to.
+//      Until the Postmark Lambda is wired in, we show a placeholder that
+//      includes the integration id so the address is stable across renames.
+//   2. A direct webhook URL processors can curl during development.
+//   3. Setup tabs for Gmail / Outlook / Manual forwarding.
+//
+// The HMAC inboundSecret is NOT shown here — agencies don't operate the
+// re-signer; we do. Use the agent-style "reveal" pattern in a future
+// internal-tools section if that ever changes.
+
+function EmailPanel({ integration }: { integration: IntegrationRow }) {
+  const baseUrl = (import.meta.env.VITE_CONVEX_SITE_URL ?? '').toString()
+  const config = integration.config as
+    | { forwardAddressLocalPart?: string }
+    | null
+    | undefined
+  const localPart = config?.forwardAddressLocalPart ?? integration._id
+  const forwardAddress = `mail-${localPart}@inbound.titlehub.app`
+  const webhookUrl = baseUrl
+    ? `${baseUrl}/integrations/email/inbound?id=${integration._id}`
+    : `<your .convex.site URL>/integrations/email/inbound?id=${integration._id}`
+
+  return (
+    <div className="mt-4 rounded-md border border-border/60 bg-[#e8f0f8]/40 px-4 py-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Inbox setup
+        </div>
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f0f8] px-2 py-0.5 text-[10px] font-medium text-[#2c4a6b] ring-1 ring-inset ring-[#3f668f]/30">
+          Webhook delivery
+        </span>
+      </div>
+
+      <CopyableField
+        label="Forwarding address"
+        value={forwardAddress}
+        helper="Auto-forward agency mail to this address. We classify each message and pull attachments onto the matched file."
+      />
+
+      <CopyableField
+        label="Direct webhook URL"
+        value={webhookUrl}
+        mono
+        helper="Used by the Postmark re-signer (or curl during testing). HMAC-signed with the per-integration inboundSecret."
+      />
+
+      <ForwardingHowTo address={forwardAddress} />
+
+      <p className="mt-3 text-[11px] leading-snug text-muted-foreground">
+        Until the Postmark inbound provider is provisioned for your
+        deployment, the address above is illustrative. Test the pipeline
+        end-to-end with{' '}
+        <code className="rounded bg-card px-1 py-0.5 font-mono text-[10px]">
+          bun run admin simulate-email {(integration as { tenantSlug?: string }).tenantSlug ?? '<tenant-slug>'}
+        </code>
+        .
+      </p>
+    </div>
+  )
+}
+
+function CopyableField({
+  label,
+  value,
+  helper,
+  mono,
+}: {
+  label: string
+  value: string
+  helper?: string
+  mono?: boolean
+}) {
+  const [copied, setCopied] = useState(false)
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard blocked */
+    }
+  }
+  return (
+    <div className="mb-3 last:mb-0">
+      <div className="mb-1 flex items-baseline justify-between gap-2">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-[#2c4a6b]">
+          {label}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCopy}
+          className="h-6 gap-1 px-2 text-[11px] text-[#2c4a6b] hover:bg-[#e8f0f8]"
+          aria-label={`Copy ${label.toLowerCase()}`}
+        >
+          {copied ? (
+            <>
+              <Check className="size-3" />
+              Copied
+            </>
+          ) : (
+            <>
+              <Copy className="size-3" />
+              Copy
+            </>
+          )}
+        </Button>
+      </div>
+      <div
+        className={`overflow-x-auto rounded-md border border-[#3f668f]/20 bg-card px-3 py-2 text-sm text-[#2c4a6b] ${
+          mono ? 'font-mono text-[12px]' : 'font-numerals'
+        }`}
+      >
+        {value}
+      </div>
+      {helper && (
+        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+          {helper}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function ForwardingHowTo({ address }: { address: string }) {
+  const [tab, setTab] = useState<'gmail' | 'outlook' | 'manual'>('gmail')
+  const tabs: ReadonlyArray<{ id: typeof tab; label: string }> = [
+    { id: 'gmail', label: 'Gmail / Workspace' },
+    { id: 'outlook', label: 'Outlook 365' },
+    { id: 'manual', label: 'Plain SMTP' },
+  ]
+
+  return (
+    <div className="mt-3 rounded-md border border-[#3f668f]/30 bg-card/80 p-3">
+      <div className="mb-2 flex items-center gap-1 rounded-full bg-[#e8f0f8]/50 p-1 ring-1 ring-[#3f668f]/20">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`rounded-full px-2.5 py-0.5 text-[11px] transition ${
+              tab === t.id
+                ? 'bg-[#2c4a6b] text-white shadow-sm'
+                : 'text-[#2c4a6b] hover:bg-[#e8f0f8]'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'gmail' && (
+        <ol className="flex flex-col gap-1.5 text-[12px] leading-snug text-foreground/85">
+          <Step n={1}>
+            Settings → Forwarding and POP/IMAP → <strong>Add a forwarding address</strong>{' '}
+            and paste{' '}
+            <code className="rounded bg-muted px-1 font-mono text-[11px]">
+              {address}
+            </code>
+            . Verify via the confirmation email Gmail sends.
+          </Step>
+          <Step n={2}>
+            Settings → Filters and Blocked Addresses →{' '}
+            <strong>Create a new filter</strong>. Set criteria (e.g. "Has the
+            words: file" or "From: lender.com"), then click{' '}
+            <em>Create filter with this search</em>.
+          </Step>
+          <Step n={3}>
+            Check <strong>Forward it to: {address}</strong> and Apply. New
+            mail matching the filter starts arriving in your inbox tab here.
+          </Step>
+        </ol>
+      )}
+
+      {tab === 'outlook' && (
+        <ol className="flex flex-col gap-1.5 text-[12px] leading-snug text-foreground/85">
+          <Step n={1}>
+            Settings → <strong>Mail → Rules → Add new rule</strong>.
+          </Step>
+          <Step n={2}>
+            Add a condition (e.g. <em>Subject includes "file"</em> or{' '}
+            <em>Sender is lender.com</em>) and the action{' '}
+            <strong>Forward to {address}</strong>.
+          </Step>
+          <Step n={3}>
+            Save. Microsoft 365 begins forwarding immediately — no
+            confirmation email required.
+          </Step>
+        </ol>
+      )}
+
+      {tab === 'manual' && (
+        <ol className="flex flex-col gap-1.5 text-[12px] leading-snug text-foreground/85">
+          <Step n={1}>
+            Configure your mail server's redirect / .forward to copy mail to{' '}
+            <code className="rounded bg-muted px-1 font-mono text-[11px]">
+              {address}
+            </code>
+            .
+          </Step>
+          <Step n={2}>
+            Make sure your SPF / DMARC records are not strict on the From
+            address — forwarders sometimes break alignment, which Postmark
+            handles but can affect deliverability.
+          </Step>
+          <Step n={3}>
+            Send a test message. The first one arrives within 30s and shows
+            up in your Mail tab here.
+          </Step>
+        </ol>
+      )}
+    </div>
+  )
+}
+
+function Step({ n, children }: { n: number; children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-2.5">
+      <span className="font-numerals mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-[#2c4a6b] text-[10px] font-semibold text-white tabular-nums">
+        {n}
+      </span>
+      <span>{children}</span>
+    </li>
   )
 }
 

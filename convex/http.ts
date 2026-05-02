@@ -7,6 +7,8 @@ import {
   renderShellScript,
 } from './agentBootstrap'
 import { authComponent, createAuth } from './auth'
+import { parseAuthResults } from './lib/spamScore'
+import type { AuthResults } from './lib/spamScore'
 import type { Id } from './_generated/dataModel'
 
 const http = httpRouter()
@@ -523,6 +525,568 @@ http.route({
         status,
         headers: { 'Content-Type': 'application/json' },
       })
+    }
+  }),
+})
+
+// ─── Inbound email (autoscan) ───────────────────────────────────────────
+//
+// Provider POSTs a Postmark-shaped JSON envelope describing one email plus
+// any attachments (base64-encoded). We:
+//   1. Verify HMAC on the raw body (provider signs with the integration's
+//      `inboundSecret`, identical to the SoftPro agent's auth scheme).
+//   2. Persist the JSON as the "raw email" blob for forensics.
+//   3. Decode each attachment, compute its sha256, store it as its own blob.
+//   4. Call `_ingestInbound`, which classifies + auto-attaches inside one
+//      transaction.
+//
+// Mock-friendly: there's no Postmark-specific signature scheme here.
+// Anyone with the inboundSecret (the dev CLI, a Postmark proxy, AWS SES via
+// a Lambda shim) can sign and POST. Real Postmark wiring just becomes a
+// thin Lambda that re-signs the body with our secret.
+//
+// Wire format:
+//   POST /integrations/email/inbound?id=<integrationId>
+//   Headers:
+//     X-Title-Timestamp: <unix ms>
+//     X-Title-Signature: sha256=<hex(HMAC-SHA256(secret, ts.rawBody))>
+//   Body (Postmark-shaped):
+//     {
+//       "MessageID":   "...",
+//       "From":        "agent@example.com",
+//       "FromName":    "Jane Agent",
+//       "To":          "inbox+tenantslug@title.example.com",
+//       "Subject":     "Re: file 25-001234",
+//       "TextBody":    "...",
+//       "Date":        "2026-05-02T16:30:00Z",
+//       "Attachments": [
+//         {
+//           "Name":          "purchase_agreement.pdf",
+//           "ContentType":   "application/pdf",
+//           "Content":       "<base64>",
+//           "ContentLength": 12345
+//         }
+//       ]
+//     }
+//
+// Returns:
+//   200 { inboundEmailId, autoAttached, matchedFileId, confidence, deduped }
+//   400 / 401 / 409 on validation, auth, disabled-integration failures.
+//   500 on unexpected failure (an inboundEmails row in `failed` status is
+//   inserted so the operator sees it in the inbox UI).
+
+const POSTMARK_MAX_ATTACHMENTS = 50
+
+// Pull SPF/DKIM/DMARC verdicts from a Postmark-shaped payload. Tries the
+// explicit `SpfResult` / `DkimResult` / `DmarcResult` convenience fields
+// first (used by the simulate-email CLI), then walks the `Headers` array
+// looking for `Authentication-Results`. Returns an empty object when
+// neither path yields a verdict — the scorer interprets that as
+// "auth_missing" and adds a small penalty.
+function extractAuthVerdicts(body: {
+  Headers?: unknown
+  SpfResult?: unknown
+  DkimResult?: unknown
+  DmarcResult?: unknown
+}): AuthResults {
+  const explicit: AuthResults = {}
+  if (typeof body.SpfResult === 'string' && body.SpfResult)
+    explicit.spf = body.SpfResult
+  if (typeof body.DkimResult === 'string' && body.DkimResult)
+    explicit.dkim = body.DkimResult
+  if (typeof body.DmarcResult === 'string' && body.DmarcResult)
+    explicit.dmarc = body.DmarcResult
+  if (explicit.spf || explicit.dkim || explicit.dmarc) return explicit
+
+  if (!Array.isArray(body.Headers)) return {}
+  for (const h of body.Headers) {
+    if (
+      h &&
+      typeof h === 'object' &&
+      'Name' in h &&
+      'Value' in h &&
+      typeof h.Name === 'string' &&
+      typeof h.Value === 'string' &&
+      h.Name.toLowerCase() === 'authentication-results'
+    ) {
+      return parseAuthResults(h.Value)
+    }
+  }
+  return {}
+}
+
+function decodeBase64ToBytes(b64: string): Uint8Array {
+  // atob is available in the Convex runtime (Web platform). Strip whitespace
+  // because some providers wrap base64 at column 76.
+  const bin = atob(b64.replace(/\s+/g, ''))
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+http.route({
+  path: '/integrations/email/inbound',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const auth = await authenticateAgentRequest(ctx, req)
+    if (!auth.ok) return auth.response
+    if (auth.status === 'disabled') {
+      return new Response('integration disabled', { status: 409 })
+    }
+
+    type Attachment = {
+      Name?: unknown
+      ContentType?: unknown
+      Content?: unknown
+      ContentLength?: unknown
+    }
+    type InboundBody = {
+      MessageID?: unknown
+      From?: unknown
+      FromName?: unknown
+      To?: unknown
+      ReplyTo?: unknown
+      Subject?: unknown
+      TextBody?: unknown
+      HtmlBody?: unknown
+      Date?: unknown
+      Attachments?: unknown
+      Headers?: unknown
+      // Convenience pass-through: callers (the simulate-email CLI) can
+      // pre-resolve auth verdicts and skip Headers parsing.
+      SpfResult?: unknown
+      DkimResult?: unknown
+      DmarcResult?: unknown
+    }
+    let body: InboundBody
+    try {
+      body = JSON.parse(auth.rawBody) as InboundBody
+    } catch {
+      return new Response('invalid json', { status: 400 })
+    }
+
+    const stringField = (k: keyof InboundBody, fallback = ''): string =>
+      typeof body[k] === 'string' ? (body[k] as string) : fallback
+    const messageId = stringField('MessageID')
+    const fromAddress = stringField('From')
+    const subject = stringField('Subject')
+    if (!messageId || !fromAddress) {
+      return new Response('missing MessageID or From', { status: 400 })
+    }
+    const fromName = stringField('FromName') || undefined
+    const toAddress = stringField('To')
+    const replyTo = stringField('ReplyTo') || undefined
+    const textBody = stringField('TextBody') || undefined
+    const htmlBody = stringField('HtmlBody') || undefined
+    const dateStr = stringField('Date')
+    const parsedDate = Date.parse(dateStr)
+    const receivedAt = Number.isFinite(parsedDate) ? parsedDate : Date.now()
+
+    // Pull authentication verdicts. Prefer caller-supplied SpfResult /
+    // DkimResult / DmarcResult fields (used by the simulate-email CLI);
+    // fall back to parsing the Authentication-Results header when the
+    // provider includes it.
+    const authVerdicts = extractAuthVerdicts(body)
+
+    const attachmentsIn = Array.isArray(body.Attachments)
+      ? (body.Attachments as Attachment[])
+      : []
+    if (attachmentsIn.length > POSTMARK_MAX_ATTACHMENTS) {
+      // Don't decode — just record the failure so the operator sees it.
+      await ctx.runMutation(internal.inboundEmail._markFailed, {
+        integrationId: auth.integrationId,
+        providerMessageId: messageId,
+        fromAddress,
+        toAddress,
+        subject,
+        receivedAt,
+        errorMessage: `attachment_count ${attachmentsIn.length} exceeds limit`,
+      })
+      return new Response(
+        JSON.stringify({ error: 'TOO_MANY_ATTACHMENTS' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Persist the raw envelope first. Useful for debugging and for future
+    // re-classification — the inboundEmails row points at it via
+    // rawStorageId. JSON, not RFC-822, because Postmark already parsed.
+    const rawBlob = new Blob([auth.rawBody], { type: 'application/json' })
+    let rawStorageId: Id<'_storage'> | undefined
+    try {
+      rawStorageId = await ctx.storage.store(rawBlob)
+    } catch {
+      // If we can't store the raw blob, skip it — the email's parsed
+      // fields are still on the row, so triage isn't blocked.
+      rawStorageId = undefined
+    }
+
+    const storedAttachments: Array<{
+      filename: string
+      contentType: string
+      sizeBytes: number
+      sha256: string
+      storageId: Id<'_storage'>
+    }> = []
+
+    const cleanupBlobs = async () => {
+      if (rawStorageId) {
+        try {
+          await ctx.storage.delete(rawStorageId)
+        } catch {
+          /* best-effort */
+        }
+      }
+      for (const sa of storedAttachments) {
+        try {
+          await ctx.storage.delete(sa.storageId)
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+
+    try {
+      for (const a of attachmentsIn) {
+        const filename = typeof a.Name === 'string' ? a.Name : 'attachment'
+        const contentType =
+          typeof a.ContentType === 'string'
+            ? a.ContentType
+            : 'application/octet-stream'
+        const content = typeof a.Content === 'string' ? a.Content : ''
+        if (!content) continue
+        const bytes = decodeBase64ToBytes(content)
+        const sha256 = await hexSha256(bytes)
+        const storageId = await ctx.storage.store(
+          new Blob([bytes.buffer as ArrayBuffer], { type: contentType })
+        )
+        storedAttachments.push({
+          filename,
+          contentType,
+          sizeBytes: bytes.byteLength,
+          sha256,
+          storageId,
+        })
+      }
+
+      const result = await ctx.runMutation(internal.inboundEmail._ingestInbound, {
+        integrationId: auth.integrationId,
+        providerMessageId: messageId,
+        fromAddress,
+        fromName,
+        toAddress,
+        replyToAddress: replyTo,
+        subject,
+        bodyText: textBody,
+        bodyHtml: htmlBody,
+        receivedAt,
+        rawStorageId,
+        attachments: storedAttachments,
+        spfResult: authVerdicts.spf,
+        dkimResult: authVerdicts.dkim,
+        dmarcResult: authVerdicts.dmarc,
+      })
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } catch (err) {
+      // Mutation threw — clean up blobs we already stored, then record a
+      // failure row so the operator sees it.
+      await cleanupBlobs()
+      const msg = err instanceof Error ? err.message : String(err)
+      try {
+        await ctx.runMutation(internal.inboundEmail._markFailed, {
+          integrationId: auth.integrationId,
+          providerMessageId: messageId,
+          fromAddress,
+          toAddress,
+          subject,
+          receivedAt,
+          errorMessage: msg,
+        })
+      } catch {
+        /* best-effort */
+      }
+      const status = /TOO_MANY_ATTACHMENTS|INTEGRATION_NOT_EMAIL/.test(msg)
+        ? 400
+        : /INTEGRATION_NOT_FOUND|INTEGRATION_DISABLED/.test(msg)
+          ? 409
+          : 500
+      return new Response(JSON.stringify({ error: msg }), {
+        status,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+  }),
+})
+
+// ─── Postmark inbound webhook ──────────────────────────────────────────
+//
+// Postmark Inbound (https://postmarkapp.com/developer/user-guide/inbound)
+// POSTs a single JSON envelope per delivered email to a configured URL.
+// We accept that envelope here, route by `MailboxHash` (the `+suffix`
+// portion of the recipient address — Postmark surfaces it as a separate
+// field), and call the same `_ingestInbound` mutation the per-integration
+// HMAC path uses.
+//
+// Auth: Postmark supports HTTP Basic auth on the webhook URL. Configure
+// the user/password in Postmark's UI, set the same value in Convex env
+// (`POSTMARK_INBOUND_AUTH=user:pass`), and we compare in constant time.
+// If `POSTMARK_INBOUND_AUTH` is not set the route returns 503 — there is
+// no anonymous mode, ever.
+//
+// Returns 200 on:
+//   - successful ingest (autoAttached or quarantined)
+//   - duplicate delivery (Postmark retried)
+//   - unrouteable email (no matching email_inbound integration)
+// We always return 200 so Postmark stops retrying — the tenant routing
+// failure is logged on the server side. 4xx is reserved for malformed
+// payloads (Postmark won't retry forever on those).
+
+function constantTimeEqualStr(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let mismatch = 0
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return mismatch === 0
+}
+
+http.route({
+  path: '/integrations/email/postmark',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const expected = process.env.POSTMARK_INBOUND_AUTH
+    if (!expected) {
+      return new Response('postmark inbound not configured', { status: 503 })
+    }
+
+    const authHeader = req.headers.get('Authorization') ?? ''
+    if (!authHeader.startsWith('Basic ')) {
+      return new Response('unauthorized', { status: 401 })
+    }
+    let provided: string
+    try {
+      provided = atob(authHeader.slice('Basic '.length))
+    } catch {
+      return new Response('unauthorized', { status: 401 })
+    }
+    if (!constantTimeEqualStr(provided, expected)) {
+      return new Response('unauthorized', { status: 401 })
+    }
+
+    type PostmarkAttachment = {
+      Name?: unknown
+      ContentType?: unknown
+      Content?: unknown
+      ContentLength?: unknown
+    }
+    type PostmarkBody = {
+      MessageID?: unknown
+      From?: unknown
+      FromName?: unknown
+      To?: unknown
+      ReplyTo?: unknown
+      OriginalRecipient?: unknown
+      MailboxHash?: unknown
+      Subject?: unknown
+      TextBody?: unknown
+      HtmlBody?: unknown
+      Date?: unknown
+      Attachments?: unknown
+      Headers?: unknown
+      SpfResult?: unknown
+      DkimResult?: unknown
+      DmarcResult?: unknown
+    }
+    const rawBody = await req.text()
+    let body: PostmarkBody
+    try {
+      body = JSON.parse(rawBody) as PostmarkBody
+    } catch {
+      return new Response('invalid json', { status: 400 })
+    }
+
+    const stringField = (k: keyof PostmarkBody): string => {
+      const val = body[k]
+      return typeof val === 'string' ? val : ''
+    }
+    const messageId = stringField('MessageID')
+    const fromAddress = stringField('From')
+    if (!messageId || !fromAddress) {
+      return new Response('missing MessageID or From', { status: 400 })
+    }
+
+    // MailboxHash is Postmark's surfaced "+suffix" — e.g. an email to
+    // `webhook+abc123@inbound.postmarkapp.com` arrives with
+    // `MailboxHash: "abc123"`. Fall back to parsing OriginalRecipient if
+    // for any reason the field is empty.
+    let localpart = stringField('MailboxHash')
+    if (!localpart) {
+      const orig = stringField('OriginalRecipient') || stringField('To')
+      const m = orig.match(/[+-]([^@]+)@/)
+      if (m) localpart = m[1]
+    }
+    if (!localpart) {
+      // Unrouteable. Return 200 so Postmark stops retrying; the operator
+      // can investigate via Postmark's "delivered to webhook" tab.
+      return new Response(
+        JSON.stringify({ status: 'no_mailbox_hash' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const route = await ctx.runQuery(
+      internal.inboundEmail._findEmailInboundByLocalpart,
+      { localpart }
+    )
+    if (!route) {
+      return new Response(
+        JSON.stringify({ status: 'no_route', localpart }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+    if (route.status === 'disabled') {
+      return new Response(
+        JSON.stringify({ status: 'disabled', localpart }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const fromName = stringField('FromName') || undefined
+    const toAddress = stringField('To')
+    const replyTo = stringField('ReplyTo') || undefined
+    const subject = stringField('Subject')
+    const textBody = stringField('TextBody') || undefined
+    const htmlBody = stringField('HtmlBody') || undefined
+    const dateStr = stringField('Date')
+    const parsedDate = Date.parse(dateStr)
+    const receivedAt = Number.isFinite(parsedDate) ? parsedDate : Date.now()
+    const authVerdicts = extractAuthVerdicts(body)
+
+    const attachmentsIn = Array.isArray(body.Attachments)
+      ? (body.Attachments as Array<PostmarkAttachment>)
+      : []
+    if (attachmentsIn.length > POSTMARK_MAX_ATTACHMENTS) {
+      await ctx.runMutation(internal.inboundEmail._markFailed, {
+        integrationId: route.integrationId,
+        providerMessageId: messageId,
+        fromAddress,
+        toAddress,
+        subject,
+        receivedAt,
+        errorMessage: `attachment_count ${attachmentsIn.length} exceeds limit`,
+      })
+      return new Response(
+        JSON.stringify({ status: 'too_many_attachments' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const rawBlob = new Blob([rawBody], { type: 'application/json' })
+    let rawStorageId: Id<'_storage'> | undefined
+    try {
+      rawStorageId = await ctx.storage.store(rawBlob)
+    } catch {
+      rawStorageId = undefined
+    }
+
+    const storedAttachments: Array<{
+      filename: string
+      contentType: string
+      sizeBytes: number
+      sha256: string
+      storageId: Id<'_storage'>
+    }> = []
+
+    const cleanupBlobs = async () => {
+      if (rawStorageId) {
+        try {
+          await ctx.storage.delete(rawStorageId)
+        } catch {
+          /* best-effort */
+        }
+      }
+      for (const sa of storedAttachments) {
+        try {
+          await ctx.storage.delete(sa.storageId)
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+
+    try {
+      for (const a of attachmentsIn) {
+        const filename = typeof a.Name === 'string' ? a.Name : 'attachment'
+        const contentType =
+          typeof a.ContentType === 'string'
+            ? a.ContentType
+            : 'application/octet-stream'
+        const content = typeof a.Content === 'string' ? a.Content : ''
+        if (!content) continue
+        const bytes = decodeBase64ToBytes(content)
+        const sha256 = await hexSha256(bytes)
+        const storageId = await ctx.storage.store(
+          new Blob([bytes.buffer as ArrayBuffer], { type: contentType })
+        )
+        storedAttachments.push({
+          filename,
+          contentType,
+          sizeBytes: bytes.byteLength,
+          sha256,
+          storageId,
+        })
+      }
+
+      const result = await ctx.runMutation(
+        internal.inboundEmail._ingestInbound,
+        {
+          integrationId: route.integrationId,
+          providerMessageId: messageId,
+          fromAddress,
+          fromName,
+          toAddress,
+          replyToAddress: replyTo,
+          subject,
+          bodyText: textBody,
+          bodyHtml: htmlBody,
+          receivedAt,
+          rawStorageId,
+          attachments: storedAttachments,
+          spfResult: authVerdicts.spf,
+          dkimResult: authVerdicts.dkim,
+          dmarcResult: authVerdicts.dmarc,
+        }
+      )
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    } catch (err) {
+      await cleanupBlobs()
+      const msg = err instanceof Error ? err.message : String(err)
+      try {
+        await ctx.runMutation(internal.inboundEmail._markFailed, {
+          integrationId: route.integrationId,
+          providerMessageId: messageId,
+          fromAddress,
+          toAddress,
+          subject,
+          receivedAt,
+          errorMessage: msg,
+        })
+      } catch {
+        /* best-effort */
+      }
+      // Still 200 — we've recorded the failure server-side; we don't want
+      // Postmark hammering us with retries on a payload-shape issue.
+      return new Response(
+        JSON.stringify({ status: 'failed', error: msg }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
     }
   }),
 })

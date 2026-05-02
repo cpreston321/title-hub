@@ -35,6 +35,15 @@ type ExtractionView = {
     financingApprovalDays?: number
   } | null
   titleCompany?: { name?: string; phone?: string; selectedBy?: string } | null
+  wireInstructions?: {
+    payeeName?: string
+    payeeBankName?: string
+    beneficiaryName?: string
+    amount?: number
+    instructionDate?: string
+    wireType?: string
+    senderRole?: string
+  } | null
   contingencies?: string[]
   amendments?: string[]
   notes?: string[]
@@ -308,6 +317,215 @@ function compareParties(
         involvedFields: ['parties.legalName'],
         rawDetail: { role, names: Array.from(bucket.keys()), perDoc: flat },
       })
+    }
+  }
+}
+
+// Wire-instruction verification (ALTA Pillar 2 — escrow/funding controls).
+//
+// Wire-fraud in title closings almost always presents the same way: an
+// instruction sheet arrives by email purporting to be from the title
+// company / seller / lender, names a "new" payee, and routes funds to
+// an attacker's account. Catching it requires linking the wire's payee
+// name back to entities the file already knows about.
+//
+// What this rule does:
+//   1. For each `wire_instructions` extraction, compute token-overlap
+//      between its payeeName and every entity name we already see on the
+//      file — file-parties' legalNames + any extracted titleCompany.name.
+//   2. No tokens shared with anyone → BLOCK ("wire.payee_unknown").
+//      The payee is not an entity any prior document mentions; treat as
+//      probable fraud until a human signs off.
+//   3. Partial match (≥1 token shared, but not a full subset of any
+//      single entity) → WARN ("wire.payee_partial_match"). Could be a
+//      legitimate variant ("Near North Title" vs "Near North Title
+//      Insurance Co") or a typo-squatting attempt.
+//   4. Full match → no finding emitted (clean signal — info noise).
+//
+// Amount sanity: if the wire amount is absurd vs. the contract price
+// (>1.5x or <0.1x), surface a WARN. This catches both decimal-shift
+// errors and "wrong file" attacks.
+//
+// What this rule deliberately does NOT do (yet):
+//   • Routing/account number comparison — those are NPI; the prompt
+//     refuses to extract them.
+//   • Sender-domain reputation — needs the inbound email row threaded
+//     through, which the reconciliation engine doesn't see today.
+//   • Historical "this payee changed banks" — needs a wireFindings
+//     history table that we'll add when the second slice ships.
+
+const WIRE_NAME_STOPWORDS = new Set([
+  'the',
+  'of',
+  'and',
+  'a',
+  'an',
+  'co',
+  'company',
+  'llc',
+  'l.l.c',
+  'lp',
+  'l.p',
+  'inc',
+  'incorporated',
+  'corp',
+  'corporation',
+  'pllc',
+  'group',
+  'services',
+  'service',
+  'escrow',
+  'account',
+  'trust',
+])
+
+function nameTokens(s: string | undefined): Set<string> {
+  if (!s) return new Set()
+  const norm = s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+  return new Set(
+    norm
+      .split(/\s+/)
+      .filter((t) => t.length >= 2 && !WIRE_NAME_STOPWORDS.has(t))
+  )
+}
+
+// Returns the highest match score (0..1) of `payee` against any of the
+// candidate entity names, plus the candidate that won. 1.0 means every
+// significant payee token appears in the candidate's tokens.
+function bestNameMatch(
+  payee: string,
+  candidates: ReadonlyArray<{ name: string; from: string }>
+): { score: number; against: { name: string; from: string } | null } {
+  const payeeTokens = nameTokens(payee)
+  if (payeeTokens.size === 0 || candidates.length === 0) {
+    return { score: 0, against: null }
+  }
+  let best: { score: number; against: { name: string; from: string } | null } =
+    { score: 0, against: null }
+  for (const c of candidates) {
+    const candTokens = nameTokens(c.name)
+    if (candTokens.size === 0) continue
+    let hit = 0
+    for (const t of payeeTokens) if (candTokens.has(t)) hit++
+    const score = hit / payeeTokens.size
+    if (score > best.score) best = { score, against: c }
+  }
+  return best
+}
+
+function verifyWireInstructions(
+  extractions: Array<{
+    documentId: Id<'documents'>
+    view: ExtractionView
+    uploadedAt: number
+  }>,
+  out: Pending[]
+) {
+  const wires = extractions.filter(
+    (e) =>
+      e.view.documentKind === 'wire_instructions' &&
+      e.view.wireInstructions != null
+  )
+  if (wires.length === 0) return
+
+  // Build the universe of "known good" entity names from every other
+  // extraction on the file. We deliberately don't restrict by role —
+  // payees can legitimately be the seller, the title co., a 1031
+  // exchange intermediary, or a contractor named in the PA notes.
+  const candidates: Array<{ name: string; from: string }> = []
+  for (const e of extractions) {
+    if (e.view.documentKind === 'wire_instructions') continue
+    for (const p of e.view.parties ?? []) {
+      if (p.legalName) {
+        candidates.push({
+          name: p.legalName,
+          from: `${e.view.documentKind ?? 'doc'}.parties[${p.role ?? '?'}]`,
+        })
+      }
+    }
+    if (e.view.titleCompany?.name) {
+      candidates.push({
+        name: e.view.titleCompany.name,
+        from: `${e.view.documentKind ?? 'doc'}.titleCompany`,
+      })
+    }
+  }
+
+  const latestPrice = pickLatestPrice(extractions)?.price ?? null
+
+  for (const wire of wires) {
+    const wi = wire.view.wireInstructions!
+    const payee = wi.payeeName
+    if (!payee) {
+      out.push({
+        findingType: 'wire.payee_missing',
+        severity: 'warn',
+        message:
+          'Wire instructions are present but no payee name was extracted. Confirm the instructions are legible and contain a payee.',
+        involvedDocumentIds: [wire.documentId],
+        involvedFields: ['wireInstructions.payeeName'],
+        rawDetail: { wireInstructions: wi },
+      })
+      continue
+    }
+
+    const best = bestNameMatch(payee, candidates)
+    if (best.score === 0) {
+      out.push({
+        findingType: 'wire.payee_unknown',
+        severity: 'block',
+        message: `Wire payee "${payee}" does not match any party or title company on this file. Treat as potential wire fraud — confirm by phone with a known number from a prior unrelated document before releasing funds.`,
+        involvedDocumentIds: [wire.documentId],
+        involvedFields: [
+          'wireInstructions.payeeName',
+          'parties.legalName',
+          'titleCompany.name',
+        ],
+        rawDetail: {
+          payee,
+          payeeBank: wi.payeeBankName,
+          knownEntities: candidates.map((c) => c.name),
+        },
+      })
+    } else if (best.score < 1) {
+      out.push({
+        findingType: 'wire.payee_partial_match',
+        severity: 'warn',
+        message: `Wire payee "${payee}" partially matches "${best.against?.name ?? '?'}" (${Math.round(best.score * 100)}% token overlap). Verify by phone before releasing — wire-fraud often presents as a near-twin of the real payee.`,
+        involvedDocumentIds: [wire.documentId],
+        involvedFields: [
+          'wireInstructions.payeeName',
+          'parties.legalName',
+          'titleCompany.name',
+        ],
+        rawDetail: {
+          payee,
+          payeeBank: wi.payeeBankName,
+          bestMatch: best.against,
+          score: best.score,
+        },
+      })
+    }
+
+    // Amount sanity vs. the contract price. Only fires when both are
+    // known — silent on closing-cost-only wires (which legitimately fall
+    // far below price), since those would false-positive every time.
+    if (latestPrice !== null && typeof wi.amount === 'number') {
+      const ratio = wi.amount / latestPrice
+      if (ratio > 1.5) {
+        out.push({
+          findingType: 'wire.amount_unusual',
+          severity: 'warn',
+          message: `Wire amount $${wi.amount.toLocaleString()} is ${ratio.toFixed(1)}× the agreed purchase price ($${latestPrice.toLocaleString()}). Confirm — common decimal-shift fraud.`,
+          involvedDocumentIds: [wire.documentId],
+          involvedFields: ['wireInstructions.amount', 'financial.purchasePrice'],
+          rawDetail: {
+            amount: wi.amount,
+            purchasePrice: latestPrice,
+            ratio,
+          },
+        })
+      }
     }
   }
 }
@@ -806,6 +1024,7 @@ async function runReconciliationCore(
   compareFinancingWindow(usable, findings)
   compareParties(usable, findings)
   compareVesting(usable, findings)
+  verifyWireInstructions(usable, findings)
 
   // County-records evidence (from the latest propertySnapshot, populated by
   // countyConnect.runForFile). All four checks no-op when no snapshot exists,
