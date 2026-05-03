@@ -774,6 +774,30 @@ function NotificationRowView({
   n: NotificationRow
   onClick: () => void
 }) {
+  const [expanded, setExpanded] = useState(false)
+  const [overflows, setOverflows] = useState(false)
+  const titleRef = useRef<HTMLSpanElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+
+  // Measure whether the clamped title/body actually overflow so we only show
+  // the toggle when there's hidden content. Re-runs when the row collapses
+  // back so a fresh measurement reflects the clamped state.
+  useEffect(() => {
+    if (expanded) return
+    const measure = () => {
+      const t = titleRef.current
+      const b = bodyRef.current
+      const titleOver = !!t && t.scrollWidth > t.clientWidth + 1
+      const bodyOver = !!b && b.scrollHeight > b.clientHeight + 1
+      setOverflows(titleOver || bodyOver)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (titleRef.current) ro.observe(titleRef.current)
+    if (bodyRef.current) ro.observe(bodyRef.current)
+    return () => ro.disconnect()
+  }, [expanded, n.title, n.body])
+
   const tone =
     n.severity === 'block'
       ? {
@@ -806,12 +830,20 @@ function NotificationRowView({
               }
 
   const unread = !n.readAt
+  const showToggle = overflows || expanded
   return (
     <li>
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onClick}
-        className={`group/notif flex w-full appearance-none items-start gap-3 border-0 bg-transparent px-4 py-2.5 text-left font-sans text-inherit transition hover:bg-[#fdf6e8]/50 ${
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClick()
+          }
+        }}
+        className={`group/notif flex w-full cursor-pointer items-start gap-3 px-4 py-2.5 text-left transition hover:bg-[#fdf6e8]/50 focus:outline-none focus-visible:bg-[#fdf6e8]/60 ${
           unread ? 'bg-[#fdf6e8]/30' : ''
         }`}
       >
@@ -822,7 +854,12 @@ function NotificationRowView({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="truncate text-sm font-medium text-[#2e2430]">
+            <span
+              ref={titleRef}
+              className={`text-sm font-medium text-[#2e2430] ${
+                expanded ? 'break-words' : 'truncate'
+              }`}
+            >
               {n.title}
             </span>
             <span className="shrink-0 text-[11px] text-muted-foreground">
@@ -830,9 +867,26 @@ function NotificationRowView({
             </span>
           </div>
           {n.body && (
-            <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+            <div
+              ref={bodyRef}
+              className={`mt-0.5 text-xs text-muted-foreground ${
+                expanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-1'
+              }`}
+            >
               {n.body}
             </div>
+          )}
+          {showToggle && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setExpanded((v) => !v)
+              }}
+              className="mt-1 text-[11px] font-medium text-[#593157] transition hover:text-[#40233f] hover:underline"
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </button>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1 self-center">
@@ -846,7 +900,7 @@ function NotificationRowView({
             <ChevronRight className="size-3.5 text-muted-foreground/40 transition group-hover/notif:translate-x-0.5 group-hover/notif:text-[#40233f]" />
           )}
         </div>
-      </button>
+      </div>
     </li>
   )
 }

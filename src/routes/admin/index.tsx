@@ -3,14 +3,15 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
-  ScrollText,
-  Plug,
-  Users,
-  Mail,
+  CheckCircle2,
   Eye,
   EyeOff,
+  Lock,
+  Mail,
+  Plug,
+  ScrollText,
   Send,
-  CheckCircle2,
+  Users,
 } from 'lucide-react'
 import {
   Card,
@@ -20,7 +21,6 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -28,7 +28,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select'
 import { AppShell } from '@/components/app-shell'
 import { Loading } from '@/components/loading'
@@ -231,12 +230,63 @@ const ROLE_OPTIONS = [
 ] as const
 type RoleId = (typeof ROLE_OPTIONS)[number]['id']
 
+// Tone-coded look per role — same palette tokens used everywhere else
+// (orders / files / mail). The Select trigger borrows these so each row's
+// role is readable at a glance without scanning the label.
+const ROLE_TONE: Record<
+  RoleId,
+  { bg: string; text: string; ring: string; dot: string }
+> = {
+  owner: {
+    bg: 'bg-[#f2e7f1]',
+    text: 'text-[#40233f]',
+    ring: 'ring-[#593157]/30',
+    dot: 'bg-[#593157]',
+  },
+  admin: {
+    bg: 'bg-[#fdf6e8]',
+    text: 'text-[#7a5818]',
+    ring: 'ring-[#b78625]/35',
+    dot: 'bg-[#b78625]',
+  },
+  processor: {
+    bg: 'bg-[#e8f0f8]',
+    text: 'text-[#2c4a6b]',
+    ring: 'ring-[#3f668f]/30',
+    dot: 'bg-[#3f668f]',
+  },
+  closer: {
+    bg: 'bg-[#e6f3ed]',
+    text: 'text-[#2f5d4b]',
+    ring: 'ring-[#3f7c64]/30',
+    dot: 'bg-[#3f7c64]',
+  },
+  reviewer: {
+    bg: 'bg-[#fde9dc]',
+    text: 'text-[#7a3d18]',
+    ring: 'ring-[#c9652e]/30',
+    dot: 'bg-[#c9652e]',
+  },
+  readonly: {
+    bg: 'bg-card',
+    text: 'text-muted-foreground',
+    ring: 'ring-border',
+    dot: 'bg-muted-foreground/40',
+  },
+}
+
+function roleLabel(id: RoleId): string {
+  return ROLE_OPTIONS.find((r) => r.id === id)?.label ?? id
+}
+
 function MembersPanel() {
+  const current = useQuery(convexQuery(api.tenants.current, {}))
   const members = useQuery(convexQuery(api.tenants.listMembers, {}))
   const setRole = useConvexMutation(api.tenants.setMemberRole)
   const setNpi = useConvexMutation(api.tenants.setMemberNpiAccess)
   const [error, setError] = useState<string | null>(null)
   const list = members.data ?? []
+  const selfMemberId = current.data?.memberId ?? null
 
   const onRoleChange = async (memberId: Id<'tenantMembers'>, role: RoleId) => {
     try {
@@ -288,81 +338,143 @@ function MembersPanel() {
         </div>
       ) : (
         <ol className="divide-y divide-border/50">
-          <li className="hidden grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 bg-[#fdf6e8]/50 px-6 py-2 text-xs text-muted-foreground sm:grid">
-            <span className="text-right">№</span>
+          <li className="hidden grid-cols-[1fr_9rem_5.5rem] items-center gap-4 bg-[#fdf6e8]/50 px-6 py-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:grid">
             <span>Member</span>
             <span>Role</span>
-            <span className="text-right">NPI</span>
+            <span className="text-right">NPI access</span>
           </li>
-          {list.map((m, i) => (
-            <li
-              key={m._id}
-              className="grid grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-6 py-3 transition hover:bg-[#fdf6e8]/40"
-            >
-              <span className="font-numerals text-right text-xs text-muted-foreground/70 tabular-nums">
-                {String(i + 1).padStart(2, '0')}
-              </span>
-
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#fdf6e8] ring-1 ring-[#40233f]/15">
-                  <span className="font-display text-[11px] font-semibold text-[#40233f]">
-                    {initials(m.email)}
-                  </span>
-                </div>
-                <div className="min-w-0">
-                  <div className="font-numerals truncate text-sm font-medium text-[#2e2430]">
-                    {m.email}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {m.status}
-                  </div>
-                </div>
-              </div>
-
-              <Select
-                value={m.role}
-                onValueChange={(v) =>
-                  onRoleChange(m._id as Id<'tenantMembers'>, v as RoleId)
-                }
-              >
-                <SelectTrigger size="sm" className="font-numerals text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLE_OPTIONS.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      <span className="flex flex-col items-start">
-                        <span className="text-sm">{r.label}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {r.desc}
-                        </span>
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Label
-                htmlFor={`npi-${m._id}`}
-                className={`group/npi flex cursor-pointer items-center justify-end gap-2 text-xs ${
-                  m.canViewNpi ? 'text-[#2f5d4b]' : 'text-muted-foreground/70'
+          {list.map((m) => {
+            const tone = ROLE_TONE[m.role]
+            const isSelf = selfMemberId === m._id
+            const lockTitle =
+              'You can\'t change your own role or NPI access. Ask another admin or owner to make this change.'
+            return (
+              <li
+                key={m._id}
+                className={`grid grid-cols-1 gap-3 px-6 py-3 transition sm:grid-cols-[1fr_9rem_5.5rem] sm:items-center sm:gap-4 ${
+                  isSelf
+                    ? 'bg-[#fdf6e8]/40'
+                    : 'hover:bg-[#fdf6e8]/30'
                 }`}
               >
-                {m.canViewNpi ? (
-                  <Eye className="size-3.5" />
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="relative grid size-9 shrink-0 place-items-center rounded-full bg-[#fdf6e8] ring-1 ring-[#40233f]/15">
+                    <span className="font-display text-xs font-semibold text-[#40233f]">
+                      {initials(m.email)}
+                    </span>
+                    <span
+                      className={`absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-card ${
+                        m.status === 'active'
+                          ? 'bg-[#3f7c64]'
+                          : 'bg-muted-foreground/40'
+                      }`}
+                      aria-hidden
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="font-numerals truncate text-sm font-medium text-[#2e2430]">
+                        {m.email}
+                      </div>
+                      {isSelf && (
+                        <span className="inline-flex items-center rounded-full bg-[#40233f] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#f6e8d9]">
+                          You
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 ring-1 ring-inset ${
+                          m.status === 'active'
+                            ? 'bg-[#e6f3ed] text-[#2f5d4b] ring-[#3f7c64]/30'
+                            : 'bg-muted text-muted-foreground ring-border'
+                        }`}
+                      >
+                        <span
+                          className={`size-1 rounded-full ${
+                            m.status === 'active'
+                              ? 'bg-[#3f7c64]'
+                              : 'bg-muted-foreground/50'
+                          }`}
+                        />
+                        {m.status}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {isSelf ? (
+                  <span
+                    title={lockTitle}
+                    aria-label={lockTitle}
+                    className={`inline-flex w-fit cursor-not-allowed items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium opacity-70 ring-1 ring-inset ${tone.bg} ${tone.text} ${tone.ring}`}
+                  >
+                    <span
+                      className={`size-1.5 shrink-0 rounded-full ${tone.dot}`}
+                    />
+                    {roleLabel(m.role)}
+                    <Lock className="size-3 opacity-70" />
+                  </span>
                 ) : (
-                  <EyeOff className="size-3.5" />
+                  <Select
+                    value={m.role}
+                    onValueChange={(v) =>
+                      onRoleChange(m._id as Id<'tenantMembers'>, v as RoleId)
+                    }
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      aria-label={`Change role for ${m.email}`}
+                      className={`gap-1.5 rounded-full border-0 px-2.5 text-xs font-medium ring-1 ring-inset transition hover:brightness-[0.97] focus-visible:ring-2 focus-visible:ring-[#593157]/40 ${tone.bg} ${tone.text} ${tone.ring}`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className={`size-1.5 shrink-0 rounded-full ${tone.dot}`}
+                        />
+                        {roleLabel(m.role)}
+                      </span>
+                    </SelectTrigger>
+                    <SelectContent position="popper" align="start" sideOffset={4}>
+                      {ROLE_OPTIONS.map((r) => {
+                        const t = ROLE_TONE[r.id]
+                        return (
+                          <SelectItem
+                            key={r.id}
+                            value={r.id}
+                            className="py-2"
+                          >
+                            <span className="flex items-start gap-2.5">
+                              <span
+                                className={`mt-1 inline-flex size-2 shrink-0 rounded-full ${t.dot}`}
+                              />
+                              <span className="flex flex-col items-start">
+                                <span className="text-sm font-medium text-[#40233f]">
+                                  {r.label}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {r.desc}
+                                </span>
+                              </span>
+                            </span>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
                 )}
-                <Checkbox
+
+                <NpiSwitch
                   id={`npi-${m._id}`}
                   checked={m.canViewNpi}
-                  onCheckedChange={(checked) =>
-                    onNpiChange(m._id as Id<'tenantMembers'>, checked === true)
+                  disabled={isSelf}
+                  disabledTitle={isSelf ? lockTitle : undefined}
+                  onChange={(next) =>
+                    onNpiChange(m._id as Id<'tenantMembers'>, next)
                   }
                 />
-              </Label>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ol>
       )}
 
@@ -529,4 +641,71 @@ function initials(email: string): string {
   const parts = local.split(/[._-]+/).filter(Boolean)
   if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase()
   return (local.slice(0, 2) || '··').toUpperCase()
+}
+
+// Switch-style NPI toggle. Visual: a 36×20 track that slides a 14px thumb
+// from left to right, with an Eye / EyeOff icon inside the thumb so the
+// state is readable from across the room. Built on a native button so
+// keyboard activation, role="switch", and aria-checked all work without
+// extra wiring.
+function NpiSwitch({
+  id,
+  checked,
+  disabled,
+  disabledTitle,
+  onChange,
+}: {
+  id: string
+  checked: boolean
+  disabled?: boolean
+  disabledTitle?: string
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <div className="flex items-center justify-end">
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-disabled={disabled || undefined}
+        disabled={disabled}
+        title={disabled ? disabledTitle : undefined}
+        aria-label={
+          disabled
+            ? (disabledTitle ?? 'NPI access locked')
+            : checked
+              ? 'Revoke NPI access for this member'
+              : 'Grant NPI access to this member'
+        }
+        onClick={() => {
+          if (disabled) return
+          onChange(!checked)
+        }}
+        className={`group/npi relative inline-flex h-5 w-9 shrink-0 items-center rounded-full ring-1 ring-inset transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#593157]/40 ${
+          disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+        } ${
+          checked
+            ? 'bg-[#e6f3ed] ring-[#3f7c64]/40'
+            : 'bg-muted ring-border'
+        }`}
+      >
+        <span
+          className={`absolute top-0.5 grid size-4 place-items-center rounded-full shadow-sm transition-all ${
+            checked
+              ? 'left-[1.125rem] bg-[#3f7c64] text-white'
+              : 'left-0.5 bg-card text-muted-foreground'
+          }`}
+        >
+          {disabled ? (
+            <Lock className="size-2.5" />
+          ) : checked ? (
+            <Eye className="size-2.5" />
+          ) : (
+            <EyeOff className="size-2.5" />
+          )}
+        </span>
+      </button>
+    </div>
+  )
 }

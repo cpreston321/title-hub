@@ -224,6 +224,7 @@ export const current = query({
       legalName: tenant.legalName,
       status: tenant.status,
       plan: tenant.plan,
+      memberId: tc.memberId,
       role: tc.role,
       canViewNpi: tc.canViewNpi,
       betterAuthOrgId: tenant.betterAuthOrgId,
@@ -266,6 +267,12 @@ export const setMemberRole = mutation({
   handler: async (ctx, { memberId, role }) => {
     const tc = await requireTenant(ctx)
     requireRole(tc, 'owner', 'admin')
+    // A user can't change their own role — that's the classic
+    // privilege-escalation / self-lockout vector. An owner can always
+    // hand the role to another member who can then re-grant.
+    if (memberId === tc.memberId) {
+      throw new ConvexError('CANNOT_MODIFY_SELF')
+    }
     const member = await ctx.db.get(memberId)
     if (!member || member.tenantId !== tc.tenantId) {
       throw new ConvexError('MEMBER_NOT_FOUND')
@@ -284,6 +291,11 @@ export const setMemberNpiAccess = mutation({
   handler: async (ctx, { memberId, canViewNpi }) => {
     const tc = await requireTenant(ctx)
     requireRole(tc, 'owner', 'admin')
+    // Same self-modification rule as role changes: NPI access has to be
+    // granted (or revoked) by another admin, never the holder themselves.
+    if (memberId === tc.memberId) {
+      throw new ConvexError('CANNOT_MODIFY_SELF')
+    }
     const member = await ctx.db.get(memberId)
     if (!member || member.tenantId !== tc.tenantId) {
       throw new ConvexError('MEMBER_NOT_FOUND')

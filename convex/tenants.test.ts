@@ -136,4 +136,51 @@ describe('Better Auth organization-backed tenancy', () => {
       expect.arrayContaining(['tenant.created', 'member.added', 'file.created'])
     )
   })
+
+  test('a member cannot change their own role (CANNOT_MODIFY_SELF)', async () => {
+    const t = convexTest(schema, modules)
+    registerLocalBetterAuth(t, betterAuthModules)
+    const alice = await makeBetterAuthUser(t, 'alice@a.example', 'Alice')
+    await createOrganizationAsUser(t, alice.userId, alice.sessionId, {
+      slug: 'agency-a',
+      name: 'Agency A LLC',
+    })
+
+    const me = await alice.asUser.query(api.tenants.current, {})
+    if (!me) throw new Error('expected tenant context')
+
+    await expect(
+      alice.asUser.mutation(api.tenants.setMemberRole, {
+        memberId: me.memberId,
+        role: 'admin',
+      })
+    ).rejects.toThrow(/CANNOT_MODIFY_SELF/)
+
+    // Role unchanged.
+    const after = await alice.asUser.query(api.tenants.current, {})
+    expect(after?.role).toBe('owner')
+  })
+
+  test('a member cannot change their own NPI access (CANNOT_MODIFY_SELF)', async () => {
+    const t = convexTest(schema, modules)
+    registerLocalBetterAuth(t, betterAuthModules)
+    const alice = await makeBetterAuthUser(t, 'alice@a.example', 'Alice')
+    await createOrganizationAsUser(t, alice.userId, alice.sessionId, {
+      slug: 'agency-a',
+      name: 'Agency A LLC',
+    })
+
+    const me = await alice.asUser.query(api.tenants.current, {})
+    if (!me) throw new Error('expected tenant context')
+
+    await expect(
+      alice.asUser.mutation(api.tenants.setMemberNpiAccess, {
+        memberId: me.memberId,
+        canViewNpi: false,
+      })
+    ).rejects.toThrow(/CANNOT_MODIFY_SELF/)
+
+    const after = await alice.asUser.query(api.tenants.current, {})
+    expect(after?.canViewNpi).toBe(true)
+  })
 })
