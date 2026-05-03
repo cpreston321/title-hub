@@ -2,13 +2,19 @@ import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
+  ArrowRight,
   Bell,
   Check,
   CheckCircle2,
   ChevronRight,
   CircleAlert,
+  CornerDownLeft,
+  FileText,
+  Mail,
+  Paperclip,
   Search,
   Sparkles,
+  User,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -414,7 +420,7 @@ function GlobalSearch() {
         <div
           id="global-search-results"
           role="listbox"
-          className="absolute top-full right-0 left-0 z-50 mt-2 max-h-[60vh] overflow-y-auto rounded-2xl bg-popover p-2 text-popover-foreground shadow-lg ring-1 ring-foreground/5"
+          className="absolute top-full right-0 z-50 mt-2 max-h-[70vh] w-[36rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl bg-popover p-2 text-popover-foreground shadow-lg ring-1 ring-foreground/5"
         >
           {results.isLoading && !data && (
             <div className="px-3 py-4 text-sm text-muted-foreground">
@@ -430,6 +436,7 @@ function GlobalSearch() {
             <FlatResultList
               results={data}
               flat={flat}
+              query={trimmed}
               selectedIndex={selectedIndex}
               onHover={setSelectedIndex}
               onSelect={activate}
@@ -465,6 +472,7 @@ function GlobalSearch() {
 function FlatResultList({
   results,
   flat,
+  query,
   selectedIndex,
   onHover,
   onSelect,
@@ -475,6 +483,14 @@ function FlatResultList({
       fileNumber: string
       transactionType: string
       status: string
+      propertyApn?: string | null
+      propertyAddress?: {
+        line1: string
+        line2: string | null
+        city: string
+        state: string
+        zip: string
+      } | null
     }>
     parties: ReadonlyArray<{
       partyId: string
@@ -511,12 +527,13 @@ function FlatResultList({
     }>
   }
   flat: ReadonlyArray<FlatResult>
+  query: string
   selectedIndex: number
   onHover: (i: number) => void
   onSelect: (i: number) => void
 }) {
   // Iterate over flat for selection mapping. Group rendering follows the
-  // order files → parties → findings.
+  // order files → parties → findings → documents → emails → actions.
   let cursor = 0
   const sections: React.ReactElement[] = []
 
@@ -524,14 +541,43 @@ function FlatResultList({
     const start = cursor
     cursor += results.files.length
     sections.push(
-      <ResultGroup key="files" label="Files">
+      <ResultGroup key="files" label="Files" count={results.files.length}>
         {results.files.map((f, i) => {
           const idx = start + i
+          const addressLine = formatAddress(f.propertyAddress)
           return (
             <ResultRow
               key={f._id}
-              title={f.fileNumber}
-              meta={`${f.transactionType} · ${f.status}`}
+              icon={
+                <ResultIcon tone="violet">
+                  <FileText className="size-3.5" />
+                </ResultIcon>
+              }
+              title={<Highlight text={f.fileNumber} query={query} />}
+              badge={
+                <Chip tone={fileStatusTone(f.status)}>
+                  {humanize(f.status)}
+                </Chip>
+              }
+              meta={
+                <>
+                  <span className="capitalize">
+                    {humanize(f.transactionType)}
+                  </span>
+                  {addressLine && (
+                    <>
+                      {' · '}
+                      <Highlight text={addressLine} query={query} />
+                    </>
+                  )}
+                  {!addressLine && f.propertyApn && (
+                    <>
+                      {' · APN '}
+                      <Highlight text={f.propertyApn} query={query} />
+                    </>
+                  )}
+                </>
+              }
               selected={idx === selectedIndex}
               onMouseMove={() => onHover(idx)}
               onSelect={() => onSelect(idx)}
@@ -547,17 +593,30 @@ function FlatResultList({
     const start = cursor
     cursor += navigableParties.length
     sections.push(
-      <ResultGroup key="parties" label="Parties">
+      <ResultGroup
+        key="parties"
+        label="Parties"
+        count={navigableParties.length}
+      >
         {navigableParties.map((p, i) => {
           const idx = start + i
           return (
             <ResultRow
               key={p.partyId}
-              title={p.legalName}
+              icon={
+                <ResultIcon tone="teal">
+                  <User className="size-3.5" />
+                </ResultIcon>
+              }
+              title={<Highlight text={p.legalName} query={query} />}
+              badge={<Chip tone="neutral">{humanize(p.partyType)}</Chip>}
               meta={
-                p.fileNumber
-                  ? `${p.partyType} · on ${p.fileNumber}`
-                  : p.partyType
+                p.fileNumber ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span>on</span>
+                    <FilePill>{p.fileNumber}</FilePill>
+                  </span>
+                ) : null
               }
               selected={idx === selectedIndex}
               onMouseMove={() => onHover(idx)}
@@ -569,21 +628,44 @@ function FlatResultList({
     )
   }
 
-  // Show un-navigable parties as informational footnotes (not selectable).
   const unattachedParties = results.parties.filter((p) => !p.fileId)
 
   if (results.findings.length > 0) {
     const start = cursor
     cursor += results.findings.length
     sections.push(
-      <ResultGroup key="findings" label="Findings">
+      <ResultGroup
+        key="findings"
+        label="Findings"
+        count={results.findings.length}
+      >
         {results.findings.map((fd, i) => {
           const idx = start + i
+          const tone = severityTone(fd.severity)
           return (
             <ResultRow
               key={fd.findingId}
-              title={fd.message}
-              meta={`${fd.severity} · ${fd.findingType}${fd.fileNumber ? ` · ${fd.fileNumber}` : ''}`}
+              icon={
+                <ResultIcon tone={tone}>
+                  <CircleAlert className="size-3.5" />
+                </ResultIcon>
+              }
+              title={<Highlight text={fd.message} query={query} />}
+              badge={
+                <Chip tone={tone}>{humanize(fd.severity)}</Chip>
+              }
+              meta={
+                <span className="inline-flex items-center gap-1">
+                  <span>{humanize(fd.findingType)}</span>
+                  {fd.fileNumber && (
+                    <>
+                      <span>·</span>
+                      <FilePill>{fd.fileNumber}</FilePill>
+                    </>
+                  )}
+                </span>
+              }
+              titleClamp={2}
               selected={idx === selectedIndex}
               onMouseMove={() => onHover(idx)}
               onSelect={() => onSelect(idx)}
@@ -598,18 +680,39 @@ function FlatResultList({
     const start = cursor
     cursor += results.documents.length
     sections.push(
-      <ResultGroup key="documents" label="Documents">
+      <ResultGroup
+        key="documents"
+        label="Documents"
+        count={results.documents.length}
+      >
         {results.documents.map((d, i) => {
           const idx = start + i
-          const titleStr = d.title ?? d.docType.replace(/_/g, ' ')
-          const meta = d.fileNumber
-            ? `${d.docType.replace(/_/g, ' ')} · on ${d.fileNumber}`
-            : d.docType.replace(/_/g, ' ')
+          const titleStr = d.title ?? humanize(d.docType)
           return (
             <ResultRow
               key={d.documentId}
-              title={titleStr}
-              meta={meta}
+              icon={
+                <ResultIcon tone="amber">
+                  <Paperclip className="size-3.5" />
+                </ResultIcon>
+              }
+              title={<Highlight text={titleStr} query={query} />}
+              badge={<Chip tone="amber">{humanize(d.docType)}</Chip>}
+              meta={
+                d.fileNumber ? (
+                  <span className="inline-flex items-center gap-1">
+                    <span>on</span>
+                    <FilePill>{d.fileNumber}</FilePill>
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground/80">In inbox</span>
+                )
+              }
+              trailing={
+                <span className="font-numerals tabular-nums">
+                  {bellTimeAgo(d.uploadedAt)}
+                </span>
+              }
               selected={idx === selectedIndex}
               onMouseMove={() => onHover(idx)}
               onSelect={() => onSelect(idx)}
@@ -624,17 +727,47 @@ function FlatResultList({
     const start = cursor
     cursor += results.emails.length
     sections.push(
-      <ResultGroup key="emails" label="Mail">
+      <ResultGroup
+        key="emails"
+        label="Mail"
+        count={results.emails.length}
+      >
         {results.emails.map((e, i) => {
           const idx = start + i
+          const fromLabel = e.fromName?.trim() || e.fromAddress
           const intent = e.classificationIntent
-            ? ` · ${e.classificationIntent.replace(/_/g, ' ')}`
-            : ''
+            ? humanize(e.classificationIntent)
+            : null
           return (
             <ResultRow
               key={e.inboundEmailId}
-              title={e.subject || '(no subject)'}
-              meta={`from ${e.fromAddress}${intent}`}
+              icon={
+                <ResultIcon tone="violet">
+                  <Mail className="size-3.5" />
+                </ResultIcon>
+              }
+              title={
+                <Highlight
+                  text={e.subject || '(no subject)'}
+                  query={query}
+                />
+              }
+              badge={intent ? <Chip tone="violet">{intent}</Chip> : null}
+              meta={
+                <span className="inline-flex items-center gap-1">
+                  <span className="truncate">
+                    from <Highlight text={fromLabel} query={query} />
+                  </span>
+                  {!e.matchedFileId && (
+                    <Chip tone="neutral">Unmatched</Chip>
+                  )}
+                </span>
+              }
+              trailing={
+                <span className="font-numerals tabular-nums">
+                  {bellTimeAgo(e.receivedAt)}
+                </span>
+              }
               selected={idx === selectedIndex}
               onMouseMove={() => onHover(idx)}
               onSelect={() => onSelect(idx)}
@@ -645,8 +778,6 @@ function FlatResultList({
     )
   }
 
-  // Action items live at the bottom — they're the rarest hit. Pulled from
-  // the flat list (since they don't live in `results`).
   const actions = flat.filter((r) => r.kind === 'action')
   if (actions.length > 0) {
     const startIdx = flat.findIndex((r) => r.kind === 'action')
@@ -658,6 +789,11 @@ function FlatResultList({
           return (
             <ResultRow
               key={`action-${i}`}
+              icon={
+                <ResultIcon tone="neutral">
+                  <ArrowRight className="size-3.5" />
+                </ResultIcon>
+              }
               title={a.title}
               meta={a.meta}
               selected={idx === selectedIndex}
@@ -671,7 +807,7 @@ function FlatResultList({
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-2">
       {sections}
       {unattachedParties.length > 0 && (
         <div className="px-3 pt-1 text-[10px] text-muted-foreground">
@@ -685,34 +821,52 @@ function FlatResultList({
 
 function ResultGroup({
   label,
+  count,
   children,
 }: {
   label: string
+  count?: number
   children: React.ReactNode
 }) {
   return (
     <div className="flex flex-col">
-      <div className="px-3 py-1 text-xs font-medium text-muted-foreground">
-        {label}
+      <div className="flex items-center justify-between px-3 py-1">
+        <span className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+          {label}
+        </span>
+        {typeof count === 'number' && (
+          <span className="font-numerals text-[10px] tabular-nums text-muted-foreground/70">
+            {count}
+          </span>
+        )}
       </div>
-      {children}
+      <div className="flex flex-col gap-px">{children}</div>
     </div>
   )
 }
 
 function ResultRow({
+  icon,
   title,
+  badge,
   meta,
+  trailing,
+  titleClamp = 1,
   selected,
   onSelect,
   onMouseMove,
 }: {
-  title: string
-  meta?: string
+  icon?: React.ReactNode
+  title: React.ReactNode
+  badge?: React.ReactNode
+  meta?: React.ReactNode
+  trailing?: React.ReactNode
+  titleClamp?: 1 | 2
   selected?: boolean
   onSelect: () => void
   onMouseMove?: () => void
 }) {
+  const clampClass = titleClamp === 2 ? 'line-clamp-2' : 'line-clamp-1'
   return (
     <button
       type="button"
@@ -721,18 +875,173 @@ function ResultRow({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onSelect}
       onMouseMove={onMouseMove}
-      className={`flex w-full flex-col items-start gap-0.5 rounded-xl px-3 py-2 text-left text-sm font-normal transition ${
+      className={`flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-normal transition ${
         selected ? 'bg-[#fdf6e8]' : 'hover:bg-muted'
       }`}
     >
-      <span className="line-clamp-1 w-full font-medium text-[#2e2430]">
-        {title}
-      </span>
-      {meta && (
-        <span className="w-full text-xs text-muted-foreground">{meta}</span>
-      )}
+      {icon && <div className="mt-0.5 shrink-0">{icon}</div>}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={`min-w-0 flex-1 ${clampClass} font-medium text-[#2e2430]`}
+          >
+            {title}
+          </span>
+          {badge && <span className="shrink-0">{badge}</span>}
+        </div>
+        {meta && (
+          <span className="line-clamp-1 w-full text-xs text-muted-foreground">
+            {meta}
+          </span>
+        )}
+      </div>
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 self-center pl-1 text-[10px] text-muted-foreground">
+        {trailing}
+        {selected && (
+          <span className="hidden items-center gap-0.5 rounded border border-border/60 bg-card px-1 py-0.5 font-medium text-[#40233f] sm:inline-flex">
+            <CornerDownLeft className="size-2.5" />
+          </span>
+        )}
+      </div>
     </button>
   )
+}
+
+type ChipTone =
+  | 'red'
+  | 'orange'
+  | 'green'
+  | 'amber'
+  | 'violet'
+  | 'teal'
+  | 'neutral'
+
+function chipClasses(tone: ChipTone): string {
+  switch (tone) {
+    case 'red':
+      return 'bg-[#fdecee] text-[#8a3942]'
+    case 'orange':
+      return 'bg-[#fde9dc] text-[#7a3d18]'
+    case 'green':
+      return 'bg-[#e6f3ed] text-[#2f5d4b]'
+    case 'amber':
+      return 'bg-[#fdf6e8] text-[#7a5818]'
+    case 'violet':
+      return 'bg-[#f1eaf3] text-[#593157]'
+    case 'teal':
+      return 'bg-[#e3f1f0] text-[#26595a]'
+    default:
+      return 'bg-muted text-muted-foreground'
+  }
+}
+
+function Chip({
+  tone = 'neutral',
+  children,
+}: {
+  tone?: ChipTone
+  children: React.ReactNode
+}) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-1.5 py-px text-[10px] font-medium capitalize ${chipClasses(tone)}`}
+    >
+      {children}
+    </span>
+  )
+}
+
+function ResultIcon({
+  tone,
+  children,
+}: {
+  tone: ChipTone
+  children: React.ReactNode
+}) {
+  return (
+    <span
+      className={`grid size-6 place-items-center rounded-md ring-1 ring-inset ring-black/5 ${chipClasses(tone)}`}
+    >
+      {children}
+    </span>
+  )
+}
+
+function FilePill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="font-numerals inline-flex items-center rounded border border-border/60 bg-card px-1 py-px font-mono text-[10px] tabular-nums text-[#40233f]">
+      {children}
+    </span>
+  )
+}
+
+function Highlight({
+  text,
+  query,
+}: {
+  text: string
+  query: string
+}) {
+  const q = query.trim()
+  if (q.length < 2) return <>{text}</>
+  // Escape regex metacharacters in user input. Case-insensitive global match
+  // so each occurrence is wrapped.
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const re = new RegExp(`(${escaped})`, 'ig')
+  const parts = text.split(re)
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.toLowerCase() === q.toLowerCase() ? (
+          <mark
+            key={i}
+            className="rounded-sm bg-[#fdf6e8] px-0.5 font-semibold text-[#40233f]"
+          >
+            {p}
+          </mark>
+        ) : (
+          <span key={i}>{p}</span>
+        )
+      )}
+    </>
+  )
+}
+
+function humanize(s: string): string {
+  return s.replace(/_/g, ' ')
+}
+
+function formatAddress(
+  addr:
+    | {
+        line1: string
+        line2: string | null
+        city: string
+        state: string
+        zip: string
+      }
+    | null
+    | undefined
+): string | null {
+  if (!addr) return null
+  const cityState = [addr.city, addr.state].filter(Boolean).join(', ')
+  return [addr.line1, cityState].filter(Boolean).join(', ')
+}
+
+function severityTone(severity: string): ChipTone {
+  const s = severity.toLowerCase()
+  if (s === 'block' || s === 'error' || s === 'critical') return 'red'
+  if (s === 'warn' || s === 'warning') return 'orange'
+  if (s === 'ok' || s === 'info' || s === 'pass') return 'green'
+  return 'neutral'
+}
+
+function fileStatusTone(status: string): ChipTone {
+  const s = status.toLowerCase()
+  if (s === 'closed' || s === 'completed' || s === 'done') return 'green'
+  if (s === 'blocked' || s === 'cancelled' || s === 'on_hold') return 'red'
+  if (s === 'pending' || s === 'in_progress' || s === 'open') return 'violet'
+  return 'neutral'
 }
 
 // ─────────────────────────────────────────────────────────────────────

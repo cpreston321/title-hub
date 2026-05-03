@@ -136,6 +136,16 @@ export const global = query({
         fileNumber: f.fileNumber,
         transactionType: f.transactionType,
         status: f.status,
+        propertyApn: f.propertyApn ?? null,
+        propertyAddress: f.propertyAddress
+          ? {
+              line1: f.propertyAddress.line1,
+              line2: f.propertyAddress.line2 ?? null,
+              city: f.propertyAddress.city,
+              state: f.propertyAddress.state,
+              zip: f.propertyAddress.zip,
+            }
+          : null,
       })),
       parties,
       findings,
