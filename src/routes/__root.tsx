@@ -82,11 +82,17 @@ function RootComponent() {
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    // Browser extensions like Proton Pass, 1Password, Grammarly, and
+    // LastPass inject attributes into <html> / <body> and form-y elements
+    // before React hydrates, which produces noisy "tree hydrated but
+    // attributes didn't match" warnings. Suppressing on these top-level
+    // elements is the React-recommended pattern — it's scoped to the
+    // attributes/text nodes of THESE nodes only, not their descendants.
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <TanStackDevtools
           config={{ position: 'bottom-right' }}

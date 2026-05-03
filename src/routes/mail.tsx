@@ -1079,7 +1079,7 @@ function DetailSheet({
     >
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 overflow-y-auto bg-background data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl"
+        className="flex w-full flex-col gap-0 overflow-hidden bg-background data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl"
       >
         {!row ? (
           <div className="flex flex-1 items-center justify-center py-20">
@@ -1087,7 +1087,7 @@ function DetailSheet({
           </div>
         ) : (
           <>
-            <SheetHeader className="space-y-2 border-b border-border/60 bg-card/40 px-6 py-5">
+            <SheetHeader className="shrink-0 space-y-2 border-b border-border/60 bg-card/40 px-6 py-5">
               <div className="flex items-center gap-2 pr-10 text-xs uppercase tracking-wider text-muted-foreground">
                 <Mail className="size-3.5" />
                 Inbound message
@@ -1118,13 +1118,19 @@ function DetailSheet({
               </div>
             </SheetHeader>
 
-            <div className="flex flex-1 flex-col gap-6 px-6 py-6">
+            <div className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
               {/* Body and attachments sit at the top so the sheet reads like
                   an email client — message first, meta below. */}
               <BodySection bodyText={row.bodyText} bodyHtml={row.bodyHtml} />
 
               <SheetSection
-                title={`Attachments (${row.attachments.length})`}
+                title="Attachments"
+                icon={<Paperclip className="size-3" />}
+                trailing={
+                  row.attachments.length > 0
+                    ? `${row.attachments.length}`
+                    : undefined
+                }
               >
                 {row.attachments.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">
@@ -1139,15 +1145,24 @@ function DetailSheet({
                 )}
               </SheetSection>
 
-              <SheetSection title="Authenticity">
+              <SheetSection
+                title="Authenticity"
+                icon={<Shield className="size-3" />}
+              >
                 <DetailAuthenticity row={row} />
               </SheetSection>
 
-              <SheetSection title="Match">
+              <SheetSection
+                title="Match"
+                icon={<FileText className="size-3" />}
+              >
                 <DetailMatch row={row} />
               </SheetSection>
 
-              <SheetSection title="Soft classifier">
+              <SheetSection
+                title="Soft classifier"
+                icon={<Sparkles className="size-3" />}
+              >
                 <ClassifierBlock
                   classification={row.classification}
                   onReclassify={() => onReclassify(row._id)}
@@ -1156,7 +1171,7 @@ function DetailSheet({
             </div>
 
             {isHighRisk && (
-              <div className="sticky bottom-[3.5rem] flex flex-col gap-1.5 border-t border-[#b94f58]/30 bg-[#fdecee] px-6 py-3 text-xs text-[#8a3942]">
+              <div className="shrink-0 flex flex-col gap-1.5 border-t border-[#b94f58]/30 bg-[#fdecee] px-6 py-3 text-xs text-[#8a3942]">
                 <div className="flex items-center gap-1.5 font-semibold">
                   <ShieldAlert className="size-3.5" />
                   High-risk authentication failure
@@ -1182,7 +1197,7 @@ function DetailSheet({
               </div>
             )}
 
-            <div className="sticky bottom-0 flex items-center gap-2 border-t border-border/60 bg-background/95 px-6 py-3 backdrop-blur">
+            <div className="shrink-0 flex items-center gap-2 border-t border-border/60 bg-background/95 px-6 py-3">
               {row.status === 'quarantined' && row.matchedFile ? (
                 <Button
                   className="flex-1 gap-2"
@@ -1416,16 +1431,14 @@ function BodySection({
 
   if (!bodyHtml && !bodyText) {
     return (
-      <SheetSection title="Body">
-        <p className="text-sm text-muted-foreground italic">
-          No body included. The provider may have only sent attachments.
-        </p>
-      </SheetSection>
+      <p className="text-sm text-muted-foreground italic">
+        No body included. The provider may have only sent attachments.
+      </p>
     )
   }
 
   return (
-    <SheetSection title="Body">
+    <section className="flex flex-col gap-2">
       <div className="flex flex-col gap-2">
         {hasBoth && (
           <div
@@ -1451,12 +1464,16 @@ function BodySection({
         {effective === 'html' && bodyHtml ? (
           <SandboxedHtml html={bodyHtml} />
         ) : (
-          <pre className="font-numerals max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-card px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-foreground/85">
-            {bodyText ?? '(no plain-text body — provider sent HTML only)'}
-          </pre>
+          <div className="max-h-[28rem] overflow-y-auto whitespace-pre-wrap rounded-xl bg-card/60 px-5 py-4 text-sm leading-relaxed text-foreground/90">
+            {bodyText ?? (
+              <span className="text-muted-foreground italic">
+                No plain-text body — the sender shipped HTML only.
+              </span>
+            )}
+          </div>
         )}
       </div>
-    </SheetSection>
+    </section>
   )
 }
 
@@ -1674,16 +1691,30 @@ function FilePicker({
 
 function SheetSection({
   title,
+  icon,
+  trailing,
   children,
 }: {
   title: string
+  icon?: React.ReactNode
+  trailing?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-2">
-      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground">
-        {title}
-      </h3>
+    <section className="flex flex-col gap-2.5">
+      <header className="flex items-center justify-between gap-2 border-b border-border/40 pb-1.5">
+        <h3 className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+          {icon && (
+            <span className="text-muted-foreground/70">{icon}</span>
+          )}
+          {title}
+        </h3>
+        {trailing && (
+          <span className="font-numerals text-[11px] text-muted-foreground/70 tabular-nums">
+            {trailing}
+          </span>
+        )}
+      </header>
       {children}
     </section>
   )
@@ -1773,10 +1804,9 @@ function DetailAuthenticity({ row }: { row: DetailRow }) {
                 className="flex items-start gap-2 rounded-md bg-card/70 px-2.5 py-1.5 text-xs text-foreground/85 ring-1 ring-border/60"
               >
                 <span
-                  className={`mt-0.5 inline-flex h-4 min-w-[22px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] leading-none font-semibold tabular-nums ${accent.bar} text-white`}
-                >
-                  +{s.weight}
-                </span>
+                  aria-hidden
+                  className={`mt-1.5 inline-flex size-1.5 shrink-0 rounded-full ${accent.bar}`}
+                />
                 <span className="flex-1">{s.label}</span>
               </li>
             ))}
@@ -1795,9 +1825,10 @@ function DetailAuthenticity({ row }: { row: DetailRow }) {
                 key={s.id}
                 className="flex items-start gap-2 rounded-md bg-card/70 px-2.5 py-1.5 text-xs text-foreground/85 ring-1 ring-border/60"
               >
-                <span className="mt-0.5 inline-flex h-4 min-w-[22px] shrink-0 items-center justify-center rounded-full bg-[#3f7c64] px-1.5 text-[10px] leading-none font-semibold tabular-nums text-white">
-                  {s.weight}
-                </span>
+                <span
+                  aria-hidden
+                  className="mt-1.5 inline-flex size-1.5 shrink-0 rounded-full bg-[#3f7c64]"
+                />
                 <span className="flex-1">{s.label}</span>
               </li>
             ))}
@@ -1877,8 +1908,8 @@ function DetailMatch({ row }: { row: DetailRow }) {
           </span>
         </div>
         {row.matchReason && (
-          <div className="font-numerals text-[11px] text-muted-foreground">
-            Reason: {prettyReason(row.matchReason)}
+          <div className="text-[11px] italic text-muted-foreground">
+            {prettyReason(row.matchReason)}
           </div>
         )}
       </div>
@@ -2171,9 +2202,15 @@ function prettyReason(r: string): string {
   if (r === 'manual_attach') return 'Confirmed manually'
   if (r === 'manual_attach_high_risk_override')
     return 'Manually attached (high-risk override)'
+  const fileGone = r.match(/^(.*?);\s*file_deleted$/)
+  if (fileGone) return `${prettyReason(fileGone[1])} — file removed`
   const blocked = r.match(/^(.*?);\s*blocked_by_status:(.+)$/)
   if (blocked) {
     return `${prettyReason(blocked[1])} — file is ${blocked[2].replace(/_/g, ' ')}`
+  }
+  const escalation = r.match(/^classifier_escalation:(.+)$/)
+  if (escalation) {
+    return `Routed by classifier (${escalation[1].replace(/_/g, ' ')})`
   }
   const m = r.match(/^filenumber_in_(subject|body):(.+)$/)
   if (m) return `File # in ${m[1]} (${m[2]})`
