@@ -13,6 +13,7 @@ import { Route as TenantsRouteImport } from './routes/tenants'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as QueueRouteImport } from './routes/queue'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as MailRouteImport } from './routes/mail'
 import { Route as CountyConnectRouteImport } from './routes/county-connect'
@@ -43,6 +44,11 @@ const SignUpRoute = SignUpRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const QueueRoute = QueueRouteImport.update({
+  id: '/queue',
+  path: '/queue',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrdersRoute = OrdersRouteImport.update({
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/county-connect': typeof CountyConnectRoute
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
+  '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/county-connect': typeof CountyConnectRoute
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
+  '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -142,6 +150,7 @@ export interface FileRoutesById {
   '/county-connect': typeof CountyConnectRoute
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
+  '/queue': typeof QueueRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -161,6 +170,7 @@ export interface FileRouteTypes {
     | '/county-connect'
     | '/mail'
     | '/orders'
+    | '/queue'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -178,6 +188,7 @@ export interface FileRouteTypes {
     | '/county-connect'
     | '/mail'
     | '/orders'
+    | '/queue'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -195,6 +206,7 @@ export interface FileRouteTypes {
     | '/county-connect'
     | '/mail'
     | '/orders'
+    | '/queue'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -213,6 +225,7 @@ export interface RootRouteChildren {
   CountyConnectRoute: typeof CountyConnectRoute
   MailRoute: typeof MailRoute
   OrdersRoute: typeof OrdersRoute
+  QueueRoute: typeof QueueRoute
   SettingsRoute: typeof SettingsRoute
   SignUpRoute: typeof SignUpRoute
   SigninRoute: typeof SigninRoute
@@ -253,6 +266,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/queue': {
+      id: '/queue'
+      path: '/queue'
+      fullPath: '/queue'
+      preLoaderRoute: typeof QueueRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/orders': {
@@ -341,6 +361,7 @@ const rootRouteChildren: RootRouteChildren = {
   CountyConnectRoute: CountyConnectRoute,
   MailRoute: MailRoute,
   OrdersRoute: OrdersRoute,
+  QueueRoute: QueueRoute,
   SettingsRoute: SettingsRoute,
   SignUpRoute: SignUpRoute,
   SigninRoute: SigninRoute,

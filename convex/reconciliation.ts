@@ -1393,6 +1393,65 @@ export const resolveWith = mutation({
   },
 })
 
+// Assign a finding to a teammate. Pass `assigneeMemberId: null` (omitted)
+// to clear the owner. The new assignee gets a per-member notification so
+// the bell + queue surface the new work.
+export const assignFinding = mutation({
+  args: {
+    findingId: v.id('reconciliationFindings'),
+    assigneeMemberId: v.optional(v.id('tenantMembers')),
+  },
+  handler: async (ctx, { findingId, assigneeMemberId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+    const finding = await ctx.db.get(findingId)
+    if (!finding || finding.tenantId !== tc.tenantId) {
+      throw new ConvexError('FINDING_NOT_FOUND')
+    }
+    if (assigneeMemberId) {
+      const m = await ctx.db.get(assigneeMemberId)
+      if (!m || m.tenantId !== tc.tenantId || m.status !== 'active') {
+        throw new ConvexError('ASSIGNEE_INVALID')
+      }
+    }
+    await ctx.db.patch(findingId, { assigneeMemberId })
+
+    await recordAudit(ctx, tc, 'finding.assigned', 'file', finding.fileId, {
+      findingId,
+      from: finding.assigneeMemberId ?? null,
+      to: assigneeMemberId ?? null,
+    })
+
+    // Notify the new assignee directly — single-member, not the full
+    // fan-out — so the queue lights up for them and them alone.
+    if (assigneeMemberId && assigneeMemberId !== tc.memberId) {
+      const file = await ctx.db.get(finding.fileId)
+      await ctx.db.insert('notifications', {
+        tenantId: tc.tenantId,
+        memberId: assigneeMemberId,
+        kind: 'finding.assigned',
+        title: `Assigned: ${finding.findingType.replace(/_/g, ' ')}`,
+        body: file
+          ? `On ${file.fileNumber} · ${finding.message}`
+          : finding.message,
+        severity:
+          finding.severity === 'block'
+            ? 'block'
+            : finding.severity === 'warn'
+              ? 'warn'
+              : 'info',
+        fileId: finding.fileId,
+        groupKey: `finding.assigned:${finding.fileId}:${assigneeMemberId}`,
+        actorMemberId: tc.memberId,
+        actorType: 'user',
+        occurredAt: Date.now(),
+      })
+    }
+
+    return { ok: true }
+  },
+})
+
 // One-click verification path for non-factable findings (wire, vesting,
 // owner-of-record, open-lien, etc). Unlike `resolveWith`, this mutation does
 // NOT promote a document's value to ground truth — it records that a human

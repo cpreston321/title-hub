@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   LayoutDashboard,
   FolderOpen,
+  Inbox,
   Shield,
   ScrollText,
   Building2,
@@ -261,6 +262,10 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 icon={<LayoutDashboard className="size-4" />}
                 active={location.pathname === "/"}
               />
+              <QueueNavLink
+                hasActiveOrg={hasActiveOrg}
+                pathname={location.pathname}
+              />
               <NavLink
                 to="/files"
                 label="Files"
@@ -490,6 +495,40 @@ function IntegrationsGroup({
         </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
+  );
+}
+
+function QueueNavLink({
+  hasActiveOrg,
+  pathname,
+}: {
+  hasActiveOrg: boolean;
+  pathname: string;
+}) {
+  const summary = useQuery({
+    ...convexQuery(api.myQueue.summary, {}),
+    enabled: hasActiveOrg,
+    retry: false,
+  });
+  const data = (summary.data ?? { total: 0, atRisk: 0 }) as {
+    total: number;
+    atRisk: number;
+  };
+  const badge =
+    data.atRisk > 0
+      ? `!${data.atRisk}`
+      : data.total > 0
+        ? String(data.total)
+        : undefined;
+  return (
+    <NavLink
+      to="/queue"
+      label="My queue"
+      icon={<Inbox className="size-4" />}
+      active={pathname.startsWith("/queue")}
+      disabled={!hasActiveOrg}
+      badge={badge}
+    />
   );
 }
 

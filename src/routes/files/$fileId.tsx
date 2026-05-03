@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -26,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  AlarmClock,
   ArrowRight,
   Building2,
   Check,
@@ -400,6 +402,8 @@ function FileDetailContent({
           />
 
           <ReconciledFactsPanel file={file} />
+
+          <NotesAndFollowupsPanel fileId={id} />
 
           <RulesPanel fileId={id} />
 
@@ -2056,14 +2060,18 @@ function ExtractionTrailRow({
         <Sparkles className="size-3" />
         {open ? "Hide thinking trail" : "Show thinking trail"}
         {rows.length > 0 && !open && (
-          <span className="ml-1 text-muted-foreground">· {rows.length} steps</span>
+          <span className="ml-1 text-muted-foreground">
+            · {rows.length} steps
+          </span>
         )}
       </button>
       {open && (
         <ol className="mt-2 flex flex-col gap-1.5">
           {rows.length === 0 && (
             <li className="text-muted-foreground italic">
-              {active ? "Watching the model work…" : "No trail recorded for this run."}
+              {active
+                ? "Watching the model work…"
+                : "No trail recorded for this run."}
             </li>
           )}
           {rows.map((e) => {
@@ -2395,6 +2403,7 @@ type Finding = {
   status: "open" | "acknowledged" | "resolved" | "dismissed";
   resolvedDocumentId?: string;
   resolvedValue?: unknown;
+  assigneeMemberId?: string;
 };
 
 const DocumentPreviewContext = createContext<
@@ -2698,9 +2707,9 @@ function PublicRecordsPanel({
         </div>
       ) : !snap ? (
         <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
-          No public-records snapshot yet. Click <strong>Pull county records</strong>{" "}
-          to fetch property profile, recorded documents, and tax data — then
-          reconcile against the file.
+          No public-records snapshot yet. Click{" "}
+          <strong>Pull county records</strong> to fetch property profile,
+          recorded documents, and tax data — then reconcile against the file.
         </div>
       ) : (
         <div className="flex flex-col gap-4">
@@ -2735,7 +2744,8 @@ function PublicRecordsPanel({
             <RecordCell
               label="Property tax"
               primary={
-                snap.tax?.taxAmount !== null && snap.tax?.taxAmount !== undefined
+                snap.tax?.taxAmount !== null &&
+                snap.tax?.taxAmount !== undefined
                   ? `$${snap.tax.taxAmount.toLocaleString()}`
                   : "—"
               }
@@ -2768,7 +2778,9 @@ function PublicRecordsPanel({
                 </thead>
                 <tbody className="divide-y">
                   {snap.documents.map((d, i) => (
-                    <tr key={`${d.documentNumber ?? i}-${d.recordingDate ?? i}`}>
+                    <tr
+                      key={`${d.documentNumber ?? i}-${d.recordingDate ?? i}`}
+                    >
                       <td className="px-3 py-2">{d.documentType}</td>
                       <td className="px-3 py-2">{d.recordingDate ?? "—"}</td>
                       <td className="px-3 py-2 font-mono text-xs">
@@ -2893,6 +2905,38 @@ function ReconciliationPanel({
   const [activeFilters, setActiveFilters] = useState<Set<FactSeverity>>(
     () => new Set(["block", "warn", "info"]),
   );
+  const [selectedFindings, setSelectedFindings] = useState<
+    Set<Id<"reconciliationFindings">>
+  >(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const toggleSelected = (id: Id<"reconciliationFindings">) => {
+    setSelectedFindings((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const clearSelection = () => setSelectedFindings(new Set());
+
+  const onBulk = async (status: "acknowledged" | "dismissed") => {
+    if (selectedFindings.size === 0) return;
+    setBulkBusy(true);
+    setError(null);
+    try {
+      await Promise.all(
+        Array.from(selectedFindings).map((findingId) =>
+          setStatus({ findingId, status }),
+        ),
+      );
+      clearSelection();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
 
   const onReconcile = async () => {
     setBusy(true);
@@ -3107,7 +3151,18 @@ function ReconciliationPanel({
 
             {visibleOtherFindings.length > 0 && (
               <section className="flex flex-col gap-2">
-                <SectionLabel>Other issues</SectionLabel>
+                <div className="flex items-center justify-between">
+                  <SectionLabel>Other issues</SectionLabel>
+                  {selectedFindings.size > 0 && (
+                    <BulkActionBar
+                      count={selectedFindings.size}
+                      busy={bulkBusy}
+                      onAcknowledge={() => onBulk("acknowledged")}
+                      onDismiss={() => onBulk("dismissed")}
+                      onClear={clearSelection}
+                    />
+                  )}
+                </div>
                 <div className="flex flex-col gap-2">
                   {visibleOtherFindings.map((f) => (
                     <OtherIssueCard
@@ -3116,6 +3171,12 @@ function ReconciliationPanel({
                       documents={documents}
                       onSetStatus={onAck}
                       onVerify={onVerify}
+                      selected={selectedFindings.has(
+                        f._id as Id<"reconciliationFindings">,
+                      )}
+                      onToggleSelected={() =>
+                        toggleSelected(f._id as Id<"reconciliationFindings">)
+                      }
                     />
                   ))}
                 </div>
@@ -3804,6 +3865,8 @@ function OtherIssueCard({
   documents,
   onSetStatus,
   onVerify,
+  selected = false,
+  onToggleSelected,
 }: {
   finding: Finding;
   documents: FindingDoc;
@@ -3816,6 +3879,8 @@ function OtherIssueCard({
     method: VerificationMethod,
     note?: string,
   ) => Promise<void> | void;
+  selected?: boolean;
+  onToggleSelected?: () => void;
 }) {
   const sev = finding.severity;
   const tone =
@@ -3881,10 +3946,27 @@ function OtherIssueCard({
 
   return (
     <div
-      className={`rounded-xl border ${tone.border} ${tone.bg} p-3.5 ring-1 ring-inset ${tone.border.replace("border", "ring")}`}
+      className={`rounded-xl border ${tone.border} ${tone.bg} p-3.5 ring-1 ring-inset ${tone.border.replace("border", "ring")} ${
+        selected ? "ring-2 ring-[#593157]/50" : ""
+      }`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
+          {onToggleSelected && (
+            <button
+              type="button"
+              onClick={onToggleSelected}
+              aria-pressed={selected}
+              aria-label={selected ? "Deselect finding" : "Select finding"}
+              className={`grid size-4 shrink-0 place-items-center rounded border transition ${
+                selected
+                  ? "border-[#40233f] bg-[#40233f] text-white"
+                  : "border-border bg-background hover:border-[#40233f]"
+              }`}
+            >
+              {selected && <Check className="size-3" strokeWidth={3} />}
+            </button>
+          )}
           <span
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${tone.chip}`}
           >
@@ -3901,6 +3983,12 @@ function OtherIssueCard({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-1">
+          <AssigneePicker
+            findingId={finding._id as Id<"reconciliationFindings">}
+            currentAssigneeId={
+              finding.assigneeMemberId as Id<"tenantMembers"> | undefined
+            }
+          />
           {suggested && onVerify && (
             <button
               type="button"
@@ -4630,4 +4718,819 @@ function personInitials(name?: string | null, email?: string | null): string {
     return (local.slice(0, 2) || "··").toUpperCase();
   }
   return "··";
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Bulk action bar for multi-selected findings.
+// ─────────────────────────────────────────────────────────────────────
+
+function BulkActionBar({
+  count,
+  busy,
+  onAcknowledge,
+  onDismiss,
+  onClear,
+}: {
+  count: number;
+  busy: boolean;
+  onAcknowledge: () => void;
+  onDismiss: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-full bg-[#40233f] px-1 py-1 text-white shadow-sm">
+      <span className="px-2 py-0.5 text-[11px] font-medium">
+        {count} selected
+      </span>
+      <button
+        type="button"
+        onClick={onAcknowledge}
+        disabled={busy}
+        className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold transition hover:bg-white/20 disabled:opacity-50"
+      >
+        Acknowledge
+      </button>
+      <button
+        type="button"
+        onClick={onDismiss}
+        disabled={busy}
+        className="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold transition hover:bg-white/20 disabled:opacity-50"
+      >
+        Not relevant
+      </button>
+      <button
+        type="button"
+        onClick={onClear}
+        disabled={busy}
+        className="rounded-full px-2 py-1 text-[11px] text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
+        aria-label="Clear selection"
+      >
+        <X className="size-3" />
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Assignee picker — small dropdown used on findings (and reusable on
+// emails). Reads members via `comments.suggestMentions` (active members
+// only) so we don't add another query.
+// ─────────────────────────────────────────────────────────────────────
+
+function AssigneePicker({
+  findingId,
+  currentAssigneeId,
+}: {
+  findingId: Id<"reconciliationFindings">;
+  currentAssigneeId?: Id<"tenantMembers"> | undefined;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const assign = useConvexMutation(api.reconciliation.assignFinding);
+  const members = useQuery({
+    ...convexQuery(api.comments.suggestMentions, {}),
+    enabled: open,
+    retry: false,
+  });
+  const memberRows = (members.data ?? []) as ReadonlyArray<{
+    _id: Id<"tenantMembers">;
+    email: string;
+    role: string;
+  }>;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointer);
+    return () => document.removeEventListener("mousedown", onPointer);
+  }, [open]);
+
+  const currentEmail = memberRows.find(
+    (m) => m._id === currentAssigneeId,
+  )?.email;
+  const labelEmail = currentEmail ?? null;
+
+  const onPick = async (memberId?: Id<"tenantMembers">) => {
+    setOpen(false);
+    try {
+      await assign({
+        findingId,
+        ...(memberId ? { assigneeMemberId: memberId } : {}),
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] transition ${
+          currentAssigneeId
+            ? "bg-card text-[#40233f] ring-1 ring-border/60 ring-inset hover:bg-muted"
+            : "text-muted-foreground hover:bg-card hover:text-[#40233f]"
+        }`}
+        aria-label="Assign finding"
+      >
+        <Users className="size-3" />
+        {currentAssigneeId
+          ? labelEmail
+            ? labelEmail.split("@")[0]
+            : "Assigned"
+          : "Assign"}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-60 overflow-hidden rounded-xl border border-border/70 bg-popover p-1 shadow-lg ring-1 ring-foreground/5">
+          {currentAssigneeId && (
+            <button
+              type="button"
+              onClick={() => onPick(undefined)}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted"
+            >
+              <X className="size-3" /> Unassign
+            </button>
+          )}
+          {members.isLoading && (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground">
+              Loading…
+            </div>
+          )}
+          {memberRows.map((m) => {
+            const active = m._id === currentAssigneeId;
+            return (
+              <button
+                key={m._id}
+                type="button"
+                onClick={() => onPick(m._id)}
+                className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
+                  active
+                    ? "bg-[#fdf6e8] text-[#40233f]"
+                    : "hover:bg-muted text-foreground/90"
+                }`}
+              >
+                <span className="truncate">{m.email}</span>
+                <span className="font-numerals text-[10px] text-muted-foreground capitalize">
+                  {m.role}
+                </span>
+              </button>
+            );
+          })}
+          {!members.isLoading && memberRows.length === 0 && (
+            <div className="px-2 py-1.5 text-xs text-muted-foreground italic">
+              No active members.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Notes (comments) + follow-ups (snooze)
+// ─────────────────────────────────────────────────────────────────────
+
+type CommentRow = {
+  _id: Id<"fileComments">;
+  body: string;
+  createdAt: number;
+  editedAt: number | null;
+  deletedAt: number | null;
+  authorMemberId: Id<"tenantMembers">;
+  authorEmail: string | null;
+  isMine: boolean;
+  mentioned: ReadonlyArray<{ _id: Id<"tenantMembers">; email: string }>;
+};
+
+type FollowupRow = {
+  _id: Id<"fileFollowups">;
+  memberId: Id<"tenantMembers">;
+  memberEmail: string | null;
+  note: string;
+  dueAt: number;
+  completedAt: number | null;
+  isMine: boolean;
+};
+
+function NotesAndFollowupsPanel({ fileId }: { fileId: Id<"files"> }) {
+  const comments = useQuery({
+    ...convexQuery(api.comments.listForFile, { fileId }),
+    retry: false,
+  });
+  const followups = useQuery({
+    ...convexQuery(api.followups.listForFile, { fileId }),
+    retry: false,
+  });
+  const rows = (comments.data ?? []) as ReadonlyArray<CommentRow>;
+  const followupRows = (followups.data ?? []) as ReadonlyArray<FollowupRow>;
+  const activeFollowups = followupRows.filter((f) => f.completedAt === null);
+
+  return (
+    <SectionShell
+      id="step-notes"
+      done={false}
+      eyebrow="The handoff"
+      title="Notes & follow-ups"
+      description="Internal context for whoever picks this file up next. @mention a teammate to ping them in the bell. Schedule a follow-up to nudge yourself later."
+    >
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+        <CommentsThread fileId={fileId} comments={rows} />
+        <FollowupsList fileId={fileId} followups={activeFollowups} />
+      </div>
+    </SectionShell>
+  );
+}
+
+// Parse a comment body into text + mention segments. Mention regex matches
+// the same shape the server resolves at submit time (`@email@host.tld`) so
+// the highlighting stays in sync with what actually fans out as a
+// notification — a typo'd mention won't get a chip.
+type CommentSegment =
+  | { kind: "text"; value: string }
+  | { kind: "mention"; value: string; email: string };
+
+const COMMENT_MENTION_RE = /@([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/g;
+
+function parseCommentBody(body: string): ReadonlyArray<CommentSegment> {
+  const out: CommentSegment[] = [];
+  let lastIndex = 0;
+  for (const match of body.matchAll(COMMENT_MENTION_RE)) {
+    const start = match.index ?? 0;
+    if (start > lastIndex) {
+      out.push({ kind: "text", value: body.slice(lastIndex, start) });
+    }
+    out.push({
+      kind: "mention",
+      value: match[0],
+      email: match[1] ?? "",
+    });
+    lastIndex = start + match[0].length;
+  }
+  if (lastIndex < body.length) {
+    out.push({ kind: "text", value: body.slice(lastIndex) });
+  }
+  return out;
+}
+
+function CommentsThread({
+  fileId,
+  comments,
+}: {
+  fileId: Id<"files">;
+  comments: ReadonlyArray<CommentRow>;
+}) {
+  const create = useConvexMutation(api.comments.create);
+  const remove = useConvexMutation(api.comments.remove);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // Mention picker state. `mention.range` is [start, end] of the partial
+  // token currently being typed (including the leading "@"); when non-null
+  // the picker is open and arrow keys / Enter operate on suggestions.
+  const [mention, setMention] = useState<{
+    range: [number, number];
+    query: string;
+    selectedIndex: number;
+  } | null>(null);
+
+  const suggestions = useQuery({
+    ...convexQuery(
+      api.comments.suggestMentions,
+      mention ? { q: mention.query } : "skip",
+    ),
+    enabled: mention !== null,
+    retry: false,
+  });
+  const candidates = (suggestions.data ?? []) as ReadonlyArray<{
+    _id: Id<"tenantMembers">;
+    email: string;
+    role: string;
+  }>;
+
+  // On every change, look back from the caret. If we're inside an
+  // @-token (no whitespace since the @ and no `@email@host`-style email
+  // already typed), open the picker. Otherwise close it.
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    setDraft(value);
+    const caret = e.target.selectionStart ?? value.length;
+    const upToCaret = value.slice(0, caret);
+    // Find the last '@'. If the chunk between it and the caret contains
+    // whitespace, we're past the token.
+    const lastAt = upToCaret.lastIndexOf("@");
+    if (lastAt < 0) {
+      setMention(null);
+      return;
+    }
+    const after = upToCaret.slice(lastAt + 1);
+    if (/\s/.test(after)) {
+      setMention(null);
+      return;
+    }
+    // If the user already typed a full email (`@a@b.tld`), the server-side
+    // regex will pick it up at submit time — we don't need the picker.
+    if (/^[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}$/.test(after)) {
+      setMention(null);
+      return;
+    }
+    setMention((prev) => ({
+      range: [lastAt, caret],
+      query: after,
+      selectedIndex: prev?.query === after ? prev.selectedIndex : 0,
+    }));
+  };
+
+  // Reset the highlighted suggestion whenever the candidate list changes.
+  useEffect(() => {
+    if (!mention) return;
+    if (mention.selectedIndex >= candidates.length) {
+      setMention((m) => (m ? { ...m, selectedIndex: 0 } : m));
+    }
+  }, [candidates.length, mention]);
+
+  const insertMention = (email: string) => {
+    if (!mention) return;
+    const [start, end] = mention.range;
+    const before = draft.slice(0, start);
+    const after = draft.slice(end);
+    // Insert "@<email> " — trailing space closes the token so the picker
+    // doesn't reopen on the next keystroke.
+    const inserted = `@${email} `;
+    const next = before + inserted + after;
+    setDraft(next);
+    setMention(null);
+    // Move caret to right after the inserted token.
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (!ta) return;
+      const pos = before.length + inserted.length;
+      ta.focus();
+      ta.setSelectionRange(pos, pos);
+    });
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!mention || candidates.length === 0) {
+      if (e.key === "Escape" && mention) {
+        e.preventDefault();
+        setMention(null);
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setMention((m) =>
+        m
+          ? { ...m, selectedIndex: (m.selectedIndex + 1) % candidates.length }
+          : m,
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setMention((m) =>
+        m
+          ? {
+              ...m,
+              selectedIndex:
+                (m.selectedIndex - 1 + candidates.length) % candidates.length,
+            }
+          : m,
+      );
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      const pick = candidates[mention.selectedIndex];
+      if (pick) insertMention(pick.email);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setMention(null);
+    }
+  };
+
+  const submit = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await create({ fileId, body: trimmed });
+      setDraft("");
+      setMention(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const visible = comments.filter((c) => !c.deletedAt);
+
+  // Live-highlight mentions inside the textarea. The trick: a positioned
+  // mirror div behind the textarea renders the same content with mention
+  // spans painted purple. The textarea itself uses `text-transparent` so
+  // the user sees the mirror, but `caret-foreground` keeps the cursor
+  // visible and selection works as expected. Padding/font/leading must
+  // match exactly between the mirror and the textarea so wrapping aligns
+  // pixel-for-pixel.
+  const draftSegments = parseCommentBody(draft);
+  const mirrorRef = useRef<HTMLDivElement>(null);
+  // Sync mirror scroll to textarea scroll so long content stays aligned.
+  const onScroll = () => {
+    const ta = taRef.current;
+    const mirror = mirrorRef.current;
+    if (!ta || !mirror) return;
+    mirror.scrollTop = ta.scrollTop;
+    mirror.scrollLeft = ta.scrollLeft;
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="relative flex flex-col gap-2">
+        <div className="relative rounded-xl bg-card ring-1 ring-border/40 ring-inset focus-within:ring-[#593157]/30">
+          {/* Mirror sits inside the same rounded card and renders the same
+              text + mention chips behind the (transparent) textarea. The
+              textarea itself paints no background, so the mirror shows
+              through. Padding/font/leading must match exactly. */}
+          <div
+            ref={mirrorRef}
+            aria-hidden
+            // tracking-normal + font-[inherit] + same padding/line-height
+            // as the textarea below — the mention-chip ring is `inset` so
+            // the chip sits flush within the line metrics; padding-x of
+            // 0.5 inside the chip is offset by `mx-[-0.125rem]` so the
+            // two visual systems agree on character widths to the pixel.
+            className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl px-3 py-2 text-sm leading-relaxed tracking-normal text-foreground/90 whitespace-pre-wrap break-words font-[inherit]"
+          >
+            {draftSegments.map((seg, i) =>
+              seg.kind === "mention" ? (
+                <span
+                  key={i}
+                  className="rounded-sm bg-[#fdf6e8] font-normal text-[#7a5818]"
+                >
+                  {seg.value}
+                </span>
+              ) : (
+                <span key={i}>{seg.value}</span>
+              ),
+            )}
+            {/* zero-width char keeps measured height matching the textarea
+                when the buffer is empty or ends with a newline */}
+            {"​"}
+          </div>
+          <textarea
+            ref={taRef}
+            value={draft}
+            onChange={handleChange}
+            onKeyDown={onKeyDown}
+            onScroll={onScroll}
+            onBlur={() => {
+              // Delay so a click on a suggestion fires before the picker closes.
+              setTimeout(() => setMention(null), 120);
+            }}
+            placeholder="Drop a note for the team. Type @ to mention someone."
+            rows={3}
+            // font-[inherit] is critical: browsers default <textarea> to a
+            // platform monospace-ish font, which makes character widths
+            // diverge from the mirror div above and shifts the caret. Also
+            // pin tracking-normal so the textarea doesn't accidentally
+            // pick up a parent letter-spacing override.
+            className="relative w-full resize-y rounded-xl border-0 bg-transparent px-3 py-2 text-sm leading-relaxed tracking-normal text-transparent caret-[#40233f] outline-none placeholder:text-muted-foreground focus:outline-none focus:ring-0 font-[inherit]"
+          />
+        </div>
+        {mention && candidates.length > 0 && (
+          <div
+            className="absolute bottom-full left-0 z-20 mb-1 w-72 max-w-full overflow-hidden rounded-xl border border-border/70 bg-popover p-1 shadow-lg ring-1 ring-foreground/5"
+            // Mousedown takes precedence over textarea blur so the click lands.
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            <div className="px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+              Mention a teammate
+            </div>
+            {candidates.map((m, i) => {
+              const active = i === mention.selectedIndex;
+              return (
+                <button
+                  key={m._id}
+                  type="button"
+                  onClick={() => insertMention(m.email)}
+                  onMouseEnter={() =>
+                    setMention((prev) =>
+                      prev ? { ...prev, selectedIndex: i } : prev,
+                    )
+                  }
+                  className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition ${
+                    active
+                      ? "bg-[#fdf6e8] text-[#40233f]"
+                      : "text-foreground/90 hover:bg-muted"
+                  }`}
+                >
+                  <span className="truncate">{m.email}</span>
+                  <span className="font-numerals text-[10px] capitalize text-muted-foreground">
+                    {m.role}
+                  </span>
+                </button>
+              );
+            })}
+            <div className="border-t border-border/40 px-2 pt-1 pb-0.5 text-[10px] text-muted-foreground">
+              <kbd className="rounded border border-border bg-muted px-1 font-mono">
+                ↑↓
+              </kbd>{" "}
+              navigate ·{" "}
+              <kbd className="rounded border border-border bg-muted px-1 font-mono">
+                ↵
+              </kbd>{" "}
+              insert ·{" "}
+              <kbd className="rounded border border-border bg-muted px-1 font-mono">
+                esc
+              </kbd>{" "}
+              close
+            </div>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            {draft.length}/4000
+          </span>
+          <Button
+            size="sm"
+            onClick={submit}
+            disabled={busy || draft.trim().length === 0}
+            className="gap-1.5"
+          >
+            {busy ? "Posting…" : "Post note"}
+          </Button>
+        </div>
+        {error && (
+          <p className="text-xs text-[#8a3942]">
+            {error.replace(/^.*ConvexError:\s*/, "")}
+          </p>
+        )}
+      </div>
+
+      {visible.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border/60 bg-card/60 px-4 py-3 text-xs text-muted-foreground">
+          No notes yet. The first one starts the file's internal narrative.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {visible.map((c) => (
+            <li
+              key={c._id}
+              className="flex items-start gap-3 rounded-xl border border-border/60 bg-card px-3 py-2.5 ring-1 ring-border/40 ring-inset"
+            >
+              <Avatar email={c.authorEmail} />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="text-xs font-semibold text-[#40233f]">
+                    {c.authorEmail ?? "Member"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {new Date(c.createdAt).toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                    {c.editedAt && (
+                      <span className="ml-1 italic text-muted-foreground/70">
+                        (edited)
+                      </span>
+                    )}
+                  </span>
+                  {c.mentioned.length > 0 && (
+                    <span className="text-[11px] text-[#593157]">
+                      mentioned {c.mentioned.map((m) => m.email).join(", ")}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
+                  {parseCommentBody(c.body).map((seg, i) =>
+                    seg.kind === "mention" ? (
+                      <span
+                        key={i}
+                        className="rounded-sm bg-[#fdf6e8] px-0.5 font-medium text-[#7a5818] ring-1 ring-[#b78625]/40 ring-inset"
+                        title={`Mentioned ${seg.email}`}
+                      >
+                        {seg.value}
+                      </span>
+                    ) : (
+                      <span key={i}>{seg.value}</span>
+                    ),
+                  )}
+                </p>
+              </div>
+              {c.isMine && (
+                <button
+                  type="button"
+                  onClick={() => remove({ commentId: c._id })}
+                  className="text-[11px] text-muted-foreground hover:text-[#8a3942]"
+                  title="Delete note"
+                >
+                  Delete
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function Avatar({ email }: { email: string | null }) {
+  const initials = personInitials(null, email);
+  return (
+    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#fdf6e8] text-[10px] font-semibold tracking-wide text-[#7a5818] ring-1 ring-[#b78625]/30">
+      {initials}
+    </span>
+  );
+}
+
+function FollowupsList({
+  fileId,
+  followups,
+}: {
+  fileId: Id<"files">;
+  followups: ReadonlyArray<FollowupRow>;
+}) {
+  const schedule = useConvexMutation(api.followups.schedule);
+  const complete = useConvexMutation(api.followups.complete);
+  const cancel = useConvexMutation(api.followups.cancel);
+  const [note, setNote] = useState("");
+  const [when, setWhen] = useState<"3h" | "1d" | "tomorrow_am" | "next_monday">(
+    "1d",
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const dueAtFor = (k: typeof when): number => {
+    const now = new Date();
+    if (k === "3h") return Date.now() + 3 * 60 * 60_000;
+    if (k === "1d") return Date.now() + 24 * 60 * 60_000;
+    if (k === "tomorrow_am") {
+      const t = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+        9,
+        0,
+        0,
+      );
+      return t.getTime();
+    }
+    // next_monday at 9am
+    const day = now.getDay(); // 0 sun .. 6 sat
+    const daysToMon = (1 + 7 - day) % 7 || 7;
+    const t = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate() + daysToMon,
+      9,
+      0,
+      0,
+    );
+    return t.getTime();
+  };
+
+  const submit = async () => {
+    const trimmed = note.trim();
+    if (!trimmed) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await schedule({ fileId, dueAt: dueAtFor(when), note: trimmed });
+      setNote("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-xl border border-border/60 bg-card px-3 py-2.5 ring-1 ring-border/40 ring-inset">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          New follow-up
+        </div>
+        <input
+          type="text"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Chase the survey from the county"
+          className="mt-1.5 w-full rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground/90 focus:outline-none focus:ring-1 focus:ring-[#593157]/40"
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-1">
+          {(
+            [
+              { k: "3h", label: "In 3h" },
+              { k: "1d", label: "Tomorrow" },
+              { k: "tomorrow_am", label: "Tmrw 9am" },
+              { k: "next_monday", label: "Mon 9am" },
+            ] as Array<{ k: typeof when; label: string }>
+          ).map((opt) => (
+            <button
+              key={opt.k}
+              type="button"
+              onClick={() => setWhen(opt.k)}
+              className={`rounded-full px-2 py-0.5 text-[11px] transition ${
+                when === opt.k
+                  ? "bg-[#40233f] text-white"
+                  : "bg-card text-muted-foreground ring-1 ring-border/60 ring-inset hover:bg-muted"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="text-[11px] text-muted-foreground">
+            Fires{" "}
+            {new Date(dueAtFor(when)).toLocaleString("en-US", {
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </span>
+          <Button
+            size="sm"
+            onClick={submit}
+            disabled={busy || note.trim().length === 0}
+            className="h-7 gap-1.5 px-2.5 text-xs"
+          >
+            <AlarmClock className="size-3" />
+            {busy ? "..." : "Schedule"}
+          </Button>
+        </div>
+        {error && (
+          <p className="mt-1 text-[11px] text-[#8a3942]">
+            {error.replace(/^.*ConvexError:\s*/, "")}
+          </p>
+        )}
+      </div>
+
+      {followups.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border/60 bg-card/60 px-3 py-2 text-[11px] text-muted-foreground">
+          No active follow-ups.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {followups.map((f) => {
+            const overdue = f.dueAt <= Date.now();
+            return (
+              <li
+                key={f._id}
+                className={`flex items-start gap-2 rounded-md px-2.5 py-2 ring-1 ring-inset ${
+                  overdue
+                    ? "border border-[#b94f58]/30 bg-[#fdecee]/30 ring-[#b94f58]/30"
+                    : "bg-card ring-border/40"
+                }`}
+              >
+                <AlarmClock
+                  className={`mt-0.5 size-3.5 shrink-0 ${overdue ? "text-[#8a3942]" : "text-muted-foreground"}`}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs leading-snug text-foreground/90">
+                    {f.note}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    {f.isMine ? "You" : (f.memberEmail ?? "Member")} ·{" "}
+                    {new Date(f.dueAt).toLocaleString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                </div>
+                {f.isMine && (
+                  <div className="flex shrink-0 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => complete({ followupId: f._id })}
+                      className="rounded-full px-2 py-0.5 text-[11px] text-[#2f5d4b] hover:bg-[#e6f3ed]"
+                    >
+                      Done
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => cancel({ followupId: f._id })}
+                      className="rounded-full px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-card"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
 }

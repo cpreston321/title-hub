@@ -409,6 +409,10 @@ export default defineSchema({
       v.literal('resolved'),
       v.literal('dismissed')
     ),
+    // Optional owner. Set via reconciliation.assignFinding. The My Queue
+    // page surfaces every finding with assigneeMemberId === me; unowned
+    // open blockers also surface in a "needs an owner" group.
+    assigneeMemberId: v.optional(v.id('tenantMembers')),
     resolvedByMemberId: v.optional(v.id('tenantMembers')),
     resolvedAt: v.optional(v.number()),
     // When a processor closes a mismatch by picking which document is
@@ -422,10 +426,56 @@ export default defineSchema({
     .index('by_tenant_file', ['tenantId', 'fileId'])
     .index('by_tenant_file_status', ['tenantId', 'fileId', 'status'])
     .index('by_tenant_status', ['tenantId', 'status'])
+    .index('by_tenant_assignee_status', [
+      'tenantId',
+      'assigneeMemberId',
+      'status',
+    ])
     .searchIndex('search_message', {
       searchField: 'message',
       filterFields: ['tenantId'],
     }),
+
+  // Per-file internal notes. Distinct from extraction payloads (which
+  // come from documents) so a processor's "called the seller, voicemail"
+  // note doesn't pollute the structured ground-truth set. @-mentions
+  // resolve to tenantMembers and fan out a notification.
+  fileComments: defineTable({
+    tenantId: v.id('tenants'),
+    fileId: v.id('files'),
+    authorMemberId: v.id('tenantMembers'),
+    body: v.string(),
+    mentionedMemberIds: v.array(v.id('tenantMembers')),
+    createdAt: v.number(),
+    editedAt: v.optional(v.number()),
+    deletedAt: v.optional(v.number()),
+  })
+    .index('by_tenant_file_time', ['tenantId', 'fileId', 'createdAt'])
+    .index('by_tenant_author_time', [
+      'tenantId',
+      'authorMemberId',
+      'createdAt',
+    ]),
+
+  // Member-scoped follow-ups: "remind me Tuesday morning to chase the
+  // survey on file X." A scheduled action runs at dueAt and fires a
+  // notification. Completed follow-ups stay around for the audit trail
+  // until a tenant retention policy lands.
+  fileFollowups: defineTable({
+    tenantId: v.id('tenants'),
+    fileId: v.id('files'),
+    memberId: v.id('tenantMembers'),
+    note: v.string(),
+    dueAt: v.number(),
+    createdByMemberId: v.id('tenantMembers'),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+    completedByMemberId: v.optional(v.id('tenantMembers')),
+    notifiedAt: v.optional(v.number()),
+  })
+    .index('by_tenant_member_due', ['tenantId', 'memberId', 'dueAt'])
+    .index('by_tenant_file', ['tenantId', 'fileId'])
+    .index('by_due', ['dueAt']),
 
   // Per-member search history for the standalone /county-connect page.
   // Stores the full bundle so re-clicking a recent renders without a paid
@@ -686,6 +736,10 @@ export default defineSchema({
         modelId: v.optional(v.string()),
       })
     ),
+    // Optional triage owner — set via inboundEmail.assignEmail. The My
+    // Queue page surfaces emails with assigneeMemberId === me; unowned
+    // quarantined emails surface in a separate "needs an owner" group.
+    assigneeMemberId: v.optional(v.id('tenantMembers')),
   })
     .index('by_tenant_status_received', ['tenantId', 'status', 'receivedAt'])
     .index('by_tenant_received', ['tenantId', 'receivedAt'])
@@ -693,6 +747,11 @@ export default defineSchema({
       'tenantId',
       'integrationId',
       'providerMessageId',
+    ])
+    .index('by_tenant_assignee_status', [
+      'tenantId',
+      'assigneeMemberId',
+      'status',
     ])
     .searchIndex('search_subject', {
       searchField: 'subject',

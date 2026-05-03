@@ -113,6 +113,7 @@ export function AppShell({
 // Pathname → breadcrumb. Pages can override by passing the `breadcrumb` prop.
 function deriveBreadcrumb(pathname: string): ReadonlyArray<Crumb> {
   if (pathname === '/') return [{ label: 'Dashboard' }]
+  if (pathname === '/queue') return [{ label: 'My queue' }]
   if (pathname === '/closing') return [{ label: 'Closing day' }]
   if (pathname === '/files') return [{ label: 'Files' }]
   if (/^\/files\/[^/]+/.test(pathname)) {

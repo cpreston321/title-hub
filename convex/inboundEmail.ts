@@ -841,6 +841,51 @@ export const attachToFile = mutation({
   },
 })
 
+// Assign an email to a teammate for triage. Notifies the new assignee
+// directly so they can pick it up from My Queue.
+export const assignEmail = mutation({
+  args: {
+    inboundEmailId: v.id('inboundEmails'),
+    assigneeMemberId: v.optional(v.id('tenantMembers')),
+  },
+  handler: async (ctx, { inboundEmailId, assigneeMemberId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+    const row = await ctx.db.get(inboundEmailId)
+    if (!row || row.tenantId !== tc.tenantId) {
+      throw new ConvexError('INBOUND_EMAIL_NOT_FOUND')
+    }
+    if (assigneeMemberId) {
+      const m = await ctx.db.get(assigneeMemberId)
+      if (!m || m.tenantId !== tc.tenantId || m.status !== 'active') {
+        throw new ConvexError('ASSIGNEE_INVALID')
+      }
+    }
+    await ctx.db.patch(inboundEmailId, { assigneeMemberId })
+    await recordAudit(ctx, tc, 'email.assigned', 'integration', row.integrationId, {
+      inboundEmailId,
+      from: row.assigneeMemberId ?? null,
+      to: assigneeMemberId ?? null,
+    })
+    if (assigneeMemberId && assigneeMemberId !== tc.memberId) {
+      await ctx.db.insert('notifications', {
+        tenantId: tc.tenantId,
+        memberId: assigneeMemberId,
+        kind: 'email.assigned',
+        title: `Triage assigned: ${truncate(row.subject || '(no subject)', 60)}`,
+        body: `From ${row.fromAddress}`,
+        severity: 'info',
+        fileId: row.matchedFileId ?? undefined,
+        groupKey: `email.assigned:${inboundEmailId}:${assigneeMemberId}`,
+        actorMemberId: tc.memberId,
+        actorType: 'user',
+        occurredAt: Date.now(),
+      })
+    }
+    return { ok: true }
+  },
+})
+
 export const archive = mutation({
   args: { inboundEmailId: v.id('inboundEmails') },
   handler: async (ctx, { inboundEmailId }) => {
