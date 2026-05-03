@@ -1265,182 +1265,131 @@ function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
   const cancelled = files.filter((f) => f.status === "cancelled").length;
   const inExam = open.filter((f) => f.status === "in_exam").length;
 
-  const today = new Date();
-  const issueNo = String(
-    Math.floor(
-      (today.getTime() - new Date(today.getFullYear(), 0, 1).getTime()) /
-        (7 * 24 * 3600 * 1000),
-    ) + 1,
-  ).padStart(2, "0");
-
   return (
-    <div className="flex flex-col gap-10 pb-12">
-      <Masthead today={today} issueNo={issueNo} totalFiles={files.length} />
+    <div className="flex flex-col gap-6 pb-12">
+      <DashboardHeader totalFiles={files.length} />
 
-      <section className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl bg-border/70 shadow-md ring-1 ring-foreground/5 lg:grid-cols-4">
-        <Plaque
-          label="Active files"
-          value={open.length}
-          accent="plum"
-          caption="opened, in exam, cleared, closing"
-        />
-        <Plaque
-          label="In examination"
-          value={inExam}
-          accent="sky"
-          caption="awaiting reconciliation"
-        />
-        <Plaque
-          label="Closing in 7 days"
-          value={closingSoon.length}
-          accent="ochre"
-          caption="targeted to close"
-        />
-        <Plaque
-          label="Cancelled YTD"
-          value={cancelled}
-          accent="muted"
-          caption={`of ${files.length} total opened`}
-        />
-      </section>
+      <KpiStrip
+        active={open.length}
+        inExam={inExam}
+        closingSoon={closingSoon.length}
+        cancelled={cancelled}
+        totalFiles={files.length}
+      />
 
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5 lg:col-span-8">
-          <header className="flex items-end justify-between border-b border-border/70 px-7 pt-6 pb-4">
+        <article className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 lg:col-span-8">
+          <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border/70 px-6 pt-5 pb-4">
             <div>
-              <div className="text-xs font-medium text-muted-foreground">
-                Section I
-              </div>
-              <h2 className="font-display text-3xl leading-none font-semibold tracking-tight text-[#40233f]">
-                Register of open files
+              <h2 className="font-display text-xl leading-none font-semibold tracking-tight text-[#40233f]">
+                Open files
               </h2>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Most recently opened, listed first. Click an entry for the full
-                docket.
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Most recently opened, listed first. Click any entry for the
+                full docket.
               </p>
             </div>
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-            >
-              <Link to="/files">View entire register →</Link>
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <Link to="/files">
+                View all
+                <ArrowRight className="size-3.5" />
+              </Link>
             </Button>
           </header>
 
-          <div className="paper-grain">
-            {open.length === 0 ? (
-              <div className="px-7 py-16 text-center text-sm text-muted-foreground">
-                No active files. The register stands empty for now.
-              </div>
-            ) : (
-              <ol className="divide-y divide-border/60">
-                <li className="hidden grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 px-7 py-2 text-xs text-muted-foreground sm:grid">
-                  <span className="text-right">№</span>
-                  <span>File · type</span>
-                  <span>Opened</span>
-                  <span>Cnty</span>
-                  <span className="text-right">Status</span>
+          {open.length === 0 ? (
+            <div className="px-6 py-14 text-center text-sm text-muted-foreground">
+              No active files. The register stands empty for now.
+            </div>
+          ) : (
+            <ol className="divide-y divide-border/60">
+              <li className="hidden grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 bg-[#fdf6e8]/50 px-6 py-2 text-xs text-muted-foreground sm:grid">
+                <span className="text-right">№</span>
+                <span>File · type</span>
+                <span>Opened</span>
+                <span>Cnty</span>
+                <span className="text-right">Status</span>
+              </li>
+              {open.slice(0, 7).map((f, i) => (
+                <li key={f._id}>
+                  <Link
+                    to="/files/$fileId"
+                    params={{ fileId: f._id }}
+                    className="group/row grid grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 px-6 py-3 transition hover:bg-[#fdf6e8]/40"
+                  >
+                    <span className="font-numerals text-right text-xs text-muted-foreground/70 tabular-nums">
+                      {String(i + 1).padStart(3, "0")}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-numerals truncate text-sm font-medium tracking-tight text-[#2e2430] group-hover/row:text-[#40233f]">
+                        {f.fileNumber}
+                      </div>
+                      <div className="text-xs text-muted-foreground capitalize">
+                        {f.transactionType}
+                      </div>
+                    </div>
+                    <div className="font-numerals text-xs text-muted-foreground tabular-nums">
+                      {new Date(f.openedAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "2-digit",
+                        year: "2-digit",
+                      })}
+                    </div>
+                    <div className="font-numerals text-xs text-muted-foreground">
+                      {f.stateCode}
+                    </div>
+                    <div className="flex justify-end">
+                      <StatusStamp status={f.status} />
+                    </div>
+                  </Link>
                 </li>
-                {open.slice(0, 7).map((f, i) => (
-                  <li key={f._id}>
-                    <Link
-                      to="/files/$fileId"
-                      params={{ fileId: f._id }}
-                      className="group/row grid grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 px-7 py-3 transition hover:bg-[#f9f1e5]"
-                    >
-                      <span className="font-numerals text-right text-xs text-muted-foreground/70 tabular-nums">
-                        {String(i + 1).padStart(3, "0")}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="font-numerals truncate text-sm font-medium tracking-tight text-[#2e2430] group-hover/row:text-[#40233f]">
-                          {f.fileNumber}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {f.transactionType}
-                        </div>
-                      </div>
-                      <div className="font-numerals text-xs text-muted-foreground tabular-nums">
-                        {new Date(f.openedAt).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "2-digit",
-                          year: "2-digit",
-                        })}
-                      </div>
-                      <div className="font-numerals text-xsr text-muted-foreground">
-                        {f.stateCode}
-                      </div>
-                      <div className="flex justify-end">
-                        <StatusStamp status={f.status} />
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
+              ))}
+            </ol>
+          )}
         </article>
 
-        <aside className="overflow-hidden rounded-2xl bg-[#40233f] text-[#f6e8d9] shadow-md ring-1 ring-foreground/5 lg:col-span-4">
-          <header className="flex items-end justify-between border-b border-white/10 px-6 pt-6 pb-4">
+        <aside className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5 lg:col-span-4">
+          <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border/70 px-6 pt-5 pb-4">
             <div>
-              <div className="text-xs font-medium text-[#f4d48f]/80">
-                Section II
-              </div>
-              <h2 className="font-display text-3xl leading-none font-semibold tracking-tight">
-                Week ahead
+              <h2 className="font-display text-xl leading-none font-semibold tracking-tight text-[#40233f]">
+                Closing this week
               </h2>
-              <p className="mt-2 text-xs text-white/55">
-                Closings within seven days of {longDate(today)}.
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Files targeted to close within seven days.
               </p>
             </div>
           </header>
 
-          <div className="px-6 py-5">
+          <div className="px-4 py-3">
             {closingSoon.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-white/15 bg-white/5 px-4 py-10 text-center text-sm text-white/55">
+              <div className="rounded-lg border border-dashed border-border/60 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
                 Nothing on the calendar.
               </div>
             ) : (
               <ul className="flex flex-col">
-                {closingSoon.map((f, i) => (
+                {closingSoon.map((f) => (
                   <li
                     key={f._id}
-                    className="group/closing flex items-center gap-4 border-b border-white/10 py-3 last:border-b-0"
+                    className="group/closing flex items-center gap-3 border-b border-border/50 py-3 last:border-b-0"
                   >
                     <DayStub timestamp={f.targetCloseDate!} />
                     <div className="min-w-0 flex-1">
                       <Link
                         to="/files/$fileId"
                         params={{ fileId: f._id }}
-                        className="font-numerals block truncate text-sm font-medium text-white transition hover:text-[#f4d48f]"
+                        className="font-numerals block truncate text-sm font-medium text-[#2e2430] transition hover:text-[#40233f]"
                       >
                         {f.fileNumber}
                       </Link>
-                      <div className="text-xs text-white/55">
+                      <div className="text-xs text-muted-foreground capitalize">
                         {f.transactionType} · {f.stateCode}
                       </div>
                     </div>
-                    <span className="font-numerals text-xs text-white/40 tabular-nums">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
                   </li>
                 ))}
               </ul>
             )}
           </div>
-
-          <footer className="border-t border-white/10 px-6 py-4">
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="w-full rounded-full border-white/25 bg-transparent text-white hover:bg-white/10 hover:text-white"
-            >
-              <Link to="/files">Open the register →</Link>
-            </Button>
-          </footer>
         </aside>
       </section>
 
@@ -1686,109 +1635,87 @@ function timeAgo(ts: number): string {
   });
 }
 
-function Masthead({
-  today,
-  issueNo,
-  totalFiles,
-}: {
-  today: Date;
-  issueNo: string;
-  totalFiles: number;
-}) {
+function DashboardHeader({ totalFiles }: { totalFiles: number }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 ledger-rules opacity-50"
-      />
-
-      <div className="relative grid grid-cols-1 items-center gap-6 px-7 py-8 md:grid-cols-[auto_1fr_auto] md:px-10 md:py-10">
-        <div className="flex items-center gap-4">
-          <Monogram />
-          <div className="text-xs leading-relaxed font-medium text-muted-foreground">
-            <div>Vol. IV</div>
-            <div>№ {issueNo}</div>
-          </div>
-        </div>
-
-        <div className="text-center md:px-6">
-          <div className="text-xs font-medium text-[#b78625]">
-            — The County Almanac —
-          </div>
-          <h1 className="mt-2 font-display text-5xl leading-[0.95] font-semibold tracking-tight text-[#40233f] md:text-6xl">
-            <span>Title</span> <span>Operations</span>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-4xl leading-[1] font-semibold tracking-tight text-[#40233f] md:text-5xl">
+            Dashboard
           </h1>
-          <div className="mt-3 flex items-center justify-center gap-3 text-xs text-muted-foreground">
-            <span className="h-px w-8 bg-border" />
-            <span>{longDate(today)}</span>
-            <span className="h-px w-8 bg-border" />
-          </div>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            What's open right now, what's about to close, and the latest
+            activity across the workspace.
+          </p>
         </div>
-
-        <div className="flex flex-col items-end text-right">
-          <div className="text-xs font-medium text-muted-foreground">
-            Files of record
+        {totalFiles > 0 && (
+          <div className="font-numerals text-xs text-muted-foreground tabular-nums">
+            {totalFiles} file{totalFiles === 1 ? "" : "s"} of record
           </div>
-          <div className="font-numerals text-3xl font-semibold text-[#40233f] tabular-nums md:text-4xl">
-            {String(totalFiles).padStart(4, "0")}
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">
-            since inception
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Plaque({
-  label,
-  value,
-  caption,
-  accent,
+function KpiStrip({
+  active,
+  inExam,
+  closingSoon,
+  cancelled,
+  totalFiles,
 }: {
-  label: string;
-  value: number;
-  caption?: string;
-  accent: "plum" | "sky" | "ochre" | "muted";
+  active: number;
+  inExam: number;
+  closingSoon: number;
+  cancelled: number;
+  totalFiles: number;
 }) {
-  const accentClass =
-    accent === "plum"
-      ? "text-[#40233f]"
-      : accent === "sky"
-        ? "text-[#3f668f]"
-        : accent === "ochre"
-          ? "text-[#c9652e]"
-          : "text-muted-foreground/80";
-  const dotClass =
-    accent === "plum"
-      ? "bg-[#593157]"
-      : accent === "sky"
-        ? "bg-[#3f668f]"
-        : accent === "ochre"
-          ? "bg-[#c9652e]"
-          : "bg-muted-foreground/40";
-
+  const tiles: ReadonlyArray<{
+    label: string;
+    value: number;
+    caption: string;
+    accent: string;
+  }> = [
+    {
+      label: "Active files",
+      value: active,
+      caption: "opened, in exam, cleared, closing",
+      accent: "text-[#40233f]",
+    },
+    {
+      label: "In examination",
+      value: inExam,
+      caption: "awaiting reconciliation",
+      accent: "text-[#2c4a6b]",
+    },
+    {
+      label: "Closing in 7 days",
+      value: closingSoon,
+      caption: "targeted to close",
+      accent: "text-[#7a3d18]",
+    },
+    {
+      label: "Cancelled YTD",
+      value: cancelled,
+      caption: `of ${totalFiles} total opened`,
+      accent: "text-[#8a3942]",
+    },
+  ];
   return (
-    <div className="group/plaque relative bg-card px-6 py-7 transition hover:bg-[#fdfaf3]">
-      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-        <span className={`size-1.5 rounded-full ${dotClass}`} />
-        {label}
-      </div>
-      <div
-        className={`mt-3 font-display text-[3.25rem] leading-[0.9] font-semibold tracking-tight tabular-nums ${accentClass}`}
-      >
-        {String(value).padStart(2, "0")}
-      </div>
-      {caption && (
-        <div className="mt-3 text-xs leading-snug text-muted-foreground/80">
-          {caption}
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {tiles.map((t) => (
+        <div
+          key={t.label}
+          className="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/5"
+        >
+          <div className={`text-xs font-medium ${t.accent}`}>{t.label}</div>
+          <div className="font-display text-2xl leading-none font-semibold tabular-nums text-[#40233f]">
+            {String(t.value).padStart(2, "0")}
+          </div>
+          <div className="text-xs text-muted-foreground">{t.caption}</div>
         </div>
-      )}
-      <div
-        aria-hidden
-        className="absolute inset-x-6 bottom-3 h-px bg-gradient-to-r from-transparent via-border to-transparent opacity-0 transition group-hover/plaque:opacity-100"
-      />
+      ))}
     </div>
   );
 }
@@ -1851,61 +1778,35 @@ function DayStub({ timestamp }: { timestamp: number }) {
   const overdue = days < 0;
   const today = days === 0;
   return (
-    <div className="relative grid w-14 shrink-0 place-items-center">
+    <div className="relative grid w-12 shrink-0 place-items-center">
       <div
-        className={`flex w-full flex-col items-center rounded-md border border-white/15 bg-white/5 py-1 ${
-          overdue ? "border-[#c9652e]/60 bg-[#c9652e]/10" : ""
-        } ${today ? "border-[#f4d48f]/60 bg-[#f4d48f]/10" : ""}`}
+        className={`flex w-full flex-col items-center rounded-md border bg-card py-1 ${
+          overdue
+            ? "border-[#b94f58]/40 bg-[#fdecee]"
+            : today
+              ? "border-[#b78625]/40 bg-[#fdf6e8]"
+              : "border-border/70"
+        }`}
       >
-        <div className="text-[8px] text-white/50">
+        <div className="text-[8px] uppercase tracking-wider text-muted-foreground">
           {d.toLocaleString("en-US", { month: "short" })}
         </div>
-        <div className="font-display text-2xl leading-none font-semibold text-white">
+        <div
+          className={`font-display text-xl leading-none font-semibold ${
+            overdue
+              ? "text-[#8a3942]"
+              : today
+                ? "text-[#7a5818]"
+                : "text-[#40233f]"
+          }`}
+        >
           {d.getDate()}
         </div>
       </div>
-      <div className="font-numerals mt-1 text-xs text-white/45 tabular-nums">
+      <div className="font-numerals mt-1 text-[10px] text-muted-foreground tabular-nums">
         {overdue ? `${Math.abs(days)}d ago` : today ? "today" : `in ${days}d`}
       </div>
     </div>
   );
 }
 
-function Monogram() {
-  return (
-    <div className="relative grid size-12 shrink-0 place-items-center rounded-full ring-1 ring-[#40233f]/20">
-      <div className="absolute inset-0 rounded-full brass-foil opacity-90" />
-      <div className="absolute inset-[3px] rounded-full bg-card" />
-      <svg viewBox="0 0 32 32" className="relative size-7 text-[#40233f]">
-        <circle
-          cx="16"
-          cy="16"
-          r="13"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="0.6"
-        />
-        <text
-          x="16"
-          y="16"
-          textAnchor="middle"
-          dominantBaseline="central"
-          fontFamily="Fraunces, serif"
-          fontSize="11"
-          fontWeight="600"
-          fill="currentColor"
-        >
-          T·H
-        </text>
-      </svg>
-    </div>
-  );
-}
-
-function longDate(d: Date) {
-  return d.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}

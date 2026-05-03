@@ -2,7 +2,7 @@ import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
-import { ScrollText, Stamp, X } from 'lucide-react'
+import { Stamp, X } from 'lucide-react'
 import {
   Card,
   CardDescription,
@@ -155,39 +155,21 @@ function RulesAdminPage() {
 
 function CodexHeader({ actions }: { actions?: React.ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 paper-grain opacity-60"
-      />
-      <div className="relative grid grid-cols-1 items-center gap-6 px-7 py-10 md:grid-cols-[auto_1fr] md:px-10">
-        <div className="grid size-20 place-items-center">
-          <div className="relative grid size-20 place-items-center rounded-full ring-1 ring-[#40233f]/15">
-            <div className="absolute inset-0 rounded-full brass-foil opacity-90" />
-            <div className="absolute inset-[3px] rounded-full bg-card" />
-            <ScrollText className="relative size-8 text-[#40233f]" />
-          </div>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="font-display text-4xl leading-[1] font-semibold tracking-tight text-[#40233f] md:text-5xl">
+            Recording rules
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Margins, fees, exhibits, notarial requirements — versioned per
+            county and document type. New versions supersede the previous one
+            on their effective date.
+          </p>
         </div>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="text-xs font-medium text-[#b78625]">
-              Codex · Liber Recordationis
-            </div>
-            <h1 className="mt-2 font-display text-5xl leading-[0.95] font-semibold tracking-tight text-[#40233f] md:text-6xl">
-              <span>Recording</span> Rules
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              Margins, fees, exhibits, notarial requirements — versioned per
-              county and document type. New versions supersede the previous one on
-              their effective date.
-            </p>
-          </div>
-          {actions && (
-            <div className="flex flex-wrap items-center gap-2 self-start">
-              {actions}
-            </div>
-          )}
-        </div>
+        {actions && (
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        )}
       </div>
     </div>
   )

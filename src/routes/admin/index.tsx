@@ -118,8 +118,8 @@ function AdminPage() {
       title="Admin"
       subtitle={`${current.data.legalName} · ${current.data.role}`}
     >
-      <div className="flex flex-col gap-8 pb-12">
-        <BureauHeader
+      <div className="flex flex-col gap-6 pb-12">
+        <PageHeader
           orgName={current.data.legalName}
           role={current.data.role}
         />
@@ -139,35 +139,28 @@ function AdminPage() {
   )
 }
 
-function BureauHeader({ orgName, role }: { orgName: string; role: string }) {
+function PageHeader({ orgName, role }: { orgName: string; role: string }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-md ring-1 ring-foreground/5">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 paper-grain opacity-60"
-      />
-      <div className="relative grid grid-cols-1 items-center gap-6 px-7 py-10 md:grid-cols-[1fr_auto] md:px-10">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <div className="text-xs font-medium text-[#b78625]">
-            Volume IV · Bureau of Records
-          </div>
-          <h1 className="mt-2 font-display text-5xl leading-[0.95] font-semibold tracking-tight text-[#40233f] md:text-6xl">
-            <span>The</span> Administration
+          <h1 className="font-display text-4xl leading-[1] font-semibold tracking-tight text-[#40233f] md:text-5xl">
+            Admin
           </h1>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Roster and invitations, integration keys, and recording rules. The
-            quiet workshop behind the register.
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Manage your roster and invitations, integration keys, and recording
+            rules — the workshop behind the file register.
           </p>
         </div>
-        <div className="flex flex-col items-end gap-2 text-right">
-          <div className="rounded-md border border-[#40233f]/15 bg-[#fdf6e8] px-4 py-3 font-display">
-            <div className="text-xs text-[#b78625]">Acting on behalf of</div>
-            <div className="font-display text-base font-semibold text-[#40233f]">
-              {orgName}
-            </div>
-            <div className="font-numerals mt-0.5 text-xs text-muted-foreground">
-              Office of {role}
-            </div>
+        <div className="flex shrink-0 flex-col items-end rounded-xl border border-border/70 bg-card px-4 py-2.5 ring-1 ring-foreground/5">
+          <div className="text-[10px] font-medium uppercase tracking-wider text-[#b78625]">
+            Acting on behalf of
+          </div>
+          <div className="font-display text-sm font-semibold text-[#40233f]">
+            {orgName}
+          </div>
+          <div className="font-numerals text-[11px] capitalize text-muted-foreground">
+            {role}
           </div>
         </div>
       </div>
@@ -180,16 +173,12 @@ function SubAreas() {
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       <SubAreaTile
         to="/admin/rules"
-        roman="I"
-        eyebrow="Codex"
         title="Recording rules"
         description="Versioned per county and document type. Margins, fees, exhibits, notarial requirements."
         icon={<ScrollText className="size-5" />}
       />
       <SubAreaTile
         to="/admin/integrations"
-        roman="II"
-        eyebrow="Apparatus"
         title="Integrations"
         description="Tokens, webhooks, and third-party services bound to this tenant."
         icon={<Plug className="size-5" />}
@@ -200,15 +189,11 @@ function SubAreas() {
 
 function SubAreaTile({
   to,
-  roman,
-  eyebrow,
   title,
   description,
   icon,
 }: {
   to: string
-  roman: string
-  eyebrow: string
   title: string
   description: string
   icon: React.ReactNode
@@ -216,29 +201,20 @@ function SubAreaTile({
   return (
     <Link
       to={to}
-      className="group/tile relative flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card px-6 py-5 shadow-sm ring-1 ring-foreground/5 transition hover:bg-[#fdf6e8] hover:shadow-md"
+      className="group/tile flex flex-col rounded-2xl border border-border/70 bg-card px-5 py-4 shadow-sm ring-1 ring-foreground/5 transition hover:border-[#593157]/30 hover:shadow-md"
     >
-      <div
-        aria-hidden
-        className="absolute -top-6 -right-4 font-display text-[8rem] leading-none font-semibold text-[#40233f]/[0.05] transition group-hover/tile:text-[#40233f]/[0.08]"
-      >
-        {roman}
-      </div>
-      <div className="relative flex items-center gap-3">
-        <div className="grid size-10 place-items-center rounded-xl border border-[#40233f]/15 bg-card text-[#40233f]">
+      <div className="flex items-center gap-3">
+        <div className="grid size-9 place-items-center rounded-md border border-[#40233f]/15 bg-[#fdf6e8] text-[#40233f]">
           {icon}
         </div>
-        <div>
-          <div className="text-xs font-medium text-[#b78625]">{eyebrow}</div>
-          <div className="font-display text-xl font-semibold tracking-tight text-[#40233f]">
-            {title}
-          </div>
+        <div className="font-display text-lg font-semibold tracking-tight text-[#40233f]">
+          {title}
         </div>
-        <span className="font-numerals ml-auto text-xs text-muted-foreground transition group-hover/tile:translate-x-1 group-hover/tile:text-[#40233f]">
+        <span className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground transition group-hover/tile:translate-x-0.5 group-hover/tile:text-[#40233f]">
           Open →
         </span>
       </div>
-      <p className="relative mt-3 text-sm leading-relaxed text-muted-foreground">
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
         {description}
       </p>
     </Link>
@@ -282,35 +258,28 @@ function MembersPanel() {
   }
 
   return (
-    <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
-      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pt-6 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="grid size-9 place-items-center rounded-md border border-[#40233f]/20 bg-[#fdf6e8] text-[#40233f]">
-            <Users className="size-4" />
-          </div>
-          <div>
-            <div className="text-xs font-medium text-[#b78625]">
-              Section I · Roster
-            </div>
-            <h2 className="font-display text-2xl leading-none font-semibold tracking-tight text-[#40233f]">
-              Members
-            </h2>
-          </div>
+    <article className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border/70 px-6 pt-5 pb-4">
+        <div className="flex items-center gap-2.5">
+          <Users className="size-4 text-[#40233f]" />
+          <h2 className="font-display text-xl leading-none font-semibold tracking-tight text-[#40233f]">
+            Members
+          </h2>
         </div>
-        <div className="font-numerals rounded-md border border-border/60 bg-card px-3 py-1.5 text-xs text-muted-foreground tabular-nums">
+        <div className="font-numerals text-xs text-muted-foreground tabular-nums">
           {list.length} on staff
         </div>
       </header>
 
       {error && (
-        <div className="mx-7 mt-4 rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
+        <div className="mx-6 mt-4 rounded-md border border-[#b94f58]/30 bg-[#fdecee] px-3 py-2 text-sm text-[#8a3942]">
           {error}
         </div>
       )}
 
       {list.length === 0 ? (
-        <div className="px-7 py-16 text-center">
-          <div className="text-xl font-semibold text-[#40233f]">
+        <div className="px-6 py-14 text-center">
+          <div className="font-display text-xl font-semibold text-[#40233f]">
             The roster is empty.
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
@@ -318,8 +287,8 @@ function MembersPanel() {
           </p>
         </div>
       ) : (
-        <ol className="divide-y divide-border/50 paper-grain">
-          <li className="hidden grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-7 py-2 text-xs text-muted-foreground sm:grid">
+        <ol className="divide-y divide-border/50">
+          <li className="hidden grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 bg-[#fdf6e8]/50 px-6 py-2 text-xs text-muted-foreground sm:grid">
             <span className="text-right">№</span>
             <span>Member</span>
             <span>Role</span>
@@ -328,17 +297,15 @@ function MembersPanel() {
           {list.map((m, i) => (
             <li
               key={m._id}
-              className="grid grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-7 py-3 transition hover:bg-[#fdf6e8]/50"
+              className="grid grid-cols-[2.5rem_1fr_10rem_4.5rem] items-center gap-4 px-6 py-3 transition hover:bg-[#fdf6e8]/40"
             >
               <span className="font-numerals text-right text-xs text-muted-foreground/70 tabular-nums">
                 {String(i + 1).padStart(2, '0')}
               </span>
 
               <div className="flex min-w-0 items-center gap-3">
-                <div className="relative grid size-9 shrink-0 place-items-center rounded-full ring-1 ring-[#40233f]/15">
-                  <div className="absolute inset-0 rounded-full brass-foil opacity-90" />
-                  <div className="absolute inset-[2px] rounded-full bg-card" />
-                  <span className="relative font-display text-xs font-semibold text-[#40233f]">
+                <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#fdf6e8] ring-1 ring-[#40233f]/15">
+                  <span className="font-display text-[11px] font-semibold text-[#40233f]">
                     {initials(m.email)}
                   </span>
                 </div>
@@ -399,7 +366,7 @@ function MembersPanel() {
         </ol>
       )}
 
-      <footer className="border-t border-border/60 bg-[#f9f5ef]/50 px-7 py-3">
+      <footer className="border-t border-border/60 bg-[#fdf6e8]/40 px-6 py-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Eye className="size-3.5 text-[#3f7c64]" />
           NPI clearance gates access to tokenized fields. Owner role is required
@@ -442,26 +409,19 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
   const list = invites.data ?? []
 
   return (
-    <article className="overflow-hidden rounded-2xl bg-card shadow-md ring-1 ring-foreground/5">
-      <header className="flex items-end justify-between gap-3 border-b border-border/70 px-7 pt-6 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="grid size-9 place-items-center rounded-md border border-[#40233f]/20 bg-[#fdf6e8] text-[#40233f]">
-            <Mail className="size-4" />
-          </div>
-          <div>
-            <div className="text-xs font-medium text-[#b78625]">
-              Section II · Dispatches
-            </div>
-            <h2 className="font-display text-2xl leading-none font-semibold tracking-tight text-[#40233f]">
-              Invitations
-            </h2>
-          </div>
+    <article className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border/70 px-6 pt-5 pb-4">
+        <div className="flex items-center gap-2.5">
+          <Mail className="size-4 text-[#40233f]" />
+          <h2 className="font-display text-xl leading-none font-semibold tracking-tight text-[#40233f]">
+            Invitations
+          </h2>
         </div>
       </header>
 
       <form
         onSubmit={onInvite}
-        className="flex flex-col gap-3 border-b border-border/60 bg-[#fdf6e8]/40 px-7 py-5"
+        className="flex flex-col gap-3 border-b border-border/60 bg-[#fdf6e8]/40 px-6 py-5"
       >
         <div className="flex flex-col gap-2">
           <Label
@@ -519,10 +479,10 @@ function InvitationsPanel({ betterAuthOrgId }: { betterAuthOrgId: string }) {
         </Button>
       </form>
 
-      <div className="px-7 py-4">
+      <div className="px-6 py-4">
         <div className="flex items-baseline justify-between border-b border-border/40 pb-2">
-          <div className="text-xs font-medium text-[#b78625]">
-            Pending dispatches
+          <div className="text-xs font-medium uppercase tracking-wider text-[#b78625]">
+            Pending invitations
           </div>
           <div className="font-numerals text-xs text-muted-foreground tabular-nums">
             {list.length}
