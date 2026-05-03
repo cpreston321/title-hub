@@ -341,12 +341,43 @@ export const runJob = internalAction({
     docTypeHint: v.optional(v.string()),
   },
   handler: async (ctx, { extractionId, storageId, docTypeHint }) => {
+    // Wrap the trail emitter so we never crash the run because of a
+    // transient mutation hiccup — the trail is observability, not
+    // correctness. Each call is its own transaction; that's what makes
+    // intermediate phases visible to a subscribed UI.
+    const emit = async (
+      kind: 'phase' | 'observation' | 'warning' | 'error' | 'done',
+      label: string,
+      detail?: string
+    ) => {
+      try {
+        await ctx.runMutation(internal.extractionEvents.append, {
+          extractionId,
+          kind,
+          label,
+          detail,
+        })
+      } catch {
+        /* trail is best-effort */
+      }
+    }
+
     await ctx.runMutation(internal.extractions.markRunning, { extractionId })
+    await emit(
+      'phase',
+      docTypeHint ? `Reading ${docTypeHint}` : 'Reading document',
+      'Pulling the file out of storage and preparing it for the model.'
+    )
     try {
       const blob = await ctx.storage.get(storageId)
       if (!blob) throw new Error('STORAGE_NOT_FOUND')
       const bytes = await blob.arrayBuffer()
       const base64 = Buffer.from(bytes).toString('base64')
+      await emit(
+        'observation',
+        `Loaded ${formatBytes(bytes.byteLength)} of PDF data`,
+        'Encoded for the extraction model.'
+      )
 
       const c = client()
       let payload: ExtractionPayload
@@ -354,6 +385,11 @@ export const runJob = internalAction({
       let source: 'claude' | 'mock'
 
       if (!c) {
+        await emit(
+          'phase',
+          'Mock extraction',
+          'No ANTHROPIC_API_KEY set — using deterministic fixtures keyed on the document type hint.'
+        )
         payload = mockExtraction(docTypeHint)
         modelId = 'mock'
         source = 'mock'
@@ -361,6 +397,14 @@ export const runJob = internalAction({
         const userText = docTypeHint
           ? `The user has classified this document as: ${docTypeHint}. Verify and extract per schema. Return JSON only.`
           : `Extract per the schema. Return JSON only.`
+
+        await emit(
+          'phase',
+          `Asking ${ANTHROPIC_MODEL} to extract fields`,
+          docTypeHint
+            ? `Hint: ${docTypeHint}. The model is reading the PDF directly.`
+            : 'No type hint — the model is classifying and extracting in one pass.'
+        )
 
         const response = await c.messages.create({
           model: ANTHROPIC_MODEL,
@@ -389,6 +433,14 @@ export const runJob = internalAction({
             },
           ],
         })
+        const usage = response.usage
+        await emit(
+          'observation',
+          'Model response received',
+          usage
+            ? `${usage.input_tokens} input · ${usage.output_tokens} output tokens.`
+            : undefined
+        )
 
         const textBlock = response.content.find((b) => b.type === 'text')
         if (!textBlock || textBlock.type !== 'text') {
@@ -398,6 +450,10 @@ export const runJob = internalAction({
         payload = parseExtractionJson(textBlock.text)
         modelId = response.model
         source = 'claude'
+        const fieldSummary = summarizePayload(payload)
+        if (fieldSummary) {
+          await emit('observation', 'Parsed structured fields', fieldSummary)
+        }
       }
 
       await ctx.runMutation(internal.extractions.markSucceeded, {
@@ -406,12 +462,35 @@ export const runJob = internalAction({
         modelId,
         source,
       })
+      await emit('done', 'Extraction complete', 'Reconciliation will pick up the new facts automatically.')
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       await ctx.runMutation(internal.extractions.markFailed, {
         extractionId,
         errorMessage,
       })
+      await emit('error', 'Extraction failed', errorMessage)
     }
   },
 })
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function summarizePayload(p: ExtractionPayload): string | null {
+  const parts: string[] = []
+  if (p.documentKind) parts.push(`kind=${p.documentKind}`)
+  if (p.parties?.length) parts.push(`${p.parties.length} parties`)
+  if (p.financial?.purchasePrice !== undefined) {
+    parts.push(`price=$${p.financial.purchasePrice.toLocaleString()}`)
+  }
+  if (p.dates?.closingDate) parts.push(`closing=${p.dates.closingDate}`)
+  if (p.titleCompany?.name) parts.push(`title=${p.titleCompany.name}`)
+  if (p.wireInstructions?.payeeName) {
+    parts.push(`wire→${p.wireInstructions.payeeName}`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
+}

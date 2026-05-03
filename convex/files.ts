@@ -9,6 +9,18 @@ import { fileStatus, partyType, propertyAddress } from './schema'
 
 const editorRoles = ['owner', 'admin', 'processor'] as const
 
+// Denormalized blob for the documents.search_text index. Reads filename +
+// docType so a search for "wire" or "purchase agreement" surfaces docs
+// without us indexing every byte of OCR.
+export function buildDocumentSearchText(doc: {
+  title?: string
+  docType: string
+}): string {
+  return [doc.title, doc.docType.replace(/_/g, ' ')]
+    .filter((s): s is string => typeof s === 'string' && s.length > 0)
+    .join(' ')
+}
+
 export function buildFileSearchText(
   file: {
     fileNumber: string
@@ -388,6 +400,7 @@ export const recordDocument = mutation({
       fileId,
       docType,
       title,
+      searchText: buildDocumentSearchText({ title, docType }),
       storageId,
       contentType: meta.contentType,
       sizeBytes: meta.size,
@@ -457,8 +470,38 @@ export async function deleteDocumentCascade(
     // ignore
   }
 
+  // If this document came in via an inbound email, scrub the dangling id
+  // out of attachmentDocumentIds. If the email's last attachment goes,
+  // bounce the status back to quarantined so the triage UI shows it again
+  // and the user can re-route. matchedFileId stays as a soft suggestion so
+  // the FilePicker preselects the prior match.
+  const emailsReferencing = await ctx.db
+    .query('inboundEmails')
+    .withIndex('by_tenant_received', (q) => q.eq('tenantId', tenantId))
+    .order('desc')
+    .take(200)
+  let downgraded = 0
+  for (const e of emailsReferencing) {
+    if (!e.attachmentDocumentIds.includes(doc._id)) continue
+    const remaining = e.attachmentDocumentIds.filter((id) => id !== doc._id)
+    const patch: Partial<Doc<'inboundEmails'>> = {
+      attachmentDocumentIds: remaining,
+    }
+    if (
+      remaining.length === 0 &&
+      e.status === 'auto_attached'
+    ) {
+      patch.status = 'quarantined'
+      downgraded++
+    }
+    await ctx.db.patch(e._id, patch)
+  }
+
   await ctx.db.delete(doc._id)
-  return { extractionsRemoved: extractions.length }
+  return {
+    extractionsRemoved: extractions.length,
+    inboundEmailsDowngraded: downgraded,
+  }
 }
 
 // Insert (or replace) a pending extraction row and schedule the runner.

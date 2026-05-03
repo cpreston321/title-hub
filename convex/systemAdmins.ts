@@ -970,3 +970,206 @@ export const adminGetOrCreateEmailIntegration = internalMutation({
     }
   },
 })
+
+// Hard-delete a file and every row that references it. Editor-tier safety
+// net (the user has to type the file number on the CLI), so this is an
+// internalMutation only — there's no in-app surface for it. Cascade order
+// matters: documents go first (they cascade to extractions, storage, and
+// downgrade inbound emails) and the file row goes last after every fk
+// pointer is gone.
+//
+// Bounded by `.take(500)` per category. A file with > 500 documents is an
+// outlier we'd rather inspect manually than batch through silently.
+const HARD_DELETE_TAKE_LIMIT = 500
+
+export const adminHardDeleteFile = internalMutation({
+  args: { tenantSlug: v.string(), fileNumber: v.string() },
+  handler: async (ctx, { tenantSlug, fileNumber }) => {
+    const tenant = await tenantBySlug(ctx, tenantSlug)
+    if (!tenant) {
+      throw new ConvexError(`No tenant with slug ${tenantSlug}`)
+    }
+    const file = await ctx.db
+      .query('files')
+      .withIndex('by_tenant_filenumber', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileNumber', fileNumber),
+      )
+      .unique()
+    if (!file) {
+      throw new ConvexError(
+        `No file ${fileNumber} on tenant ${tenantSlug}`,
+      )
+    }
+
+    const counters = {
+      documents: 0,
+      extractions: 0,
+      extractionEvents: 0,
+      findings: 0,
+      propertySnapshots: 0,
+      fileParties: 0,
+      notifications: 0,
+      inboundEmailsTouched: 0,
+      auditEventsRemoved: 0,
+    }
+
+    // Documents — `deleteDocumentCascade` walks extractions + storage and
+    // also patches `inboundEmails.attachmentDocumentIds` to drop dangling
+    // ids, downgrading auto_attached emails back to quarantined when their
+    // last attachment goes. We rely on that here.
+    const docs = await ctx.db
+      .query('documents')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id),
+      )
+      .take(HARD_DELETE_TAKE_LIMIT)
+    if (docs.length === HARD_DELETE_TAKE_LIMIT) {
+      throw new ConvexError(
+        `File has ≥${HARD_DELETE_TAKE_LIMIT} documents — refusing batch delete; clean up manually`,
+      )
+    }
+    for (const doc of docs) {
+      await deleteDocumentCascade(ctx, tenant._id, doc)
+      counters.documents++
+    }
+
+    // Lingering extractions (defensive — should be 0 after the doc cascade).
+    const leftoverExtractions = await ctx.db
+      .query('documentExtractions')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id),
+      )
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const e of leftoverExtractions) {
+      await ctx.db.delete(e._id)
+      counters.extractions++
+    }
+
+    // Extraction events.
+    const events = await ctx.db
+      .query('extractionEvents')
+      .withIndex('by_tenant_file_time', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id),
+      )
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const ev of events) {
+      await ctx.db.delete(ev._id)
+      counters.extractionEvents++
+    }
+
+    // Reconciliation findings.
+    const findings = await ctx.db
+      .query('reconciliationFindings')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id),
+      )
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const f of findings) {
+      await ctx.db.delete(f._id)
+      counters.findings++
+    }
+
+    // Property snapshots (county-records pulls).
+    const snapshots = await ctx.db
+      .query('propertySnapshots')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id),
+      )
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const s of snapshots) {
+      await ctx.db.delete(s._id)
+      counters.propertySnapshots++
+    }
+
+    // File ↔ party junction rows. The `parties` rows themselves are
+    // tenant-wide and may be referenced by other files — leave them.
+    const fps = await ctx.db
+      .query('fileParties')
+      .withIndex('by_tenant_file', (q) =>
+        q.eq('tenantId', tenant._id).eq('fileId', file._id),
+      )
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const fp of fps) {
+      await ctx.db.delete(fp._id)
+      counters.fileParties++
+    }
+
+    // Per-member notifications scoped to this file. `by_tenant_member_time`
+    // doesn't include fileId, so we walk the tenant's most-recent slice and
+    // filter — bounded so a chatty file can't blow the transaction.
+    const recentNotifications = await ctx.db
+      .query('notifications')
+      .withIndex('by_tenant_member_time', (q) => q.eq('tenantId', tenant._id))
+      .order('desc')
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const n of recentNotifications) {
+      if (n.fileId !== file._id) continue
+      await ctx.db.delete(n._id)
+      counters.notifications++
+    }
+
+    // Inbound emails that were routed here. Doc cascade already pruned the
+    // attachment ids; clear matchedFileId so the row doesn't dangle. Status
+    // gets dropped to quarantined for any auto_attached row that referenced
+    // this file (manual triage is the right next step).
+    const inboundEmails = await ctx.db
+      .query('inboundEmails')
+      .withIndex('by_tenant_received', (q) => q.eq('tenantId', tenant._id))
+      .order('desc')
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const ie of inboundEmails) {
+      if (ie.matchedFileId !== file._id) continue
+      await ctx.db.patch(ie._id, {
+        matchedFileId: undefined,
+        status: ie.status === 'auto_attached' ? 'quarantined' : ie.status,
+        matchReason: ie.matchReason
+          ? `${ie.matchReason}; file_deleted`
+          : 'file_deleted',
+      })
+      counters.inboundEmailsTouched++
+    }
+
+    // Audit-event rows pinned to the file. Keep tenant-level audit history
+    // intact — only drop the events whose resourceType+resourceId is this
+    // exact file row, since we're erasing the resource itself.
+    const fileAuditEvents = await ctx.db
+      .query('auditEvents')
+      .withIndex('by_tenant_resource', (q) =>
+        q
+          .eq('tenantId', tenant._id)
+          .eq('resourceType', 'file')
+          .eq('resourceId', file._id),
+      )
+      .take(HARD_DELETE_TAKE_LIMIT)
+    for (const ev of fileAuditEvents) {
+      await ctx.db.delete(ev._id)
+      counters.auditEventsRemoved++
+    }
+
+    // Tombstone audit at the tenant level so the deletion itself stays in
+    // the trail even after all the file-scoped events are gone.
+    await ctx.db.insert('auditEvents', {
+      tenantId: tenant._id,
+      actorType: 'system',
+      action: 'file.hard_deleted',
+      resourceType: 'tenant',
+      resourceId: tenant._id,
+      metadata: {
+        fileId: file._id,
+        fileNumber: file.fileNumber,
+        priorStatus: file.status,
+        ...counters,
+        source: 'cli',
+      },
+      occurredAt: Date.now(),
+    })
+
+    await ctx.db.delete(file._id)
+
+    return {
+      fileNumber: file.fileNumber,
+      tenantSlug,
+      ...counters,
+    }
+  },
+})

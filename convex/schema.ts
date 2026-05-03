@@ -311,6 +311,9 @@ export default defineSchema({
     fileId: v.optional(v.id('files')),
     docType: v.string(),
     title: v.optional(v.string()),
+    // Denormalized title + docType for the cross-entity search palette.
+    // Populated by files.uploadDocument and inboundEmail._ingestInbound.
+    searchText: v.optional(v.string()),
     storageId: v.id('_storage'),
     contentType: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
@@ -321,7 +324,11 @@ export default defineSchema({
     uploadedAt: v.number(),
   })
     .index('by_tenant_file', ['tenantId', 'fileId'])
-    .index('by_tenant_uploadedAt', ['tenantId', 'uploadedAt']),
+    .index('by_tenant_uploadedAt', ['tenantId', 'uploadedAt'])
+    .searchIndex('search_text', {
+      searchField: 'searchText',
+      filterFields: ['tenantId'],
+    }),
 
   // ───── Sprint 4: extraction + reconciliation ──────────────────
   documentExtractions: defineTable({
@@ -343,6 +350,32 @@ export default defineSchema({
   })
     .index('by_tenant_file', ['tenantId', 'fileId'])
     .index('by_tenant_document', ['tenantId', 'documentId']),
+
+  // Per-step audit trail for an in-flight extraction. Append-only — the
+  // runner emits one row per phase boundary (and on warnings/errors) so
+  // the UI can render a live "thinking trail" while a doc is being read,
+  // and a permanent timeline after the fact. Distinct from the
+  // documentExtractions row (which holds the final payload) so a noisy
+  // run doesn't bloat the parent record.
+  extractionEvents: defineTable({
+    tenantId: v.id('tenants'),
+    extractionId: v.id('documentExtractions'),
+    fileId: v.id('files'),
+    documentId: v.id('documents'),
+    seq: v.number(),
+    kind: v.union(
+      v.literal('phase'),
+      v.literal('observation'),
+      v.literal('warning'),
+      v.literal('error'),
+      v.literal('done')
+    ),
+    label: v.string(),
+    detail: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index('by_tenant_extraction_seq', ['tenantId', 'extractionId', 'seq'])
+    .index('by_tenant_file_time', ['tenantId', 'fileId', 'createdAt']),
 
   reconciliationFindings: defineTable({
     tenantId: v.id('tenants'),
@@ -620,6 +653,22 @@ export default defineSchema({
     spfResult: v.optional(v.string()),
     dkimResult: v.optional(v.string()),
     dmarcResult: v.optional(v.string()),
+    // Claude-derived classification layered on top of the deterministic
+    // file-number / address match. Populated by inboundEmailClassifier.run
+    // shortly after _ingestInbound. Surfaces intent + reasons in the Mail
+    // UI; can also escalate confidence above the AUTO_ATTACH threshold
+    // when the model is sure and the deterministic path missed.
+    classification: v.optional(
+      v.object({
+        intent: v.string(),
+        confidence: v.number(),
+        reasons: v.array(v.string()),
+        suggestedFileId: v.optional(v.id('files')),
+        suggestedFileNumber: v.optional(v.string()),
+        classifiedAt: v.number(),
+        modelId: v.optional(v.string()),
+      })
+    ),
   })
     .index('by_tenant_status_received', ['tenantId', 'status', 'receivedAt'])
     .index('by_tenant_received', ['tenantId', 'receivedAt'])
@@ -627,7 +676,11 @@ export default defineSchema({
       'tenantId',
       'integrationId',
       'providerMessageId',
-    ]),
+    ])
+    .searchIndex('search_subject', {
+      searchField: 'subject',
+      filterFields: ['tenantId'],
+    }),
 
   // ───── Sprint 2: NPI tokenization ─────────────────────────────
   npiSecrets: defineTable({
@@ -709,6 +762,11 @@ export default defineSchema({
     body: v.optional(v.string()),
     severity: v.optional(v.string()), // "info" | "warn" | "block" | "ok"
     fileId: v.optional(v.id('files')), // primary link target
+    // Stable key used to collapse a noisy stream of related notifications
+    // into a single row in the bell. Default policy: `${kind}:${fileId}`
+    // when a fileId is present, otherwise the kind itself. Older rows
+    // without a groupKey render as one-row groups.
+    groupKey: v.optional(v.string()),
     actorMemberId: v.optional(v.id('tenantMembers')),
     actorType: v.optional(v.string()),
     occurredAt: v.number(),

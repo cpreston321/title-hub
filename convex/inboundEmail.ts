@@ -5,7 +5,12 @@ import {
   mutation,
   query,
 } from './_generated/server'
-import { deleteDocumentCascade, scheduleExtractionFor } from './files'
+import { internal } from './_generated/api'
+import {
+  buildDocumentSearchText,
+  deleteDocumentCascade,
+  scheduleExtractionFor,
+} from './files'
 import { recordAudit } from './lib/audit'
 import { fanOutNotification } from './notifications'
 import { scoreEmail } from './lib/spamScore'
@@ -30,6 +35,18 @@ const AUTO_ATTACH_CONFIDENCE = 0.85
 // subject is the worst-case wire-fraud pattern; we'd rather force a human
 // to look at it.
 const AUTO_ATTACH_BLOCKING_TIERS = new Set<SpamReport['tier']>(['high_risk'])
+
+// File statuses eligible for auto-attach. A funded / recorded / policied /
+// cancelled file is considered done — a late-arriving email almost always
+// means the sender mis-addressed something or the closing reopened. Either
+// way it deserves a human in the loop, so we drop it into triage with a
+// suggested file (the prior match) instead of routing on autopilot.
+//
+// `cleared` and `closing` files are deliberately excluded too: by the time
+// they reach those states the team has typically frozen the doc set, so a
+// surprise inbound shouldn't silently land. Tighten or loosen this set if
+// the workflow shifts.
+const AUTO_ATTACH_ELIGIBLE_STATUSES = new Set(['opened', 'in_exam'])
 
 const editorRoles = ['owner', 'admin', 'processor'] as const
 
@@ -379,10 +396,24 @@ export const _ingestInbound = internalMutation({
     // subject is the worst-case wire-fraud pattern — better to force a
     // human eye on it.
     const blockedBySpam = AUTO_ATTACH_BLOCKING_TIERS.has(spamReport.tier)
+
+    // Pull the suggested file's status so we can refuse auto-attach to
+    // closed / closing / cancelled files. The match is still surfaced as
+    // a quarantine suggestion — only the silent route is blocked.
+    let suggestedFileStatus: string | null = null
+    if (classification.fileId) {
+      const suggestedFile = await ctx.db.get(classification.fileId)
+      suggestedFileStatus = suggestedFile?.status ?? null
+    }
+    const blockedByStatus =
+      suggestedFileStatus !== null &&
+      !AUTO_ATTACH_ELIGIBLE_STATUSES.has(suggestedFileStatus)
+
     const autoAttach =
       classification.fileId !== null &&
       classification.confidence >= AUTO_ATTACH_CONFIDENCE &&
-      !blockedBySpam
+      !blockedBySpam &&
+      !blockedByStatus
     const attachToFileId = autoAttach ? classification.fileId : null
 
     // Create documents rows for each attachment. When auto-attached we set
@@ -397,6 +428,7 @@ export const _ingestInbound = internalMutation({
         fileId: attachToFileId ?? undefined,
         docType,
         title: att.filename,
+        searchText: buildDocumentSearchText({ title: att.filename, docType }),
         storageId: att.storageId,
         contentType: att.contentType,
         sizeBytes: att.sizeBytes,
@@ -416,13 +448,26 @@ export const _ingestInbound = internalMutation({
       }
     }
 
+    const matchReason =
+      blockedByStatus && suggestedFileStatus
+        ? `${classification.reason}; blocked_by_status:${suggestedFileStatus}`
+        : classification.reason
+
     await ctx.db.patch(inboundEmailId, {
       status: autoAttach ? 'auto_attached' : 'quarantined',
       matchedFileId: classification.fileId ?? undefined,
       matchConfidence: classification.confidence,
-      matchReason: classification.reason,
+      matchReason,
       attachmentDocumentIds: documentIds,
       classifiedAt: Date.now(),
+    })
+
+    // Schedule the Claude-backed soft classifier to layer intent + reasoning
+    // on top of the deterministic match. It runs out-of-band: even if the
+    // model is slow or fails, the deterministic auto-attach already happened
+    // so the team isn't blocked.
+    await ctx.scheduler.runAfter(0, internal.inboundEmailClassifier.run, {
+      inboundEmailId,
     })
 
     // Audit on the file when auto-attached so it appears in the file's
@@ -594,6 +639,7 @@ export const list = query({
       errorMessage: r.errorMessage ?? null,
       spamScore: r.spamScore ?? null,
       spamTier: r.spamTier ?? null,
+      classification: r.classification ?? null,
     }))
   },
 })
@@ -683,6 +729,7 @@ export const get = query({
         dkim: row.dkimResult ?? null,
         dmarc: row.dmarcResult ?? null,
       },
+      classification: row.classification ?? null,
     }
   },
 })
@@ -694,8 +741,16 @@ export const attachToFile = mutation({
   args: {
     inboundEmailId: v.id('inboundEmails'),
     fileId: v.id('files'),
+    // Override token. Required when the email is in a blocking spam tier
+    // (high_risk). The UI only sets it after the operator clicks an
+    // explicit "I've verified this — attach anyway" affordance. The
+    // override is recorded in the audit trail for the file.
+    acknowledgeSpamRisk: v.optional(v.boolean()),
   },
-  handler: async (ctx, { inboundEmailId, fileId }) => {
+  handler: async (
+    ctx,
+    { inboundEmailId, fileId, acknowledgeSpamRisk }
+  ) => {
     const tc = await requireTenant(ctx)
     requireRole(tc, ...editorRoles)
 
@@ -706,6 +761,19 @@ export const attachToFile = mutation({
     if (row.status === 'archived' || row.status === 'spam') {
       throw new ConvexError('INBOUND_EMAIL_NOT_TRIAGABLE')
     }
+
+    // High-risk authentication failures are the worst-case wire-fraud
+    // pattern: a spoofed sender that looks like a real correspondent.
+    // Refuse to attach unless the operator explicitly acknowledges the
+    // risk. Same threshold as auto-attach so the manual path can never be
+    // looser than the automated one.
+    const blockedBySpam = AUTO_ATTACH_BLOCKING_TIERS.has(
+      (row.spamTier ?? 'clean') as SpamReport['tier']
+    )
+    if (blockedBySpam && !acknowledgeSpamRisk) {
+      throw new ConvexError('INBOUND_EMAIL_BLOCKED_BY_RISK')
+    }
+
     const file = await ctx.db.get(fileId)
     if (!file || file.tenantId !== tc.tenantId) {
       throw new ConvexError('FILE_NOT_FOUND')
@@ -730,29 +798,46 @@ export const attachToFile = mutation({
       status: 'auto_attached',
       matchedFileId: fileId,
       matchConfidence: 1,
-      matchReason: 'manual_attach',
+      matchReason: blockedBySpam
+        ? 'manual_attach_high_risk_override'
+        : 'manual_attach',
       classifiedAt: Date.now(),
     })
 
     await recordAudit(ctx, tc, 'email.manual_attached', 'file', fileId, {
       inboundEmailId,
       attachmentsScheduled: scheduled,
+      spamTier: row.spamTier ?? null,
+      spamScore: row.spamScore ?? null,
+      riskOverride: blockedBySpam,
     })
 
     // Light notification — confirms a triage decision flowed through, and
     // gives processors elsewhere on the team a hint a previously-pending
-    // row is now resolved.
+    // row is now resolved. High-risk overrides escalate to a `block`
+    // severity so a teammate immediately notices someone bypassed the
+    // wire-fraud guard.
     await fanOutNotification(ctx, tc.tenantId, {
-      kind: 'email.manual_attached',
-      title: `Email routed to ${file.fileNumber}`,
-      body: truncate(row.subject || '(no subject)', 80),
-      severity: 'info',
+      kind: blockedBySpam
+        ? 'email.manual_attached_high_risk'
+        : 'email.manual_attached',
+      title: blockedBySpam
+        ? `High-risk email manually attached to ${file.fileNumber}`
+        : `Email routed to ${file.fileNumber}`,
+      body: blockedBySpam
+        ? `Operator overrode the high-risk block — verify before any wire instructions are followed. ${truncate(row.subject || '(no subject)', 80)}`
+        : truncate(row.subject || '(no subject)', 80),
+      severity: blockedBySpam ? 'block' : 'info',
       fileId,
       actorMemberId: tc.memberId,
       actorType: 'user',
     })
 
-    return { ok: true, attachmentsScheduled: scheduled }
+    return {
+      ok: true,
+      attachmentsScheduled: scheduled,
+      riskOverride: blockedBySpam,
+    }
   },
 })
 
@@ -917,6 +1002,258 @@ export const _findEmailInboundByLocalpart = internalQuery({
     return null
   },
 })
+
+// ─── Classifier (Claude-backed) helpers ────────────────────────────────
+//
+// The Node-side classifier action lives in inboundEmailClassifier.ts so it
+// can pull the Anthropic SDK in. These two helpers are its database
+// boundary: one query to load context, one mutation to apply the result.
+// Both are tenant-scoped via the row's tenantId — the classifier never
+// authenticates as a user.
+
+const classifierIntents = v.union(
+  v.literal('wire_instructions'),
+  v.literal('payoff'),
+  v.literal('title_commitment'),
+  v.literal('closing_disclosure'),
+  v.literal('county_response'),
+  v.literal('buyer_info'),
+  v.literal('lender_correspondence'),
+  v.literal('title_document'),
+  v.literal('marketing'),
+  v.literal('phishing'),
+  v.literal('other')
+)
+
+export const _loadClassifierContext = internalQuery({
+  args: { inboundEmailId: v.id('inboundEmails') },
+  handler: async (ctx, { inboundEmailId }) => {
+    const row = await ctx.db.get(inboundEmailId)
+    if (!row) return null
+    if (row.classification) {
+      // Already classified — re-runs are explicit via a separate path. The
+      // action treats this as a no-op signal.
+      return null
+    }
+    const recentCutoff = Date.now() - 90 * 24 * 60 * 60_000
+    const candidates = await ctx.db
+      .query('files')
+      .withIndex('by_tenant_openedAt', (q) =>
+        q.eq('tenantId', row.tenantId).gte('openedAt', recentCutoff)
+      )
+      .order('desc')
+      .take(60)
+    return {
+      tenantId: row.tenantId,
+      fromAddress: row.fromAddress,
+      fromName: row.fromName ?? null,
+      subject: row.subject,
+      bodyText: row.bodyText ?? null,
+      attachmentCount: row.attachmentCount,
+      spamTier: row.spamTier ?? null,
+      currentMatchedFileId: row.matchedFileId ?? null,
+      currentConfidence: row.matchConfidence ?? 0,
+      candidates: candidates.map((f) => ({
+        fileId: f._id,
+        fileNumber: f.fileNumber,
+        propertyAddress: f.propertyAddress ?? null,
+      })),
+    }
+  },
+})
+
+export const _applyClassification = internalMutation({
+  args: {
+    inboundEmailId: v.id('inboundEmails'),
+    intent: classifierIntents,
+    confidence: v.number(),
+    reasons: v.array(v.string()),
+    suggestedFileId: v.optional(v.id('files')),
+    modelId: v.optional(v.string()),
+  },
+  handler: async (
+    ctx,
+    { inboundEmailId, intent, confidence, reasons, suggestedFileId, modelId }
+  ) => {
+    const row = await ctx.db.get(inboundEmailId)
+    if (!row) return null
+
+    let suggestedFileNumber: string | undefined
+    if (suggestedFileId) {
+      const file = await ctx.db.get(suggestedFileId)
+      if (!file || file.tenantId !== row.tenantId) {
+        // Reject foreign suggestions outright.
+        suggestedFileId = undefined
+      } else {
+        suggestedFileNumber = file.fileNumber
+      }
+    }
+
+    const classification = {
+      intent,
+      confidence: Math.max(0, Math.min(1, confidence)),
+      reasons: reasons.slice(0, 8),
+      suggestedFileId,
+      suggestedFileNumber,
+      classifiedAt: Date.now(),
+      modelId,
+    }
+    await ctx.db.patch(inboundEmailId, { classification })
+
+    // Auto-escalate: if the email is currently quarantined, the classifier
+    // is highly confident, the suggested file is concrete, and spam isn't
+    // blocking, attach now. Otherwise leave it for a human.
+    const blockedBySpam = AUTO_ATTACH_BLOCKING_TIERS.has(
+      (row.spamTier ?? 'clean') as SpamReport['tier']
+    )
+    const canEscalate =
+      row.status === 'quarantined' &&
+      !!suggestedFileId &&
+      classification.confidence >= AUTO_ATTACH_CONFIDENCE &&
+      !blockedBySpam
+
+    if (canEscalate && suggestedFileId) {
+      const file = await ctx.db.get(suggestedFileId)
+      if (
+        file &&
+        file.tenantId === row.tenantId &&
+        AUTO_ATTACH_ELIGIBLE_STATUSES.has(file.status)
+      ) {
+        let scheduled = 0
+        for (const docId of row.attachmentDocumentIds) {
+          const doc = await ctx.db.get(docId)
+          if (!doc || doc.tenantId !== row.tenantId) continue
+          if (doc.fileId === suggestedFileId) continue
+          await ctx.db.patch(docId, { fileId: suggestedFileId })
+          await scheduleExtractionFor(ctx, row.tenantId, {
+            documentId: docId,
+            fileId: suggestedFileId,
+            storageId: doc.storageId,
+            docType: doc.docType,
+          })
+          scheduled++
+        }
+        await ctx.db.patch(inboundEmailId, {
+          status: 'auto_attached',
+          matchedFileId: suggestedFileId,
+          matchConfidence: Math.max(
+            row.matchConfidence ?? 0,
+            classification.confidence
+          ),
+          matchReason: `classifier_escalation:${intent}`,
+        })
+        await ctx.db.insert('auditEvents', {
+          tenantId: row.tenantId,
+          actorType: 'system',
+          action: 'email.classifier_attached',
+          resourceType: 'file',
+          resourceId: suggestedFileId,
+          metadata: {
+            inboundEmailId,
+            intent,
+            confidence: classification.confidence,
+            reasons: classification.reasons,
+            attachmentsScheduled: scheduled,
+            modelId,
+          },
+          occurredAt: Date.now(),
+        })
+        const senderLabel = row.fromName
+          ? `${row.fromName} <${row.fromAddress}>`
+          : row.fromAddress
+        await fanOutNotification(ctx, row.tenantId, {
+          kind: 'email.classifier_attached',
+          title: `${humanIntent(intent)} attached → ${file.fileNumber}`,
+          body: `${senderLabel} · ${truncate(row.subject || '(no subject)', 80)}`,
+          severity: 'ok',
+          fileId: suggestedFileId,
+          actorType: 'system',
+        })
+      }
+    } else if (intent === 'wire_instructions' && row.spamTier === 'high_risk') {
+      // High-risk wire instructions are the worst-case fraud signal.
+      // Surface a blocker even if no escalation happened.
+      await fanOutNotification(ctx, row.tenantId, {
+        kind: 'email.wire_alert',
+        title: 'Possible wire-fraud: review immediately',
+        body: `${row.fromAddress} · ${truncate(row.subject || '(no subject)', 80)}`,
+        severity: 'block',
+        fileId: row.matchedFileId ?? undefined,
+        groupKey: `email.wire_alert:${inboundEmailId}`,
+        actorType: 'system',
+      })
+    }
+
+    return classification
+  },
+})
+
+// Clears the classification so a re-run starts fresh — internal because
+// it's only callable from the classifier action.
+export const _clearClassification = internalMutation({
+  args: { inboundEmailId: v.id('inboundEmails') },
+  handler: async (ctx, { inboundEmailId }) => {
+    const row = await ctx.db.get(inboundEmailId)
+    if (!row) return
+    await ctx.db.patch(inboundEmailId, { classification: undefined })
+  },
+})
+
+// Public: editor-role mutation that asks the classifier to take another
+// pass. Useful after a processor adjusts the sender's reputation or after
+// a model upgrade — tiny escape hatch, audited.
+export const reclassify = mutation({
+  args: { inboundEmailId: v.id('inboundEmails') },
+  handler: async (ctx, { inboundEmailId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+    const row = await ctx.db.get(inboundEmailId)
+    if (!row || row.tenantId !== tc.tenantId) {
+      throw new ConvexError('INBOUND_EMAIL_NOT_FOUND')
+    }
+    await ctx.scheduler.runAfter(
+      0,
+      internal.inboundEmailClassifier._rerun,
+      { inboundEmailId }
+    )
+    await recordAudit(
+      ctx,
+      tc,
+      'email.reclassify_requested',
+      'integration',
+      row.integrationId,
+      { inboundEmailId }
+    )
+    return { ok: true }
+  },
+})
+
+function humanIntent(intent: string): string {
+  switch (intent) {
+    case 'wire_instructions':
+      return 'Wire instructions'
+    case 'payoff':
+      return 'Payoff statement'
+    case 'title_commitment':
+      return 'Title commitment'
+    case 'closing_disclosure':
+      return 'Closing disclosure'
+    case 'county_response':
+      return 'County response'
+    case 'buyer_info':
+      return 'Buyer info'
+    case 'lender_correspondence':
+      return 'Lender correspondence'
+    case 'title_document':
+      return 'Title document'
+    case 'marketing':
+      return 'Marketing'
+    case 'phishing':
+      return 'Phishing'
+    default:
+      return 'Email'
+  }
+}
 
 // ─── Internal helpers used by the inbound HTTP route ───────────────────
 

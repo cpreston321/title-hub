@@ -3,7 +3,7 @@ import { internalMutation, query } from './_generated/server'
 import type { QueryCtx } from './_generated/server'
 import type { TenantContext } from './lib/tenant'
 import { requireTenant } from './lib/tenant'
-import { buildFileSearchText } from './files'
+import { buildDocumentSearchText, buildFileSearchText } from './files'
 
 const MAX_Q = 80
 const PER_GROUP = 5
@@ -19,14 +19,26 @@ async function tenantOrNull(ctx: QueryCtx): Promise<TenantContext | null> {
 export const global = query({
   args: { q: v.string() },
   handler: async (ctx, { q }) => {
-    const empty = { files: [], parties: [], findings: [] }
+    const empty = {
+      files: [],
+      parties: [],
+      findings: [],
+      documents: [],
+      emails: [],
+    }
     const trimmed = q.trim().slice(0, MAX_Q)
     if (trimmed.length < 2) return empty
 
     const tc = await tenantOrNull(ctx)
     if (!tc) return empty
 
-    const [fileMatches, partyMatches, findingMatches] = await Promise.all([
+    const [
+      fileMatches,
+      partyMatches,
+      findingMatches,
+      documentMatches,
+      emailMatches,
+    ] = await Promise.all([
       ctx.db
         .query('files')
         .withSearchIndex('search_text', (s) =>
@@ -43,6 +55,18 @@ export const global = query({
         .query('reconciliationFindings')
         .withSearchIndex('search_message', (s) =>
           s.search('message', trimmed).eq('tenantId', tc.tenantId)
+        )
+        .take(PER_GROUP),
+      ctx.db
+        .query('documents')
+        .withSearchIndex('search_text', (s) =>
+          s.search('searchText', trimmed).eq('tenantId', tc.tenantId)
+        )
+        .take(PER_GROUP),
+      ctx.db
+        .query('inboundEmails')
+        .withSearchIndex('search_subject', (s) =>
+          s.search('subject', trimmed).eq('tenantId', tc.tenantId)
         )
         .take(PER_GROUP),
     ])
@@ -81,6 +105,31 @@ export const global = query({
       })
     )
 
+    const documents = await Promise.all(
+      documentMatches.map(async (d) => {
+        const file = d.fileId ? await ctx.db.get(d.fileId) : null
+        return {
+          documentId: d._id,
+          fileId: d.fileId ?? null,
+          fileNumber: file?.fileNumber ?? null,
+          title: d.title ?? null,
+          docType: d.docType,
+          uploadedAt: d.uploadedAt,
+        }
+      })
+    )
+
+    const emails = emailMatches.map((e) => ({
+      inboundEmailId: e._id,
+      subject: e.subject,
+      fromAddress: e.fromAddress,
+      fromName: e.fromName ?? null,
+      receivedAt: e.receivedAt,
+      status: e.status,
+      matchedFileId: e.matchedFileId ?? null,
+      classificationIntent: e.classification?.intent ?? null,
+    }))
+
     return {
       files: fileMatches.map((f) => ({
         _id: f._id,
@@ -90,6 +139,8 @@ export const global = query({
       })),
       parties,
       findings,
+      documents,
+      emails,
     }
   },
 })
@@ -118,5 +169,26 @@ export const backfillFileSearchText = internalMutation({
       }
     }
     return { scanned: files.length, updated }
+  },
+})
+
+// Same idea for documents.searchText. Run once after deploying the
+// search_text index. Cheap because the formula is title + docType.
+export const backfillDocumentSearchText = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const docs = await ctx.db.query('documents').collect()
+    let updated = 0
+    for (const d of docs) {
+      const next = buildDocumentSearchText({
+        title: d.title ?? undefined,
+        docType: d.docType,
+      })
+      if (d.searchText !== next) {
+        await ctx.db.patch(d._id, { searchText: next })
+        updated++
+      }
+    }
+    return { scanned: docs.length, updated }
   },
 })

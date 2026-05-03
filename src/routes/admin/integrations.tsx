@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AppShell } from "@/components/app-shell";
+import { useConfirm } from "@/components/confirm-dialog";
 import { Loading } from "@/components/loading";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -107,6 +108,7 @@ function IntegrationsAdminPage() {
   const setEnabled = useConvexMutation(api.integrations.setEnabled);
   const remove = useConvexMutation(api.integrations.remove);
   const runSync = useConvexMutation(api.integrations.runSync);
+  const confirm = useConfirm();
   const agentInstallInfo = useConvexMutation(api.integrations.agentInstallInfo);
   const generateInstallToken = useConvexMutation(
     api.integrations.generateAgentInstallToken,
@@ -211,7 +213,13 @@ function IntegrationsAdminPage() {
   };
 
   const onRemove = async (id: Id<"integrations">) => {
-    if (!confirm("Remove this integration? Sync history is preserved.")) return;
+    const ok = await confirm({
+      title: "Remove this integration?",
+      description: "Sync history is preserved. Future syncs will stop.",
+      confirmText: "Remove",
+      destructive: true,
+    });
+    if (!ok) return;
     setPending(id);
     setError(null);
     try {

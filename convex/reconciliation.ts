@@ -1393,6 +1393,74 @@ export const resolveWith = mutation({
   },
 })
 
+// One-click verification path for non-factable findings (wire, vesting,
+// owner-of-record, open-lien, etc). Unlike `resolveWith`, this mutation does
+// NOT promote a document's value to ground truth — it records that a human
+// verified the issue out of band and explains how. The resolvedValue payload
+// captures method + note for auditability.
+//
+// Examples of `evidence.method`:
+//   "phone_call"      — wire payee confirmed by phone with a known contact
+//   "independent"     — independent verification (different channel)
+//   "recording_search"— chain of title verified via county recorder search
+//   "payoff_on_file"  — payoff letters/satisfactions confirmed in file
+//   "in_person"       — confirmed face-to-face at closing
+//   "other"           — free-form note required
+export const verifyFinding = mutation({
+  args: {
+    findingId: v.id('reconciliationFindings'),
+    method: v.union(
+      v.literal('phone_call'),
+      v.literal('independent'),
+      v.literal('recording_search'),
+      v.literal('payoff_on_file'),
+      v.literal('in_person'),
+      v.literal('other')
+    ),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, { findingId, method, note }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+    const finding = await ctx.db.get(findingId)
+    if (!finding || finding.tenantId !== tc.tenantId) {
+      throw new ConvexError('FINDING_NOT_FOUND')
+    }
+    const now = Date.now()
+    const verified = {
+      kind: 'verified_by_human' as const,
+      method,
+      note: note?.trim() || undefined,
+      verifiedAt: now,
+      verifiedByMemberId: tc.memberId,
+    }
+    await ctx.db.patch(findingId, {
+      status: 'resolved',
+      resolvedByMemberId: tc.memberId,
+      resolvedAt: now,
+      resolvedValue: verified,
+    })
+    await recordAudit(ctx, tc, 'finding.verified', 'file', finding.fileId, {
+      findingId,
+      findingType: finding.findingType,
+      method,
+      note: verified.note,
+      from: finding.status,
+    })
+    await ctx.runMutation(internal.webhooks.enqueue, {
+      tenantId: tc.tenantId,
+      event: 'finding.resolved',
+      payload: {
+        findingId,
+        fileId: finding.fileId,
+        findingType: finding.findingType,
+        verification: verified,
+      },
+    })
+    return { ok: true, verification: verified }
+  },
+})
+
 type Promotion = {
   target: 'file' | 'party'
   id: string

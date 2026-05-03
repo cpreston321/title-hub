@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { Link, createFileRoute, redirect } from "@tanstack/react-router";
 import {
   createContext,
   useContext,
@@ -52,6 +52,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAlert, useConfirm } from "@/components/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -109,11 +110,14 @@ function FileDetailPage() {
   );
 
   if (detail.error) {
+    const isMissing = /FILE_NOT_FOUND/i.test(detail.error.message);
     return (
       <AppShell isAuthenticated title="File">
-        <p className="text-sm text-destructive">
-          Error: {detail.error.message}
-        </p>
+        <FileMissingState
+          variant={isMissing ? "missing" : "error"}
+          fileId={id}
+          rawMessage={detail.error.message}
+        />
       </AppShell>
     );
   }
@@ -236,6 +240,73 @@ type FileDetailContentProps = {
   fileBusy: boolean;
   subtitle: string;
 };
+
+// Empty state for /files/$fileId when the requested id resolves to nothing
+// — usually because the file was hard-deleted in another tab or via the
+// admin CLI. Distinguishes the "expected" missing case from a true server
+// error so the operator gets a clear next step instead of a stack trace.
+function FileMissingState({
+  variant,
+  fileId,
+  rawMessage,
+}: {
+  variant: "missing" | "error";
+  fileId: Id<"files">;
+  rawMessage: string;
+}) {
+  const isMissing = variant === "missing";
+  return (
+    <div className="mx-auto flex max-w-xl flex-col items-center gap-4 px-6 py-16 text-center">
+      <div
+        className={`grid size-14 place-items-center rounded-full ring-1 ring-inset ${
+          isMissing
+            ? "bg-[#fdf6e8] text-[#7a5818] ring-[#b78625]/30"
+            : "bg-[#fdecee] text-[#8a3942] ring-[#b94f58]/30"
+        }`}
+      >
+        {isMissing ? (
+          <FileText className="size-6" />
+        ) : (
+          <CircleAlert className="size-6" />
+        )}
+      </div>
+      <div className="flex flex-col gap-1">
+        <h1 className="font-display text-2xl font-semibold text-[#40233f]">
+          {isMissing ? "This file no longer exists" : "Couldn't load this file"}
+        </h1>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {isMissing
+            ? "This file has been removed. Anything that was attached to it has been moved back to triage where applicable."
+            : "Something went wrong loading this file. Try again — if it keeps happening, copy the message below to support."}
+        </p>
+      </div>
+      <div className="font-numerals rounded-md bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+        {fileId}
+      </div>
+      {!isMissing && (
+        <details className="w-full max-w-md text-left">
+          <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
+            Show server message
+          </summary>
+          <pre className="mt-2 overflow-x-auto rounded-md bg-card/70 p-2 text-[11px] leading-tight text-foreground/70 ring-1 ring-border ring-inset">
+            {rawMessage}
+          </pre>
+        </details>
+      )}
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+        <Button asChild>
+          <Link to="/files">
+            <ArrowRight className="size-3.5 -scale-x-100" />
+            Back to all files
+          </Link>
+        </Button>
+        <Button asChild variant="outline">
+          <Link to="/mail">Check the inbox</Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function FileDetailContent({
   id,
@@ -431,6 +502,7 @@ function HeaderStatus({
   const setStatus = useConvexMutation(api.files.setStatus);
   const [pending, setPending] = useState<StatusValue | null>(null);
   const tone = statusTone(status);
+  const alert = useAlert();
 
   const onPick = async (next: StatusValue) => {
     if (next === status) return;
@@ -439,10 +511,12 @@ function HeaderStatus({
       await setStatus({ fileId, status: next });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // The audit trail will not have changed; show the failure inline.
-      window.alert(
-        `Could not change status: ${msg.replace(/^.*ConvexError:\s*/, "")}`,
-      );
+      // The audit trail will not have changed; surface the failure in a
+      // dialog so the operator notices it.
+      await alert({
+        title: "Could not change status",
+        description: msg.replace(/^.*ConvexError:\s*/, ""),
+      });
     } finally {
       setPending(null);
     }
@@ -1723,6 +1797,7 @@ function DocumentRow({
   const runExtraction = useConvexMutation(api.extractions.run);
   const deleteDocument = useConvexMutation(api.files.deleteDocument);
   const openPreview = useDocumentPreview();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -1740,13 +1815,14 @@ function DocumentRow({
   };
 
   const onDelete = async () => {
-    if (
-      !confirm(
-        `Delete "${title ?? docType}"? Its extraction will be removed too.`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: `Delete "${title ?? docType}"?`,
+      description:
+        "Its extraction is removed too. Any inbound email this document came in on will drop back to the triage queue.",
+      confirmText: "Delete",
+      destructive: true,
+    });
+    if (!ok) return;
     setDeleting(true);
     setErr(null);
     try {
@@ -1928,7 +2004,105 @@ function DocumentRow({
           </Button>
         </div>
       </div>
+      <ExtractionTrailRow
+        extractionId={ext.data?._id as Id<"documentExtractions"> | undefined}
+        active={isActive}
+      />
     </li>
+  );
+}
+
+function ExtractionTrailRow({
+  extractionId,
+  active,
+}: {
+  extractionId: Id<"documentExtractions"> | undefined;
+  active: boolean;
+}) {
+  const [open, setOpen] = useState(active);
+
+  // Auto-expand the trail while extraction is running so the trail is
+  // visible without a click; auto-collapse once it settles.
+  useEffect(() => {
+    if (active) setOpen(true);
+  }, [active]);
+
+  const events = useQuery({
+    ...convexQuery(
+      api.extractionEvents.listForExtraction,
+      extractionId ? { extractionId } : "skip",
+    ),
+    enabled: !!extractionId && open,
+  });
+
+  if (!extractionId) return null;
+  const rows = (events.data ?? []) as ReadonlyArray<{
+    _id: string;
+    seq: number;
+    kind: "phase" | "observation" | "warning" | "error" | "done";
+    label: string;
+    detail?: string;
+    createdAt: number;
+  }>;
+
+  return (
+    <div className="relative z-10 border-t border-border/40 bg-muted/20 px-4 py-2 text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-[#7a5818] transition hover:bg-[#fdf6e8]"
+      >
+        <Sparkles className="size-3" />
+        {open ? "Hide thinking trail" : "Show thinking trail"}
+        {rows.length > 0 && !open && (
+          <span className="ml-1 text-muted-foreground">· {rows.length} steps</span>
+        )}
+      </button>
+      {open && (
+        <ol className="mt-2 flex flex-col gap-1.5">
+          {rows.length === 0 && (
+            <li className="text-muted-foreground italic">
+              {active ? "Watching the model work…" : "No trail recorded for this run."}
+            </li>
+          )}
+          {rows.map((e) => {
+            const tone =
+              e.kind === "error"
+                ? "border-[#b94f58]/40 bg-[#fdecee] text-[#8a3942]"
+                : e.kind === "warning"
+                  ? "border-[#c9652e]/40 bg-[#fde9dc] text-[#7a3d18]"
+                  : e.kind === "done"
+                    ? "border-[#3f7c64]/40 bg-[#e6f3ed] text-[#2f5d4b]"
+                    : e.kind === "observation"
+                      ? "border-border/60 bg-card text-foreground"
+                      : "border-[#b78625]/30 bg-[#fdf6e8] text-[#7a5818]";
+            return (
+              <li
+                key={e._id}
+                className={`relative flex flex-col rounded-md border px-2.5 py-1.5 ${tone}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{e.label}</span>
+                  <span className="font-numerals shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                    {new Date(e.createdAt).toLocaleTimeString("en-US", {
+                      hour: "numeric",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
+                  </span>
+                </div>
+                {e.detail && (
+                  <span className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                    {e.detail}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </div>
   );
 }
 
@@ -2713,6 +2887,7 @@ function ReconciliationPanel({
   const reconcile = useConvexMutation(api.reconciliation.runForFile);
   const setStatus = useConvexMutation(api.reconciliation.setStatus);
   const resolveWith = useConvexMutation(api.reconciliation.resolveWith);
+  const verify = useConvexMutation(api.reconciliation.verifyFinding);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<FactSeverity>>(
@@ -2749,6 +2924,24 @@ function ReconciliationPanel({
   ) => {
     try {
       await resolveWith({ findingId, documentId, value });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const onVerify = async (
+    findingId: Id<"reconciliationFindings">,
+    method:
+      | "phone_call"
+      | "independent"
+      | "recording_search"
+      | "payoff_on_file"
+      | "in_person"
+      | "other",
+    note?: string,
+  ) => {
+    try {
+      await verify({ findingId, method, note });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -2922,6 +3115,7 @@ function ReconciliationPanel({
                       finding={f}
                       documents={documents}
                       onSetStatus={onAck}
+                      onVerify={onVerify}
                     />
                   ))}
                 </div>
@@ -3505,10 +3699,111 @@ function SettledFactRow({
   );
 }
 
+type VerificationMethod =
+  | "phone_call"
+  | "independent"
+  | "recording_search"
+  | "payoff_on_file"
+  | "in_person"
+  | "other";
+
+type SuggestedAction = {
+  // Primary call-to-action shown on the card.
+  label: string;
+  // What we'll persist as the verification method when the user accepts.
+  method: VerificationMethod;
+  // One-line context shown above the form so the processor knows what they're
+  // attesting to ("I confirmed the wire payee by phone with the title co.").
+  prompt: string;
+  // Default note prefix so the audit trail isn't an empty string.
+  defaultNote?: string;
+};
+
+const VERIFICATION_LABELS: Record<VerificationMethod, string> = {
+  phone_call: "Phone call",
+  independent: "Independent source",
+  recording_search: "Recorder search",
+  payoff_on_file: "Payoff letter on file",
+  in_person: "In person",
+  other: "Other",
+};
+
+function suggestedActionFor(findingType: string): SuggestedAction | null {
+  switch (findingType) {
+    case "wire.payee_unknown":
+    case "wire.payee_partial_match":
+    case "wire.payee_missing":
+    case "wire.amount_unusual":
+      return {
+        label: "I confirmed the wire by phone",
+        method: "phone_call",
+        prompt:
+          "Call the payee at a number from a prior independent document — never the number on the wire instructions.",
+      };
+    case "owner_of_record_mismatch":
+      return {
+        label: "I confirmed the chain of title",
+        method: "recording_search",
+        prompt:
+          "Confirm the chain of title via the recorder before accepting the seller of record.",
+      };
+    case "parcel_apn_mismatch":
+      return {
+        label: "I confirmed the parcel",
+        method: "independent",
+        prompt:
+          "Confirm the address-to-parcel mapping with the county or a recent recorded instrument.",
+      };
+    case "open_lien_no_release":
+      return {
+        label: "Payoff letters are on file",
+        method: "payoff_on_file",
+        prompt:
+          "Each unmatched lien needs a payoff letter or recorded satisfaction in the file.",
+      };
+    case "trust_without_trustee":
+    case "estate_without_executor":
+    case "joint_vesting_unclear":
+    case "party_capacity_mismatch":
+    case "poa_present":
+    case "decedent_indicator":
+      return {
+        label: "I confirmed signing authority",
+        method: "independent",
+        prompt:
+          "Vesting and authority must match the deed and any underlying instruments (POA, trust, probate).",
+      };
+    case "missing_required_documents":
+      return {
+        label: "Docs are accounted for",
+        method: "in_person",
+        prompt:
+          "Confirm the missing transaction-type docs are in the file (or marked not applicable).",
+      };
+    case "earnest_money_refundability_change":
+      return {
+        label: "I confirmed EM with both parties",
+        method: "phone_call",
+        prompt:
+          "Mishandling earnest money is a frequent EM dispute — get refundability in writing from both sides.",
+      };
+    case "sale_price_variance_market":
+      return {
+        label: "Variance is expected",
+        method: "independent",
+        prompt:
+          "Distressed / family / portfolio transfers regularly diverge from county market value.",
+      };
+    default:
+      return null;
+  }
+}
+
 function OtherIssueCard({
   finding,
   documents,
   onSetStatus,
+  onVerify,
 }: {
   finding: Finding;
   documents: FindingDoc;
@@ -3516,6 +3811,11 @@ function OtherIssueCard({
     findingId: Id<"reconciliationFindings">,
     status: "acknowledged" | "resolved" | "dismissed",
   ) => void;
+  onVerify?: (
+    findingId: Id<"reconciliationFindings">,
+    method: VerificationMethod,
+    note?: string,
+  ) => Promise<void> | void;
 }) {
   const sev = finding.severity;
   const tone =
@@ -3548,6 +3848,37 @@ function OtherIssueCard({
     documents.find((d) => d._id === id),
   );
 
+  const suggested = suggestedActionFor(finding.findingType);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const [method, setMethod] = useState<VerificationMethod | null>(null);
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Reset the inline form when the user collapses it.
+  useEffect(() => {
+    if (!verifyOpen) {
+      setNote("");
+      setSubmitting(false);
+    } else {
+      setMethod(suggested?.method ?? "in_person");
+    }
+  }, [verifyOpen, suggested]);
+
+  const handleVerify = async () => {
+    if (!onVerify || !method) return;
+    setSubmitting(true);
+    try {
+      await onVerify(
+        finding._id as Id<"reconciliationFindings">,
+        method,
+        note.trim() || undefined,
+      );
+      setVerifyOpen(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div
       className={`rounded-xl border ${tone.border} ${tone.bg} p-3.5 ring-1 ring-inset ${tone.border.replace("border", "ring")}`}
@@ -3569,7 +3900,18 @@ function OtherIssueCard({
             </span>
           )}
         </div>
-        <div className="flex gap-1">
+        <div className="flex flex-wrap items-center gap-1">
+          {suggested && onVerify && (
+            <button
+              type="button"
+              onClick={() => setVerifyOpen((v) => !v)}
+              aria-expanded={verifyOpen}
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${tone.chip} ring-1 ring-inset ${tone.border}`}
+            >
+              <Check className="size-3" />
+              {suggested.label}
+            </button>
+          )}
           <button
             type="button"
             onClick={() =>
@@ -3587,18 +3929,6 @@ function OtherIssueCard({
             onClick={() =>
               onSetStatus(
                 finding._id as Id<"reconciliationFindings">,
-                "resolved",
-              )
-            }
-            className="rounded-full px-2 py-0.5 text-xs text-muted-foreground transition hover:bg-card hover:text-[#40233f]"
-          >
-            Mark resolved
-          </button>
-          <button
-            type="button"
-            onClick={() =>
-              onSetStatus(
-                finding._id as Id<"reconciliationFindings">,
                 "dismissed",
               )
             }
@@ -3610,6 +3940,69 @@ function OtherIssueCard({
       </div>
 
       <p className={`mt-1.5 text-sm ${tone.text}`}>{finding.message}</p>
+
+      {verifyOpen && suggested && onVerify && (
+        <div className="mt-2.5 rounded-lg bg-card/80 p-3 ring-1 ring-border ring-inset">
+          <p className="text-xs leading-snug text-muted-foreground">
+            {suggested.prompt}
+          </p>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground">
+              <span>Verified via</span>
+              <select
+                value={method ?? suggested.method}
+                onChange={(e) =>
+                  setMethod(e.target.value as VerificationMethod)
+                }
+                className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+              >
+                {(
+                  [
+                    "phone_call",
+                    "independent",
+                    "recording_search",
+                    "payoff_on_file",
+                    "in_person",
+                    "other",
+                  ] as VerificationMethod[]
+                ).map((m) => (
+                  <option key={m} value={m}>
+                    {VERIFICATION_LABELS[m]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] font-medium text-muted-foreground sm:col-span-1">
+              <span>Note (optional)</span>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="Who did you talk to? Reference doc?"
+                className="rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground"
+              />
+            </label>
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setVerifyOpen(false)}
+              disabled={submitting}
+              className="rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleVerify}
+              disabled={submitting || !method}
+              className="rounded-full bg-[#40233f] px-3 py-1 text-xs font-semibold text-white transition hover:bg-[#593157] disabled:opacity-50"
+            >
+              {submitting ? "Saving…" : "Verify & resolve"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {involved.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">

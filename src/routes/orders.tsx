@@ -22,6 +22,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { AppShell } from '@/components/app-shell'
+import { useConfirm } from '@/components/confirm-dialog'
 import { Loading } from '@/components/loading'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
@@ -115,6 +116,7 @@ function OrdersPage() {
 
   const advance = useConvexMutation(api.orders.advanceToExam)
   const cancel = useConvexMutation(api.orders.cancel)
+  const confirm = useConfirm()
 
   const [sourceFilter, setSourceFilter] = useState<'all' | OrderSource>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | OrderStatus>('all')
@@ -178,9 +180,14 @@ function OrdersPage() {
   }
 
   const onCancel = async (fileId: Id<'files'>) => {
-    if (!confirm('Cancel this order? You can reopen it later if needed.')) {
-      return
-    }
+    const ok = await confirm({
+      title: 'Cancel this order?',
+      description: 'You can reopen it later if needed.',
+      confirmText: 'Cancel order',
+      cancelText: 'Keep open',
+      destructive: true,
+    })
+    if (!ok) return
     setBusyId(fileId)
     setError(null)
     try {

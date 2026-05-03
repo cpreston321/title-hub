@@ -17,6 +17,7 @@ import { readFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { extname } from 'node:path'
 import { Buffer } from 'node:buffer'
+import { createInterface } from 'node:readline/promises'
 
 // HMAC-SHA256(secret, message) -> lowercase hex. Web Crypto, no node:crypto
 // dependency, so the helper matches the server-side scheme verbatim.
@@ -125,6 +126,15 @@ function requireArg(args: Array<string>, i: number, label: string): string {
     process.exit(2)
   }
   return v
+}
+
+async function readLine(prompt = ''): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    return await rl.question(prompt)
+  } finally {
+    rl.close()
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -628,6 +638,257 @@ const COMMANDS: ReadonlyArray<Command> = [
     },
   },
   {
+    name: 'demo-email',
+    args: '[tenant-slug] [--scenario=counter|address|wire_alert|quarantine] [--file=<file-number>] [--site-url=<url>]',
+    description:
+      'Drop a realistic test email tied to a DEMO file (creates the file if missing) and pipe it through the inbound webhook + classifier.',
+    run: async (args) => {
+      const positionals: Array<string> = []
+      const flags: Record<string, string> = {}
+      for (const arg of args) {
+        if (arg.startsWith('--')) {
+          const eq = arg.indexOf('=')
+          if (eq < 0) {
+            console.error(c.red(`Flag without value: ${arg}`))
+            process.exit(2)
+          }
+          flags[arg.slice(2, eq)] = arg.slice(eq + 1)
+        } else {
+          positionals.push(arg)
+        }
+      }
+
+      const tenantSlug = positionals[0] ?? (await pickFirstTenantSlug())
+      if (!tenantSlug) {
+        console.error(
+          c.red('No tenants on this deployment. Sign up and create one first.')
+        )
+        process.exit(1)
+      }
+
+      const fileNumber = flags.file ?? 'DEMO-CD-3324'
+      const fixture =
+        TEST_FIXTURES.find((f) => f.fileNumber === fileNumber) ?? TEST_FIXTURES[0]
+
+      const ensure = runConvex<{ fileId: string; created: boolean }>(
+        'systemAdmins:adminEnsureFile',
+        {
+          tenantSlug,
+          fileNumber: fixture.fileNumber,
+          countyName: fixture.countyName,
+          stateCode: fixture.stateCode,
+          transactionType: fixture.transactionType,
+          propertyAddress: fixture.propertyAddress,
+        }
+      )
+      console.log(
+        `  ${ensure.created ? c.green('+') : c.dim('·')} file ${c.bold(
+          fixture.fileNumber
+        )} ${ensure.created ? 'created' : 'exists'}`
+      )
+
+      const buyer =
+        fixture.parties.find((p) => p.role === 'buyer')?.legalName ?? 'Buyer'
+      const seller =
+        fixture.parties.find((p) => p.role === 'seller')?.legalName ?? 'Seller'
+      const addr = `${fixture.propertyAddress.line1}, ${fixture.propertyAddress.city}, ${fixture.propertyAddress.state}`
+
+      const scenario = (flags.scenario ?? 'counter').toLowerCase()
+      let from: string
+      let subject: string
+      let body: string
+      let attachPath: string | undefined
+      let suspicious = false
+
+      if (scenario === 'wire_alert') {
+        // Looks legitimate at a glance; sender domain is a near-twin of the
+        // tenant's title company, auth fails, payee differs from anyone the
+        // file knows about. Exercises the wire-fraud surface end-to-end.
+        from = 'wires@safetransfer-titlecorp.example'
+        subject = `Re: file ${fixture.fileNumber} — updated wire instructions`
+        body = [
+          `Hi,`,
+          ``,
+          `Per ${seller}'s closing for ${addr}, please disregard our prior`,
+          `wire and use the updated payee below. Funds must hit by EOD.`,
+          ``,
+          `Payee: Quick Settlement Services LLC`,
+          `Bank:  Apex Coastal Trust`,
+          `Amount: $232,000`,
+          ``,
+          `— Closing dept`,
+        ].join('\n')
+        suspicious = true
+        attachPath = fixture.documents[0]?.path
+      } else if (scenario === 'quarantine') {
+        // No file number, no recognizable address — should land in triage so
+        // the soft classifier surface is useful.
+        from = 'agent@example.com'
+        subject = 'No file number — please route'
+        body = 'Attaching docs — please route to the right file.'
+        attachPath = fixture.documents[0]?.path
+      } else if (scenario === 'address') {
+        // No file number anywhere — only the property address. Exercises the
+        // deterministic address-overlap matcher (caps at 0.8 confidence so
+        // the email STAYS in quarantine) and gives the Claude classifier a
+        // clean test case for "fileMatch suggestion via address".
+        from = 'realtor@example.com'
+        subject = `Closing docs for ${fixture.propertyAddress.line1}`
+        body = [
+          `Hi,`,
+          ``,
+          `Attached are the signed closing docs for ${addr}.`,
+          `Buyer is ${buyer}; seller is ${seller}.`,
+          ``,
+          `Please confirm receipt — happy to forward anything else.`,
+          ``,
+          `Thanks`,
+        ].join('\n')
+        attachPath =
+          fixture.documents.find((d) => d.docType === 'counter_offer')?.path ??
+          fixture.documents[0]?.path
+      } else {
+        // Default "counter" scenario: realistic broker note containing the
+        // file number in the subject so the regex auto-attaches and the
+        // classifier picks up "lender_correspondence" / "counter offer".
+        from = 'broker@example.com'
+        subject = `Re: file ${fixture.fileNumber} — counter offer signed for ${addr}`
+        body = [
+          `Hi,`,
+          ``,
+          `Counter offer #1 for ${buyer}'s purchase of ${addr}`,
+          `from ${seller} attached. Closing target unchanged.`,
+          ``,
+          `Let me know if anything else is needed.`,
+          ``,
+          `Thanks`,
+        ].join('\n')
+        attachPath =
+          fixture.documents.find((d) => d.docType === 'counter_offer')?.path ??
+          fixture.documents[0]?.path
+      }
+
+      // Delegate to simulate-email so we share the HMAC + integration setup.
+      const sim = COMMANDS.find((cmd) => cmd.name === 'simulate-email')
+      if (!sim) {
+        console.error(c.red('simulate-email command unavailable'))
+        process.exit(1)
+      }
+      const subArgs: Array<string> = [
+        tenantSlug,
+        `--from=${from}`,
+        `--subject=${subject}`,
+        `--body=${body}`,
+      ]
+      if (attachPath && existsSync(attachPath)) {
+        subArgs.push(`--attach=${attachPath}`)
+      } else {
+        // Synthetic PDF fallback; simulate-email also adds one if no
+        // --attach=, but we set this explicitly so the demo flow is the same
+        // whether or not the /data fixtures are present.
+        console.log(c.dim(`  · no /data PDF found — sending synthetic PDF`))
+      }
+      if (suspicious) subArgs.push('--suspicious=1')
+      if (flags['site-url']) subArgs.push(`--site-url=${flags['site-url']}`)
+
+      console.log(
+        c.bold('Scenario: ') +
+          c.plum(scenario) +
+          c.dim(` · file ${fixture.fileNumber}`)
+      )
+      await sim.run(subArgs)
+    },
+  },
+  {
+    name: 'delete-file',
+    args: '<file-number> [tenant-slug] [--yes]',
+    description:
+      'Hard-delete a file and everything tied to it (documents, extractions, events, findings, snapshots, parties). Inbound emails routed here are downgraded back to triage. Cannot be undone.',
+    run: async (args) => {
+      const positionals: Array<string> = []
+      let yes = false
+      for (const arg of args) {
+        if (arg === '--yes' || arg === '-y') {
+          yes = true
+        } else if (arg.startsWith('--')) {
+          console.error(c.red(`Unknown flag: ${arg}`))
+          process.exit(2)
+        } else {
+          positionals.push(arg)
+        }
+      }
+      const fileNumber = requireArg(positionals, 0, 'file-number')
+      const tenantSlug = positionals[1] ?? (await pickFirstTenantSlug())
+      if (!tenantSlug) {
+        console.error(
+          c.red('No tenants on this deployment. Sign up and create one first.')
+        )
+        process.exit(1)
+      }
+
+      if (!yes) {
+        console.log()
+        console.log(c.amber(c.bold('⚠  Hard delete — this cannot be undone')))
+        console.log(c.dim(`   tenant : ${tenantSlug}`))
+        console.log(c.dim(`   file   : ${fileNumber}`))
+        console.log(
+          c.dim(
+            '   purges : documents, extractions, events, findings, snapshots, party links'
+          )
+        )
+        console.log(
+          c.dim(
+            '   side fx: inbound emails routed here drop back to the triage queue'
+          )
+        )
+        console.log()
+        const typed = await readLine(
+          c.bold(`Re-type the file number (${fileNumber}) to confirm: `)
+        )
+        if (typed.trim() !== fileNumber) {
+          console.log(c.dim('Aborted — confirmation did not match.'))
+          process.exit(1)
+        }
+        console.log()
+      }
+
+      const r = runConvex<{
+        fileNumber: string
+        tenantSlug: string
+        documents: number
+        extractions: number
+        extractionEvents: number
+        findings: number
+        propertySnapshots: number
+        fileParties: number
+        notifications: number
+        inboundEmailsTouched: number
+        auditEventsRemoved: number
+      }>('systemAdmins:adminHardDeleteFile', { tenantSlug, fileNumber })
+
+      console.log(
+        c.green('✓') + ` Deleted ${c.bold(r.fileNumber)} from ${c.plum(r.tenantSlug)}`
+      )
+      table(
+        [
+          { what: 'documents', count: String(r.documents) },
+          { what: 'extractions (leftover)', count: String(r.extractions) },
+          { what: 'extraction events', count: String(r.extractionEvents) },
+          { what: 'findings', count: String(r.findings) },
+          { what: 'property snapshots', count: String(r.propertySnapshots) },
+          { what: 'file-party links', count: String(r.fileParties) },
+          { what: 'notifications', count: String(r.notifications) },
+          {
+            what: 'inbound emails downgraded',
+            count: String(r.inboundEmailsTouched),
+          },
+          { what: 'audit events on file', count: String(r.auditEventsRemoved) },
+        ],
+        ['what', 'count']
+      )
+    },
+  },
+  {
     name: 'help',
     args: '',
     description: 'Show this help.',
@@ -873,6 +1134,23 @@ function printHelp() {
   )
   console.log(c.dim('  bun run admin seed-recording-rules'))
   console.log(c.dim('  bun run admin set-password alice@firm.com hunter2'))
+  console.log(c.dim('  bun run admin delete-file DEMO-CD-3324'))
+  console.log(c.dim('  bun run admin demo-email'))
+  console.log(
+    c.dim(
+      '  bun run admin demo-email --scenario=address      # match by address only'
+    )
+  )
+  console.log(
+    c.dim(
+      '  bun run admin demo-email --scenario=wire_alert   # wire-fraud demo'
+    )
+  )
+  console.log(
+    c.dim(
+      '  bun run admin demo-email --scenario=quarantine   # lands in triage'
+    )
+  )
   console.log()
   console.log(
     c.dim(

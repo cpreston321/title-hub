@@ -166,6 +166,19 @@ type FlatResult =
       fileId: string | null
     }
   | { kind: 'finding'; fileId: string; title: string; meta: string }
+  | {
+      kind: 'document'
+      fileId: string | null
+      title: string
+      meta: string
+    }
+  | { kind: 'email'; fileId: string | null; title: string; meta: string }
+  | {
+      kind: 'action'
+      title: string
+      meta: string
+      run: () => void
+    }
 
 function GlobalSearch() {
   const navigate = useNavigate()
@@ -190,6 +203,17 @@ function GlobalSearch() {
 
   const data = results.data
   const showPanel = open && enabled
+
+  const navigateToMail = () => {
+    setOpen(false)
+    setQ('')
+    navigate({ to: '/mail' })
+  }
+  const navigateToFiles = () => {
+    setOpen(false)
+    setQ('')
+    navigate({ to: '/files' })
+  }
 
   // Flatten results so arrow keys can move through every row regardless of
   // group. Disabled rows (parties without a fileId) are excluded — we can't
@@ -224,8 +248,53 @@ function GlobalSearch() {
         meta: `${fd.severity} · ${fd.findingType}${fd.fileNumber ? ` · ${fd.fileNumber}` : ''}`,
       })
     }
+    if ('documents' in data) {
+      for (const d of data.documents ?? []) {
+        out.push({
+          kind: 'document',
+          fileId: d.fileId,
+          title: d.title ?? d.docType.replace(/_/g, ' '),
+          meta: d.fileNumber
+            ? `${d.docType.replace(/_/g, ' ')} · on ${d.fileNumber}`
+            : d.docType.replace(/_/g, ' '),
+        })
+      }
+    }
+    if ('emails' in data) {
+      for (const e of data.emails ?? []) {
+        const intent = e.classificationIntent
+          ? ` · ${e.classificationIntent.replace(/_/g, ' ')}`
+          : ''
+        out.push({
+          kind: 'email',
+          fileId: e.matchedFileId,
+          title: e.subject || '(no subject)',
+          meta: `from ${e.fromAddress}${intent}`,
+        })
+      }
+    }
+    // Action items, surfaced when the query looks like a verb. Cheap and
+    // discoverable; we won't ship a full command grammar in v1.
+    const lower = trimmed.toLowerCase()
+    if (lower.startsWith('mail') || lower === 'inbox') {
+      out.push({
+        kind: 'action',
+        title: 'Open inbound mail',
+        meta: 'Navigate to /mail',
+        run: navigateToMail,
+      })
+    }
+    if (lower.startsWith('files') || lower === 'home') {
+      out.push({
+        kind: 'action',
+        title: 'Open all files',
+        meta: 'Navigate to /files',
+        run: navigateToFiles,
+      })
+    }
     return out
-  }, [data])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, trimmed])
 
   // Reset selection whenever the result set changes.
   useEffect(() => {
@@ -269,6 +338,20 @@ function GlobalSearch() {
   const activate = (i: number) => {
     const r = flat[i]
     if (!r) return
+    if (r.kind === 'action') {
+      r.run()
+      return
+    }
+    if (r.kind === 'email' && !r.fileId) {
+      navigateToMail()
+      return
+    }
+    if (r.kind === 'document' && !r.fileId) {
+      // Orphan documents land in the inbox triage queue.
+      navigateToMail()
+      return
+    }
+    if (!r.fileId) return
     gotoFile(r.fileId as Id<'files'>)
   }
 
@@ -297,7 +380,9 @@ function GlobalSearch() {
     !!data &&
     data.files.length === 0 &&
     data.parties.length === 0 &&
-    data.findings.length === 0
+    data.findings.length === 0 &&
+    (!('documents' in data) || data.documents.length === 0) &&
+    (!('emails' in data) || data.emails.length === 0)
 
   return (
     <div
@@ -308,7 +393,7 @@ function GlobalSearch() {
       <Input
         ref={inputRef}
         className="h-7 border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
-        placeholder="Search files, parties, findings..."
+        placeholder="Search files, mail, parties, findings…"
         value={q}
         onChange={(e) => {
           setQ(e.target.value)
@@ -405,6 +490,24 @@ function FlatResultList({
       findingType: string
       fileNumber: string | null
     }>
+    documents?: ReadonlyArray<{
+      documentId: string
+      fileId: string | null
+      fileNumber: string | null
+      title: string | null
+      docType: string
+      uploadedAt: number
+    }>
+    emails?: ReadonlyArray<{
+      inboundEmailId: string
+      subject: string
+      fromAddress: string
+      fromName: string | null
+      receivedAt: number
+      status: string
+      matchedFileId: string | null
+      classificationIntent: string | null
+    }>
   }
   flat: ReadonlyArray<FlatResult>
   selectedIndex: number
@@ -490,8 +593,81 @@ function FlatResultList({
     )
   }
 
-  // Avoid an unused-var warning when there are no unattached parties.
-  void flat
+  if (results.documents && results.documents.length > 0) {
+    const start = cursor
+    cursor += results.documents.length
+    sections.push(
+      <ResultGroup key="documents" label="Documents">
+        {results.documents.map((d, i) => {
+          const idx = start + i
+          const titleStr = d.title ?? d.docType.replace(/_/g, ' ')
+          const meta = d.fileNumber
+            ? `${d.docType.replace(/_/g, ' ')} · on ${d.fileNumber}`
+            : d.docType.replace(/_/g, ' ')
+          return (
+            <ResultRow
+              key={d.documentId}
+              title={titleStr}
+              meta={meta}
+              selected={idx === selectedIndex}
+              onMouseMove={() => onHover(idx)}
+              onSelect={() => onSelect(idx)}
+            />
+          )
+        })}
+      </ResultGroup>
+    )
+  }
+
+  if (results.emails && results.emails.length > 0) {
+    const start = cursor
+    cursor += results.emails.length
+    sections.push(
+      <ResultGroup key="emails" label="Mail">
+        {results.emails.map((e, i) => {
+          const idx = start + i
+          const intent = e.classificationIntent
+            ? ` · ${e.classificationIntent.replace(/_/g, ' ')}`
+            : ''
+          return (
+            <ResultRow
+              key={e.inboundEmailId}
+              title={e.subject || '(no subject)'}
+              meta={`from ${e.fromAddress}${intent}`}
+              selected={idx === selectedIndex}
+              onMouseMove={() => onHover(idx)}
+              onSelect={() => onSelect(idx)}
+            />
+          )
+        })}
+      </ResultGroup>
+    )
+  }
+
+  // Action items live at the bottom — they're the rarest hit. Pulled from
+  // the flat list (since they don't live in `results`).
+  const actions = flat.filter((r) => r.kind === 'action')
+  if (actions.length > 0) {
+    const startIdx = flat.findIndex((r) => r.kind === 'action')
+    sections.push(
+      <ResultGroup key="actions" label="Actions">
+        {actions.map((a, i) => {
+          if (a.kind !== 'action') return null
+          const idx = startIdx + i
+          return (
+            <ResultRow
+              key={`action-${i}`}
+              title={a.title}
+              meta={a.meta}
+              selected={idx === selectedIndex}
+              onMouseMove={() => onHover(idx)}
+              onSelect={() => onSelect(idx)}
+            />
+          )
+        })}
+      </ResultGroup>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-1">
@@ -573,10 +749,33 @@ type NotificationRow = {
   readAt?: number | null
 }
 
+type NotificationGroup = {
+  groupKey: string
+  kind: string
+  fileId: string | null
+  headline: NotificationRow
+  memberIds: string[]
+  count: number
+  latestAt: number
+  unread: number
+  blockers: number
+  warnings: number
+}
+
+type UnreadSummary = {
+  total: number
+  blockers: number
+  warnings: number
+  groups: number
+}
+
 function NotificationsBell() {
   const containerRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
   const [confirmingClear, setConfirmingClear] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set()
+  )
   const navigate = useNavigate()
 
   // Skip when there's no active tenant — both queries require one.
@@ -586,22 +785,46 @@ function NotificationsBell() {
   })
   const hasTenant = !!tenant.data && !tenant.error
 
-  const list = useQuery({
-    ...convexQuery(api.notifications.listForMe, { limit: 30 }),
+  const grouped = useQuery({
+    ...convexQuery(api.notifications.groupedForMe, { limit: 80 }),
     enabled: hasTenant,
     retry: false,
   })
-  const unreadQ = useQuery({
-    ...convexQuery(api.notifications.unreadCount, {}),
+  const summaryQ = useQuery({
+    ...convexQuery(api.notifications.unreadSummary, {}),
     enabled: hasTenant,
+    retry: false,
+  })
+  const list = useQuery({
+    ...convexQuery(api.notifications.listForMe, { limit: 80 }),
+    enabled: hasTenant && open,
     retry: false,
   })
   const markRead = useConvexMutation(api.notifications.markRead)
   const markAllRead = useConvexMutation(api.notifications.markAllRead)
+  const markGroupRead = useConvexMutation(api.notifications.markGroupRead)
+  const dismissGroup = useConvexMutation(api.notifications.dismissGroup)
   const dismissAll = useConvexMutation(api.notifications.dismissAll)
 
-  const items = (list.data ?? []) as ReadonlyArray<NotificationRow>
-  const unread = (unreadQ.data ?? 0) as number
+  const groups = (grouped.data ?? []) as ReadonlyArray<NotificationGroup>
+  const summary = (summaryQ.data ?? {
+    total: 0,
+    blockers: 0,
+    warnings: 0,
+    groups: 0,
+  }) as UnreadSummary
+  const allRows = (list.data ?? []) as ReadonlyArray<NotificationRow>
+  const rowsByGroup = useMemo(() => {
+    const m = new Map<string, NotificationRow[]>()
+    for (const r of allRows) {
+      const key =
+        (r as NotificationRow & { groupKey?: string | null }).groupKey ?? r.kind
+      const arr = m.get(key) ?? []
+      arr.push(r)
+      m.set(key, arr)
+    }
+    return m
+  }, [allRows])
 
   // Outside-click to dismiss.
   useEffect(() => {
@@ -613,20 +836,54 @@ function NotificationsBell() {
     return () => document.removeEventListener('mousedown', onPointer)
   }, [open])
 
-  // Reset the inline "are you sure?" state whenever the popover closes.
   useEffect(() => {
-    if (!open) setConfirmingClear(false)
+    if (!open) {
+      setConfirmingClear(false)
+      setExpandedGroups(new Set())
+    }
   }, [open])
 
   if (!hasTenant) return null
 
-  const onItemClick = async (n: NotificationRow) => {
+  const onHeadlineClick = async (g: NotificationGroup) => {
+    // Navigating closes the bell; marking the group read happens regardless.
+    setOpen(false)
+    if (g.unread > 0) {
+      try {
+        await markGroupRead({ groupKey: g.groupKey })
+      } catch {
+        /* observability, not correctness */
+      }
+    }
+    if (g.fileId) {
+      navigate({ to: '/files/$fileId', params: { fileId: g.fileId } })
+    }
+  }
+
+  const onToggleGroup = (g: NotificationGroup) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(g.groupKey)) next.delete(g.groupKey)
+      else next.add(g.groupKey)
+      return next
+    })
+  }
+
+  const onDismissGroup = async (g: NotificationGroup) => {
+    try {
+      await dismissGroup({ groupKey: g.groupKey })
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const onMemberClick = async (n: NotificationRow) => {
     setOpen(false)
     if (!n.readAt) {
       try {
         await markRead({ notificationId: n._id as Id<'notifications'> })
       } catch {
-        // ignore — UI doesn't depend on success.
+        /* ignore */
       }
     }
     if (n.fileId) {
@@ -643,8 +900,6 @@ function NotificationsBell() {
   }
 
   const onClearAll = async () => {
-    // First click arms the confirmation; second click commits. Resets when
-    // the popover closes or after a few seconds of inactivity.
     if (!confirmingClear) {
       setConfirmingClear(true)
       return
@@ -657,30 +912,48 @@ function NotificationsBell() {
     }
   }
 
+  // Pick the badge color and number based on severity. Blockers are the
+  // primary signal — they get the red badge alone. Warnings + info accrue
+  // a secondary muted count so a noisy "2 extractions done" stream doesn't
+  // visually compete with a real fire.
+  const blockerCount = summary.blockers
+  const nonBlockerUnread = Math.max(0, summary.total - summary.blockers)
+  const totalGroups = groups.length
+
   return (
     <div ref={containerRef} className="relative">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        aria-label={`Notifications${unread > 0 ? `, ${unread} unread` : ''}`}
+        aria-label={
+          blockerCount > 0
+            ? `Notifications, ${blockerCount} blocker${blockerCount === 1 ? '' : 's'}`
+            : summary.total > 0
+              ? `Notifications, ${summary.total} unread`
+              : 'Notifications'
+        }
         aria-expanded={open}
         className={`relative inline-flex size-9 items-center justify-center rounded-xl border border-input bg-card text-[#40233f] transition hover:bg-[#fdf6e8] ${
           open ? 'ring-2 ring-[#593157]/30' : ''
         }`}
       >
         <Bell className="size-4" />
-        {unread > 0 && (
+        {blockerCount > 0 ? (
           <span className="absolute -top-1.5 -right-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b94f58] px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-background">
-            {unread > 99 ? '99+' : unread}
+            {blockerCount > 99 ? '99+' : blockerCount}
           </span>
-        )}
+        ) : nonBlockerUnread > 0 ? (
+          <span className="absolute -top-1.5 -right-1.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#7a5818] px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-background">
+            {nonBlockerUnread > 99 ? '99+' : nonBlockerUnread}
+          </span>
+        ) : null}
       </button>
 
       {open && (
         <div
           role="dialog"
           aria-label="Notifications"
-          className="absolute top-full right-0 z-50 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border/70 bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5"
+          className="absolute top-full right-0 z-50 mt-2 w-[24rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border/70 bg-popover text-popover-foreground shadow-lg ring-1 ring-foreground/5"
         >
           <header className="flex items-center justify-between gap-3 border-b border-border/60 bg-[#fdf6e8]/60 px-4 py-3">
             <div className="min-w-0">
@@ -688,12 +961,28 @@ function NotificationsBell() {
                 Notifications
               </div>
               <div className="font-display text-base leading-none font-semibold tracking-tight text-[#40233f]">
-                What's new
+                {blockerCount > 0
+                  ? `${blockerCount} blocker${blockerCount === 1 ? '' : 's'}`
+                  : summary.total > 0
+                    ? `${summary.total} unread`
+                    : "You're all caught up"}
               </div>
+              {summary.total > 0 && (
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  {summary.groups === 1
+                    ? 'on 1 thread'
+                    : `across ${summary.groups} threads`}
+                  {summary.warnings > 0 && (
+                    <span className="ml-1 text-[#7a3d18]">
+                      · {summary.warnings} warning{summary.warnings === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
-            {items.length > 0 && (
+            {totalGroups > 0 && (
               <div className="flex shrink-0 items-center gap-1">
-                {!confirmingClear && unread > 0 && (
+                {!confirmingClear && summary.total > 0 && (
                   <button
                     type="button"
                     onClick={onMarkAll}
@@ -717,7 +1006,7 @@ function NotificationsBell() {
                       autoFocus
                       className="rounded-full bg-[#b94f58] px-2.5 py-1 text-xs font-semibold text-white transition hover:bg-[#a04249]"
                     >
-                      Clear {items.length}
+                      Clear all
                     </button>
                   </div>
                 ) : (
@@ -734,11 +1023,11 @@ function NotificationsBell() {
           </header>
 
           <div className="max-h-[60vh] overflow-y-auto">
-            {list.isLoading && !list.data ? (
+            {grouped.isLoading && !grouped.data ? (
               <div className="px-4 py-6 text-sm text-muted-foreground">
                 Loading...
               </div>
-            ) : items.length === 0 ? (
+            ) : groups.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-4 py-10 text-center">
                 <Bell className="size-5 text-muted-foreground/50" />
                 <div className="text-sm font-medium text-[#40233f]">
@@ -751,11 +1040,16 @@ function NotificationsBell() {
               </div>
             ) : (
               <ol className="divide-y divide-border/40">
-                {items.map((n) => (
-                  <NotificationRowView
-                    key={n._id}
-                    n={n}
-                    onClick={() => onItemClick(n)}
+                {groups.map((g) => (
+                  <NotificationGroupView
+                    key={g.groupKey}
+                    group={g}
+                    members={rowsByGroup.get(g.groupKey) ?? []}
+                    expanded={expandedGroups.has(g.groupKey)}
+                    onHeadlineClick={() => onHeadlineClick(g)}
+                    onToggle={() => onToggleGroup(g)}
+                    onDismiss={() => onDismissGroup(g)}
+                    onMemberClick={onMemberClick}
                   />
                 ))}
               </ol>
@@ -767,12 +1061,108 @@ function NotificationsBell() {
   )
 }
 
+function NotificationGroupView({
+  group,
+  members,
+  expanded,
+  onHeadlineClick,
+  onToggle,
+  onDismiss,
+  onMemberClick,
+}: {
+  group: NotificationGroup
+  members: ReadonlyArray<NotificationRow>
+  expanded: boolean
+  onHeadlineClick: () => void
+  onToggle: () => void
+  onDismiss: () => void
+  onMemberClick: (n: NotificationRow) => void
+}) {
+  const sev = group.headline.severity ?? null
+  const tone =
+    group.blockers > 0 || sev === 'block'
+      ? {
+          dot: 'bg-[#b94f58]',
+          chip: 'bg-[#fdecee] text-[#8a3942]',
+        }
+      : group.warnings > 0 || sev === 'warn'
+        ? {
+            dot: 'bg-[#c9652e]',
+            chip: 'bg-[#fde9dc] text-[#7a3d18]',
+          }
+        : sev === 'ok'
+          ? {
+              dot: 'bg-[#3f7c64]',
+              chip: 'bg-[#e6f3ed] text-[#2f5d4b]',
+            }
+          : {
+              dot: 'bg-muted-foreground/40',
+              chip: 'bg-muted text-muted-foreground',
+            }
+
+  return (
+    <li>
+      <NotificationRowView
+        n={group.headline}
+        onClick={onHeadlineClick}
+        leadingDot={
+          group.unread > 0 ? (
+            <span
+              aria-label="Unread"
+              className={`size-1.5 rounded-full ${tone.dot}`}
+            />
+          ) : undefined
+        }
+      />
+      {group.count > 1 && (
+        <div className="flex items-center justify-between gap-2 px-4 pt-0 pb-2">
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={expanded}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:opacity-80 ${tone.chip}`}
+          >
+            {expanded ? '−' : '+'} {group.count - 1} more like this
+            {group.unread > 0 ? ` · ${group.unread} unread` : ''}
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="rounded-full px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition hover:bg-card hover:text-[#8a3942]"
+            title="Clear this thread"
+          >
+            Clear thread
+          </button>
+        </div>
+      )}
+      {expanded && members.length > 1 && (
+        <ol className="border-t border-border/30 bg-muted/20 pl-3">
+          {members
+            .filter((m) => m._id !== group.headline._id)
+            .map((m) => (
+              <NotificationRowView
+                key={m._id}
+                n={m}
+                onClick={() => onMemberClick(m)}
+                compact
+              />
+            ))}
+        </ol>
+      )}
+    </li>
+  )
+}
+
 function NotificationRowView({
   n,
   onClick,
+  leadingDot,
+  compact = false,
 }: {
   n: NotificationRow
   onClick: () => void
+  leadingDot?: React.ReactNode
+  compact?: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
@@ -832,26 +1222,30 @@ function NotificationRowView({
   const unread = !n.readAt
   const showToggle = overflows || expanded
   return (
-    <li>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      className={`group/notif flex w-full cursor-pointer items-start gap-3 text-left transition hover:bg-[#fdf6e8]/50 focus:outline-none focus-visible:bg-[#fdf6e8]/60 ${
+        compact ? 'px-3 py-1.5' : 'px-4 py-2.5'
+      } ${unread ? 'bg-[#fdf6e8]/30' : ''}`}
+    >
+      {leadingDot && (
+        <span className="mt-2 inline-flex shrink-0">{leadingDot}</span>
+      )}
       <div
-        role="button"
-        tabIndex={0}
-        onClick={onClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onClick()
-          }
-        }}
-        className={`group/notif flex w-full cursor-pointer items-start gap-3 px-4 py-2.5 text-left transition hover:bg-[#fdf6e8]/50 focus:outline-none focus-visible:bg-[#fdf6e8]/60 ${
-          unread ? 'bg-[#fdf6e8]/30' : ''
+        className={`mt-0.5 grid shrink-0 place-items-center rounded-full ring-1 ring-inset ${tone.bg} ${tone.text} ${
+          compact ? 'size-5' : 'size-6'
         }`}
       >
-        <div
-          className={`mt-0.5 grid size-6 shrink-0 place-items-center rounded-full ring-1 ring-inset ${tone.bg} ${tone.text}`}
-        >
-          {tone.icon}
-        </div>
+        {tone.icon}
+      </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
             <span
@@ -890,7 +1284,7 @@ function NotificationRowView({
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1 self-center">
-          {unread && (
+          {unread && !leadingDot && (
             <span
               aria-label="Unread"
               className="size-1.5 rounded-full bg-[#b94f58]"
@@ -900,8 +1294,7 @@ function NotificationRowView({
             <ChevronRight className="size-3.5 text-muted-foreground/40 transition group-hover/notif:translate-x-0.5 group-hover/notif:text-[#40233f]" />
           )}
         </div>
-      </div>
-    </li>
+    </div>
   )
 }
 

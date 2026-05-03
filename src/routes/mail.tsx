@@ -1,5 +1,5 @@
 import { Link, createFileRoute, redirect } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
@@ -30,6 +30,7 @@ import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 import { AppShell } from '@/components/app-shell'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/confirm-dialog'
 import { Loading } from '@/components/loading'
 import {
   Sheet,
@@ -109,6 +110,17 @@ type Row = {
   errorMessage: string | null
   spamScore: number | null
   spamTier: SpamTier | null
+  classification: ClassifierResult | null
+}
+
+type ClassifierResult = {
+  intent: string
+  confidence: number
+  reasons: ReadonlyArray<string>
+  suggestedFileId?: Id<'files'> | null
+  suggestedFileNumber?: string | null
+  classifiedAt: number
+  modelId?: string | null
 }
 
 type DetailRow = {
@@ -149,6 +161,7 @@ type DetailRow = {
   spamSignals: ReadonlyArray<{ id: string; label: string; weight: number }>
   replyToAddress: string | null
   auth: { spf: string | null; dkim: string | null; dmarc: string | null }
+  classification: ClassifierResult | null
 }
 
 const STATUS_FILTERS: ReadonlyArray<{ id: FilterId; label: string }> = [
@@ -172,6 +185,7 @@ function MailPage() {
     convexQuery(api.inboundEmail.list, { limit: 100 })
   )
   const stats = useQuery(convexQuery(api.inboundEmail.stats, {}))
+  const confirm = useConfirm()
 
   const archive = useConvexMutation(api.inboundEmail.archive)
   const markSpam = useConvexMutation(api.inboundEmail.markSpam)
@@ -235,13 +249,14 @@ function MailPage() {
   }
 
   const onMarkSpam = async (id: Id<'inboundEmails'>) => {
-    if (
-      !confirm(
-        'Mark this sender as spam? Future emails from them will land in Spam.'
-      )
-    ) {
-      return
-    }
+    const ok = await confirm({
+      title: 'Mark sender as spam?',
+      description:
+        'Future emails from this sender will skip classification and land in the Spam tab.',
+      confirmText: 'Mark as spam',
+      destructive: true,
+    })
+    if (!ok) return
     setBusyId(id)
     setError(null)
     try {
@@ -254,13 +269,14 @@ function MailPage() {
   }
 
   const onDelete = async (id: Id<'inboundEmails'>) => {
-    if (
-      !confirm(
-        'Delete this email permanently?\n\nAttachments already routed to a file stay on the file. Unrouted attachments are removed with the email.\n\nThis cannot be undone.'
-      )
-    ) {
-      return
-    }
+    const ok = await confirm({
+      title: 'Delete this email permanently?',
+      description:
+        'Attachments already routed to a file stay on the file. Unrouted attachments are removed with the email.\n\nThis cannot be undone.',
+      confirmText: 'Delete',
+      destructive: true,
+    })
+    if (!ok) return
     setBusyId(id)
     setError(null)
     try {
@@ -275,12 +291,19 @@ function MailPage() {
 
   const onConfirmAttach = async (
     id: Id<'inboundEmails'>,
-    fileId: Id<'files'>
+    fileId: Id<'files'>,
+    opts?: { acknowledgeSpamRisk?: boolean }
   ) => {
     setBusyId(id)
     setError(null)
     try {
-      await attachMutation({ inboundEmailId: id, fileId })
+      await attachMutation({
+        inboundEmailId: id,
+        fileId,
+        ...(opts?.acknowledgeSpamRisk
+          ? { acknowledgeSpamRisk: true }
+          : {}),
+      })
       setOpenId(null)
     } catch (err) {
       setError(stripError(err))
@@ -644,6 +667,12 @@ function EmailCard({
 
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
           <MatchBadge row={row} />
+          {row.classification && (
+            <ClassificationChip
+              classification={row.classification}
+              compact
+            />
+          )}
           {row.attachmentsPreview.map((a) => (
             <AttachmentChip
               key={a._id}
@@ -681,7 +710,21 @@ function EmailCard({
           </Button>
         )}
 
-        {isQuarantine && hasSuggestion ? (
+        {row.spamTier === 'high_risk' && isQuarantine ? (
+          // Routing is blocked at the card level — the operator must open
+          // the detail sheet, review the auth signals, and explicitly
+          // override. Keeps wire-fraud out of files via the casual click.
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onOpen}
+            className="h-7 gap-1.5 px-2.5 text-xs text-[#8a3942] hover:bg-[#fdecee] hover:text-[#8a3942]"
+            title="High risk — review before attaching"
+          >
+            <ShieldAlert className="size-3" />
+            Review risk
+          </Button>
+        ) : isQuarantine && hasSuggestion ? (
           <Button
             size="sm"
             onClick={onConfirmAttach}
@@ -987,7 +1030,11 @@ function DetailSheet({
   onArchive: (id: Id<'inboundEmails'>) => void
   onMarkSpam: (id: Id<'inboundEmails'>) => void
   onDelete: (id: Id<'inboundEmails'>) => void
-  onConfirmAttach: (id: Id<'inboundEmails'>, fileId: Id<'files'>) => void
+  onConfirmAttach: (
+    id: Id<'inboundEmails'>,
+    fileId: Id<'files'>,
+    opts?: { acknowledgeSpamRisk?: boolean }
+  ) => void
 }) {
   const detail = useQuery({
     ...convexQuery(
@@ -997,6 +1044,31 @@ function DetailSheet({
     enabled: inboundEmailId !== null,
   })
   const row = detail.data as DetailRow | undefined
+  const reclassifyMutation = useConvexMutation(api.inboundEmail.reclassify)
+  const [riskOverridden, setRiskOverridden] = useState(false)
+
+  // Reset the per-email override whenever the user opens a different message.
+  useEffect(() => {
+    setRiskOverridden(false)
+  }, [inboundEmailId])
+
+  const onReclassify = async (id: Id<'inboundEmails'>) => {
+    try {
+      await reclassifyMutation({ inboundEmailId: id })
+    } catch {
+      /* observability, not correctness */
+    }
+  }
+  const isHighRisk = row?.spamTier === 'high_risk'
+  const routingBlocked = isHighRisk && !riskOverridden
+  const attach = (fileId: Id<'files'>) => {
+    if (!row) return
+    onConfirmAttach(
+      row._id,
+      fileId,
+      isHighRisk ? { acknowledgeSpamRisk: true } : undefined
+    )
+  }
 
   return (
     <Sheet
@@ -1007,7 +1079,7 @@ function DetailSheet({
     >
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-0 overflow-y-auto bg-background sm:max-w-xl"
+        className="flex w-full flex-col gap-0 overflow-y-auto bg-background data-[side=right]:sm:max-w-2xl data-[side=right]:lg:max-w-3xl"
       >
         {!row ? (
           <div className="flex flex-1 items-center justify-center py-20">
@@ -1016,7 +1088,7 @@ function DetailSheet({
         ) : (
           <>
             <SheetHeader className="space-y-2 border-b border-border/60 bg-card/40 px-6 py-5">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-muted-foreground">
+              <div className="flex items-center gap-2 pr-10 text-xs uppercase tracking-wider text-muted-foreground">
                 <Mail className="size-3.5" />
                 Inbound message
                 <span className="ml-auto font-numerals text-[11px] text-muted-foreground tabular-nums">
@@ -1047,13 +1119,9 @@ function DetailSheet({
             </SheetHeader>
 
             <div className="flex flex-1 flex-col gap-6 px-6 py-6">
-              <SheetSection title="Authenticity">
-                <DetailAuthenticity row={row} />
-              </SheetSection>
-
-              <SheetSection title="Match">
-                <DetailMatch row={row} />
-              </SheetSection>
+              {/* Body and attachments sit at the top so the sheet reads like
+                  an email client — message first, meta below. */}
+              <BodySection bodyText={row.bodyText} bodyHtml={row.bodyHtml} />
 
               <SheetSection
                 title={`Attachments (${row.attachments.length})`}
@@ -1071,18 +1139,62 @@ function DetailSheet({
                 )}
               </SheetSection>
 
-              <BodySection bodyText={row.bodyText} bodyHtml={row.bodyHtml} />
+              <SheetSection title="Authenticity">
+                <DetailAuthenticity row={row} />
+              </SheetSection>
+
+              <SheetSection title="Match">
+                <DetailMatch row={row} />
+              </SheetSection>
+
+              <SheetSection title="Soft classifier">
+                <ClassifierBlock
+                  classification={row.classification}
+                  onReclassify={() => onReclassify(row._id)}
+                />
+              </SheetSection>
             </div>
+
+            {isHighRisk && (
+              <div className="sticky bottom-[3.5rem] flex flex-col gap-1.5 border-t border-[#b94f58]/30 bg-[#fdecee] px-6 py-3 text-xs text-[#8a3942]">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <ShieldAlert className="size-3.5" />
+                  High-risk authentication failure
+                </div>
+                <p className="leading-snug">
+                  This message failed multiple sender-authentication checks —
+                  the worst-case wire-fraud pattern. Routing is blocked until
+                  someone explicitly takes responsibility.
+                </p>
+                {!riskOverridden ? (
+                  <button
+                    type="button"
+                    onClick={() => setRiskOverridden(true)}
+                    className="self-start rounded-full bg-[#8a3942] px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-[#6c2c33]"
+                  >
+                    I've verified this — let me attach
+                  </button>
+                ) : (
+                  <span className="self-start rounded-full bg-card px-3 py-1 text-[11px] font-medium text-[#8a3942] ring-1 ring-[#b94f58]/40 ring-inset">
+                    Override armed — every attach is audited
+                  </span>
+                )}
+              </div>
+            )}
 
             <div className="sticky bottom-0 flex items-center gap-2 border-t border-border/60 bg-background/95 px-6 py-3 backdrop-blur">
               {row.status === 'quarantined' && row.matchedFile ? (
                 <Button
                   className="flex-1 gap-2"
                   onClick={() =>
-                    row.matchedFile &&
-                    onConfirmAttach(row._id, row.matchedFile._id)
+                    row.matchedFile && attach(row.matchedFile._id)
                   }
-                  disabled={busyId === row._id}
+                  disabled={busyId === row._id || routingBlocked}
+                  title={
+                    routingBlocked
+                      ? 'High-risk message — override the warning above first.'
+                      : undefined
+                  }
                 >
                   {busyId === row._id ? (
                     <Loader2 className="size-3.5 animate-spin" />
@@ -1094,19 +1206,37 @@ function DetailSheet({
               ) : row.status === 'quarantined' ? (
                 <FilePicker
                   busy={busyId === row._id}
-                  onPick={(fileId) => onConfirmAttach(row._id, fileId)}
+                  blocked={routingBlocked}
+                  onPick={attach}
                 />
               ) : row.matchedFile ? (
-                <Button asChild variant="outline" className="flex-1 gap-2">
-                  <Link
-                    to="/files/$fileId"
-                    params={{ fileId: row.matchedFile._id }}
-                  >
-                    Open file {row.matchedFile.fileNumber}
-                    <ChevronRight className="size-3.5" />
-                  </Link>
-                </Button>
-              ) : null}
+                <>
+                  <Button asChild variant="outline" className="flex-1 gap-2">
+                    <Link
+                      to="/files/$fileId"
+                      params={{ fileId: row.matchedFile._id }}
+                    >
+                      Open file {row.matchedFile.fileNumber}
+                      <ChevronRight className="size-3.5" />
+                    </Link>
+                  </Button>
+                  <FilePicker
+                    busy={busyId === row._id}
+                    blocked={routingBlocked}
+                    onPick={attach}
+                    triggerLabel="Re-route…"
+                  />
+                </>
+              ) : (
+                // Matched file is gone (deleted) but the email is still
+                // tagged as routed — fall back to the FilePicker so the
+                // operator can attach it somewhere else.
+                <FilePicker
+                  busy={busyId === row._id}
+                  blocked={routingBlocked}
+                  onPick={attach}
+                />
+              )}
 
               {row.status !== 'archived' && row.status !== 'spam' && (
                 <Button
@@ -1413,10 +1543,19 @@ type FileHit = {
 
 function FilePicker({
   busy,
+  blocked = false,
   onPick,
+  triggerLabel = 'Route to file…',
 }: {
   busy: boolean
+  /**
+   * When true the trigger renders disabled with a tooltip and the popover
+   * never opens — used to gate routing while a high-risk wire-fraud
+   * warning is unacknowledged.
+   */
+  blocked?: boolean
   onPick: (fileId: Id<'files'>) => void
+  triggerLabel?: string
 }) {
   const [open, setOpen] = useState(false)
   const [q, setQ] = useState('')
@@ -1452,20 +1591,25 @@ function FilePicker({
       : 'Recent files'
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={blocked ? false : open} onOpenChange={(o) => !blocked && setOpen(o)}>
       <PopoverTrigger asChild>
         <Button
-          variant="default"
-          className="flex-1 gap-2"
-          disabled={busy}
-          aria-label="Route to a file"
+          variant={triggerLabel === 'Route to file…' ? 'default' : 'outline'}
+          className={triggerLabel === 'Route to file…' ? 'flex-1 gap-2' : 'gap-2'}
+          disabled={busy || blocked}
+          aria-label={triggerLabel}
+          title={
+            blocked
+              ? 'High-risk message — override the warning above first.'
+              : undefined
+          }
         >
           {busy ? (
             <Loader2 className="size-3.5 animate-spin" />
           ) : (
             <FileText className="size-3.5" />
           )}
-          Route to file…
+          {triggerLabel}
         </Button>
       </PopoverTrigger>
       <PopoverContent
@@ -1628,7 +1772,9 @@ function DetailAuthenticity({ row }: { row: DetailRow }) {
                 key={s.id}
                 className="flex items-start gap-2 rounded-md bg-card/70 px-2.5 py-1.5 text-xs text-foreground/85 ring-1 ring-border/60"
               >
-                <span className={`mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold tabular-nums ${accent.bar} text-white`}>
+                <span
+                  className={`mt-0.5 inline-flex h-4 min-w-[22px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] leading-none font-semibold tabular-nums ${accent.bar} text-white`}
+                >
                   +{s.weight}
                 </span>
                 <span className="flex-1">{s.label}</span>
@@ -1649,7 +1795,7 @@ function DetailAuthenticity({ row }: { row: DetailRow }) {
                 key={s.id}
                 className="flex items-start gap-2 rounded-md bg-card/70 px-2.5 py-1.5 text-xs text-foreground/85 ring-1 ring-border/60"
               >
-                <span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-[#3f7c64] text-[9px] font-semibold tabular-nums text-white">
+                <span className="mt-0.5 inline-flex h-4 min-w-[22px] shrink-0 items-center justify-center rounded-full bg-[#3f7c64] px-1.5 text-[10px] leading-none font-semibold tabular-nums text-white">
                   {s.weight}
                 </span>
                 <span className="flex-1">{s.label}</span>
@@ -1746,6 +1892,207 @@ function DetailMatch({ row }: { row: DetailRow }) {
   )
 }
 
+// ─── Classifier surfaces ──────────────────────────────────────────────────
+
+const INTENT_LABELS: Record<string, string> = {
+  wire_instructions: 'Wire instructions',
+  payoff: 'Payoff statement',
+  title_commitment: 'Title commitment',
+  closing_disclosure: 'Closing disclosure',
+  county_response: 'County response',
+  buyer_info: 'Buyer info',
+  lender_correspondence: 'Lender correspondence',
+  title_document: 'Title document',
+  marketing: 'Marketing',
+  phishing: 'Phishing',
+  other: 'Other',
+}
+
+function intentTone(intent: string): {
+  bg: string
+  text: string
+  ring: string
+} {
+  switch (intent) {
+    case 'wire_instructions':
+      return {
+        bg: 'bg-[#fde9dc]',
+        text: 'text-[#7a3d18]',
+        ring: 'ring-[#c9652e]/30',
+      }
+    case 'phishing':
+      return {
+        bg: 'bg-[#fdecee]',
+        text: 'text-[#8a3942]',
+        ring: 'ring-[#b94f58]/30',
+      }
+    case 'marketing':
+      return {
+        bg: 'bg-muted',
+        text: 'text-muted-foreground',
+        ring: 'ring-border/70',
+      }
+    case 'closing_disclosure':
+    case 'title_commitment':
+    case 'title_document':
+      return {
+        bg: 'bg-[#e8f0f8]',
+        text: 'text-[#2c4a6b]',
+        ring: 'ring-[#3f668f]/30',
+      }
+    case 'county_response':
+    case 'payoff':
+    case 'lender_correspondence':
+    case 'buyer_info':
+      return {
+        bg: 'bg-[#fdf6e8]',
+        text: 'text-[#7a5818]',
+        ring: 'ring-[#b78625]/30',
+      }
+    default:
+      return {
+        bg: 'bg-card',
+        text: 'text-muted-foreground',
+        ring: 'ring-border/70',
+      }
+  }
+}
+
+function ClassificationChip({
+  classification,
+  compact,
+}: {
+  classification: ClassifierResult
+  compact?: boolean
+}) {
+  const tone = intentTone(classification.intent)
+  const label =
+    INTENT_LABELS[classification.intent] ?? classification.intent
+  const pct = Math.round(classification.confidence * 100)
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${tone.bg} ${tone.text} ${tone.ring}`}
+      title={
+        classification.reasons.length > 0
+          ? `Reasons: ${classification.reasons.join('; ')}`
+          : undefined
+      }
+    >
+      <Sparkles className="size-3" />
+      {label}
+      {!compact && (
+        <span className="font-numerals tabular-nums opacity-80">· {pct}%</span>
+      )}
+    </span>
+  )
+}
+
+function ClassifierBlock({
+  classification,
+  onReclassify,
+}: {
+  classification: ClassifierResult | null
+  onReclassify?: () => void
+}) {
+  if (!classification) {
+    return (
+      <div className="rounded-xl border border-dashed border-border/60 bg-card/60 px-4 py-3 text-xs text-muted-foreground">
+        Soft classifier hasn't run yet — once it does, you'll see the model's
+        intent and reasoning here.
+        {onReclassify && (
+          <button
+            type="button"
+            onClick={onReclassify}
+            className="ml-2 text-[#593157] underline-offset-4 hover:underline"
+          >
+            Run now
+          </button>
+        )}
+      </div>
+    )
+  }
+  const tone = intentTone(classification.intent)
+  const pct = Math.round(classification.confidence * 100)
+  const label =
+    INTENT_LABELS[classification.intent] ?? classification.intent
+  return (
+    <div
+      className={`rounded-xl border border-border/60 bg-card p-4 ring-1 ring-inset ${tone.ring}`}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${tone.bg} ${tone.text}`}
+        >
+          <Sparkles className="size-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span
+              className={`font-numerals text-sm font-semibold ${tone.text}`}
+            >
+              {label}
+            </span>
+            <span
+              className={`font-numerals inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium tabular-nums ring-1 ring-inset ${tone.bg} ${tone.text} ${tone.ring}`}
+            >
+              {pct}%
+            </span>
+          </div>
+          {classification.reasons.length > 0 && (
+            <ul className="mt-1.5 flex flex-col gap-1 text-xs text-muted-foreground">
+              {classification.reasons.map((r, i) => (
+                <li
+                  key={`${i}-${r.slice(0, 12)}`}
+                  className="flex items-start gap-1.5 leading-snug"
+                >
+                  <span className="mt-1 inline-block size-1 shrink-0 rounded-full bg-current opacity-60" />
+                  <span>{r}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {classification.suggestedFileNumber && (
+            <div className="mt-2 text-[11px] text-muted-foreground">
+              Suggested file:{' '}
+              <span className="font-numerals font-medium text-[#40233f]">
+                {classification.suggestedFileNumber}
+              </span>
+            </div>
+          )}
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground/80">
+            <span className="whitespace-nowrap">
+              Classified {formatRelative(classification.classifiedAt)}
+            </span>
+            {classification.modelId && (
+              <>
+                <span aria-hidden>·</span>
+                <span
+                  className="min-w-0 max-w-[16ch] truncate font-mono"
+                  title={classification.modelId}
+                >
+                  {classification.modelId}
+                </span>
+              </>
+            )}
+            {onReclassify && (
+              <>
+                <span aria-hidden>·</span>
+                <button
+                  type="button"
+                  onClick={onReclassify}
+                  className="whitespace-nowrap text-[#593157] underline-offset-4 hover:underline"
+                >
+                  Re-run
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Empty / no-matches ───────────────────────────────────────────────────
 
 function EmptyState() {
@@ -1822,6 +2169,12 @@ function prettyDocType(t: string): string {
 function prettyReason(r: string): string {
   if (r === 'no_match') return 'No file match'
   if (r === 'manual_attach') return 'Confirmed manually'
+  if (r === 'manual_attach_high_risk_override')
+    return 'Manually attached (high-risk override)'
+  const blocked = r.match(/^(.*?);\s*blocked_by_status:(.+)$/)
+  if (blocked) {
+    return `${prettyReason(blocked[1])} — file is ${blocked[2].replace(/_/g, ' ')}`
+  }
   const m = r.match(/^filenumber_in_(subject|body):(.+)$/)
   if (m) return `File # in ${m[1]} (${m[2]})`
   const a = r.match(/^address_overlap:(.+)$/)

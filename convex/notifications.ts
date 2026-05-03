@@ -22,8 +22,20 @@ export type NotificationSeed = {
   body?: string
   severity?: 'info' | 'warn' | 'block' | 'ok'
   fileId?: Id<'files'>
+  /**
+   * Stable key used to collapse a noisy stream of related notifications into
+   * a single bell row. Defaults to `${kind}:${fileId}` (or just `kind`) when
+   * the caller doesn't pass one — that keeps the seven extractions on one
+   * file folded into one entry.
+   */
+  groupKey?: string
   actorMemberId?: Id<'tenantMembers'>
   actorType?: string
+}
+
+function defaultGroupKey(seed: NotificationSeed): string {
+  if (seed.groupKey) return seed.groupKey
+  return seed.fileId ? `${seed.kind}:${seed.fileId}` : seed.kind
 }
 
 // Insert one row per member. Caller passes a tenantId + the seed; we resolve
@@ -41,6 +53,7 @@ export async function fanOutNotification(
     .collect()
 
   const now = Date.now()
+  const groupKey = defaultGroupKey(seed)
   for (const m of members) {
     if (m.status !== 'active') continue
     await ctx.db.insert('notifications', {
@@ -51,6 +64,7 @@ export async function fanOutNotification(
       body: seed.body,
       severity: seed.severity,
       fileId: seed.fileId,
+      groupKey,
       actorMemberId: seed.actorMemberId,
       actorType: seed.actorType ?? 'system',
       occurredAt: now,
@@ -75,6 +89,7 @@ export const fanOutInternal = internalMutation({
       )
     ),
     fileId: v.optional(v.id('files')),
+    groupKey: v.optional(v.string()),
     actorMemberId: v.optional(v.id('tenantMembers')),
     actorType: v.optional(v.string()),
   },
@@ -85,6 +100,7 @@ export const fanOutInternal = internalMutation({
       body: args.body,
       severity: args.severity,
       fileId: args.fileId,
+      groupKey: args.groupKey,
       actorMemberId: args.actorMemberId,
       actorType: args.actorType,
     })
@@ -94,6 +110,8 @@ export const fanOutInternal = internalMutation({
 // ─────────────────────────────────────────────────────────────────────
 // Reader queries (current member only)
 // ─────────────────────────────────────────────────────────────────────
+
+const RECENT_LIMIT = 200
 
 export const listForMe = query({
   args: { limit: v.optional(v.number()) },
@@ -120,18 +138,129 @@ export const unreadCount = query({
   handler: async (ctx) => {
     const tc = await optionalTenant(ctx)
     if (!tc) return 0
-    // We index by (tenant, member, readAt, occurredAt). Unread rows have
-    // readAt === undefined — Convex doesn't index undefined values, so we
-    // count by walking the recent feed and filtering. Fast in practice
-    // because we cap at 200 most-recent.
     const recent = await ctx.db
       .query('notifications')
       .withIndex('by_tenant_member_time', (q) =>
         q.eq('tenantId', tc.tenantId).eq('memberId', tc.memberId)
       )
       .order('desc')
-      .take(200)
+      .take(RECENT_LIMIT)
     return recent.filter((n) => n.readAt === undefined).length
+  },
+})
+
+// Bell-summary query: a single subscription powering the badge. Returns the
+// total unread count, the count of unread blockers (severity=block), and
+// the count of distinct file/kind groups represented in the unread set so
+// the bell can show "3 issues across 2 files" instead of "7 notifications".
+export const unreadSummary = query({
+  args: {},
+  handler: async (ctx) => {
+    const tc = await optionalTenant(ctx)
+    if (!tc) {
+      return { total: 0, blockers: 0, warnings: 0, groups: 0 }
+    }
+    const recent = await ctx.db
+      .query('notifications')
+      .withIndex('by_tenant_member_time', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('memberId', tc.memberId)
+      )
+      .order('desc')
+      .take(RECENT_LIMIT)
+    let total = 0
+    let blockers = 0
+    let warnings = 0
+    const groupSet = new Set<string>()
+    for (const n of recent) {
+      if (n.readAt !== undefined) continue
+      total++
+      if (n.severity === 'block') blockers++
+      else if (n.severity === 'warn') warnings++
+      const key = n.groupKey ?? n.kind
+      groupSet.add(key)
+    }
+    return { total, blockers, warnings, groups: groupSet.size }
+  },
+})
+
+// Grouped feed: collapse a noisy stream into one row per group, with the
+// most-recent member surfaced as the headline. Powers the bell dropdown.
+export const groupedForMe = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const tc = await optionalTenant(ctx)
+    if (!tc) return []
+    const cap = Math.min(limit ?? 80, RECENT_LIMIT)
+    const rows = await ctx.db
+      .query('notifications')
+      .withIndex('by_tenant_member_time', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('memberId', tc.memberId)
+      )
+      .order('desc')
+      .take(cap)
+
+    type Item = (typeof rows)[number]
+    type Group = {
+      groupKey: string
+      kind: string
+      fileId?: Id<'files'>
+      headline: Item
+      members: Item[]
+      latestAt: number
+      unread: number
+      blockers: number
+      warnings: number
+    }
+    const order: string[] = []
+    const groups = new Map<string, Group>()
+    for (const n of rows) {
+      const key = n.groupKey ?? `${n.kind}:${n.fileId ?? 'noFile'}:${n._id}`
+      let g = groups.get(key)
+      if (!g) {
+        g = {
+          groupKey: key,
+          kind: n.kind,
+          fileId: n.fileId,
+          headline: n,
+          members: [],
+          latestAt: n.occurredAt,
+          unread: 0,
+          blockers: 0,
+          warnings: 0,
+        }
+        groups.set(key, g)
+        order.push(key)
+      }
+      g.members.push(n)
+      if (n.occurredAt > g.latestAt) {
+        g.latestAt = n.occurredAt
+        g.headline = n
+      }
+      if (n.readAt === undefined) g.unread++
+      if (n.severity === 'block') g.blockers++
+      else if (n.severity === 'warn') g.warnings++
+    }
+    return order.map((k) => groups.get(k)!).map((g) => ({
+      groupKey: g.groupKey,
+      kind: g.kind,
+      fileId: g.fileId ?? null,
+      headline: {
+        _id: g.headline._id,
+        title: g.headline.title,
+        body: g.headline.body ?? null,
+        severity: g.headline.severity ?? null,
+        kind: g.headline.kind,
+        fileId: g.headline.fileId ?? null,
+        occurredAt: g.headline.occurredAt,
+        readAt: g.headline.readAt ?? null,
+      },
+      memberIds: g.members.map((m) => m._id),
+      count: g.members.length,
+      latestAt: g.latestAt,
+      unread: g.unread,
+      blockers: g.blockers,
+      warnings: g.warnings,
+    }))
   },
 })
 
@@ -153,6 +282,33 @@ export const markRead = mutation({
   },
 })
 
+// Mark every notification in a group as read in one round-trip. The bell
+// invokes this when the user clicks a collapsed group — no need to make N
+// markRead calls for each row in the cluster.
+export const markGroupRead = mutation({
+  args: { groupKey: v.string() },
+  handler: async (ctx, { groupKey }) => {
+    const tc = await requireTenant(ctx)
+    const recent = await ctx.db
+      .query('notifications')
+      .withIndex('by_tenant_member_time', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('memberId', tc.memberId)
+      )
+      .order('desc')
+      .take(RECENT_LIMIT)
+    const now = Date.now()
+    let marked = 0
+    for (const n of recent) {
+      const key = n.groupKey ?? n.kind
+      if (key !== groupKey) continue
+      if (n.readAt !== undefined) continue
+      await ctx.db.patch(n._id, { readAt: now })
+      marked++
+    }
+    return { ok: true, marked }
+  },
+})
+
 export const markAllRead = mutation({
   args: {},
   handler: async (ctx) => {
@@ -163,7 +319,7 @@ export const markAllRead = mutation({
         q.eq('tenantId', tc.tenantId).eq('memberId', tc.memberId)
       )
       .order('desc')
-      .take(200)
+      .take(RECENT_LIMIT)
     const now = Date.now()
     let marked = 0
     for (const n of recent) {
@@ -186,6 +342,30 @@ export const dismiss = mutation({
     }
     await ctx.db.delete(notificationId)
     return { ok: true }
+  },
+})
+
+// Dismiss every member of a group at once. Mirrors markGroupRead so the bell
+// can offer an "X clear" affordance per group without a fan-out of mutations.
+export const dismissGroup = mutation({
+  args: { groupKey: v.string() },
+  handler: async (ctx, { groupKey }) => {
+    const tc = await requireTenant(ctx)
+    const recent = await ctx.db
+      .query('notifications')
+      .withIndex('by_tenant_member_time', (q) =>
+        q.eq('tenantId', tc.tenantId).eq('memberId', tc.memberId)
+      )
+      .order('desc')
+      .take(RECENT_LIMIT)
+    let removed = 0
+    for (const n of recent) {
+      const key = n.groupKey ?? n.kind
+      if (key !== groupKey) continue
+      await ctx.db.delete(n._id)
+      removed++
+    }
+    return { ok: true, removed }
   },
 })
 

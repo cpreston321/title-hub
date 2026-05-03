@@ -14,6 +14,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import { authClient } from '@/lib/auth-client'
 import { getToken } from '@/lib/auth-server'
+import { ConfirmDialogProvider } from '@/components/confirm-dialog'
 import appCss from '../styles.css?url'
 
 const getAuth = createServerFn({ method: 'GET' }).handler(async () => {
@@ -72,7 +73,9 @@ function RootComponent() {
       authClient={authClient}
       initialToken={context.token}
     >
-      <Outlet />
+      <ConfirmDialogProvider>
+        <Outlet />
+      </ConfirmDialogProvider>
     </ConvexBetterAuthProvider>
   )
 }
