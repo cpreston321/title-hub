@@ -1417,6 +1417,13 @@ type DashEvent = {
   resourceId: string;
   metadata?: unknown;
   actor?: DashActor;
+  file?: {
+    fileId: string;
+    fileNumber: string;
+    propertyAddressLine1: string | null;
+    city: string | null;
+    state: string | null;
+  } | null;
 };
 
 const DASH_VERBS: Record<string, string> = {
@@ -1485,7 +1492,7 @@ function dashActionDetail(e: DashEvent): string | null {
 
 function LiveActivityFeed() {
   const events = useQuery({
-    ...convexQuery(api.audit.listForTenant, { limit: 12 }),
+    ...convexQuery(api.audit.listForTenant, { limit: 10 }),
     retry: false,
   });
   const list = (events.data ?? []) as ReadonlyArray<DashEvent>;
@@ -1507,9 +1514,12 @@ function LiveActivityFeed() {
             </h2>
           </div>
         </div>
-        <div className="text-xs text-muted-foreground">
-          Updates as work happens
-        </div>
+        <Link
+          to="/history"
+          className="text-xs font-medium text-[#593157] underline-offset-4 hover:underline"
+        >
+          View all →
+        </Link>
       </header>
 
       {events.isLoading ? (
@@ -1544,12 +1554,20 @@ function ActivityFeedRow({ event }: { event: DashEvent }) {
         ? "System"
         : "Unknown";
 
-  const isFile = event.resourceType === "file";
+  // Prefer the enriched file context (works for any event tied to a file
+  // via metadata.fileId, not just resourceType=file). Falls back to the
+  // legacy resourceType=file path so older rows still render.
+  const fileTarget = event.file
+    ? { fileId: event.file.fileId, fileNumber: event.file.fileNumber }
+    : event.resourceType === "file"
+      ? { fileId: event.resourceId, fileNumber: null }
+      : null;
+
   const Wrapper = ({ children }: { children: React.ReactNode }) =>
-    isFile ? (
+    fileTarget ? (
       <Link
         to="/files/$fileId"
-        params={{ fileId: event.resourceId }}
+        params={{ fileId: fileTarget.fileId }}
         className="group/feed flex items-start gap-3 px-7 py-3 transition hover:bg-[#fdf6e8]/50"
       >
         {children}
@@ -1557,6 +1575,12 @@ function ActivityFeedRow({ event }: { event: DashEvent }) {
     ) : (
       <div className="flex items-start gap-3 px-7 py-3">{children}</div>
     );
+
+  const addressBlurb = event.file
+    ? [event.file.propertyAddressLine1, event.file.city]
+        .filter(Boolean)
+        .join(", ")
+    : null;
 
   return (
     <li className="tk-slide-in">
@@ -1573,6 +1597,25 @@ function ActivityFeedRow({ event }: { event: DashEvent }) {
               </>
             )}
           </div>
+          {(event.file || addressBlurb) && (
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs">
+              {event.file?.fileNumber && (
+                <span className="font-numerals font-medium text-[#40233f]">
+                  {event.file.fileNumber}
+                </span>
+              )}
+              {addressBlurb && (
+                <>
+                  {event.file?.fileNumber && (
+                    <span className="text-muted-foreground/60">·</span>
+                  )}
+                  <span className="truncate text-muted-foreground">
+                    {addressBlurb}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
           <div className="mt-0.5 text-xs text-muted-foreground">
             {timeAgo(event.occurredAt)}
           </div>

@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   LayoutDashboard,
   FolderOpen,
+  History,
   Inbox,
   Shield,
   ScrollText,
@@ -325,6 +326,13 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 label="County connect"
                 icon={<Building2 className="size-4" />}
                 active={location.pathname.startsWith("/county-connect")}
+                disabled={!hasActiveOrg}
+              />
+              <NavLink
+                to="/history"
+                label="History"
+                icon={<History className="size-4" />}
+                active={location.pathname.startsWith("/history")}
                 disabled={!hasActiveOrg}
               />
               <DisabledNavItem

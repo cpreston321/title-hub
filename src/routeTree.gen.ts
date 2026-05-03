@@ -16,6 +16,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as QueueRouteImport } from './routes/queue'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as MailRouteImport } from './routes/mail'
+import { Route as HistoryRouteImport } from './routes/history'
 import { Route as CountyConnectRouteImport } from './routes/county-connect'
 import { Route as ClosingRouteImport } from './routes/closing'
 import { Route as IndexRouteImport } from './routes/index'
@@ -59,6 +60,11 @@ const OrdersRoute = OrdersRouteImport.update({
 const MailRoute = MailRouteImport.update({
   id: '/mail',
   path: '/mail',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HistoryRoute = HistoryRouteImport.update({
+  id: '/history',
+  path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CountyConnectRoute = CountyConnectRouteImport.update({
@@ -111,6 +117,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/closing': typeof ClosingRoute
   '/county-connect': typeof CountyConnectRoute
+  '/history': typeof HistoryRoute
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
   '/queue': typeof QueueRoute
@@ -129,6 +136,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/closing': typeof ClosingRoute
   '/county-connect': typeof CountyConnectRoute
+  '/history': typeof HistoryRoute
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
   '/queue': typeof QueueRoute
@@ -148,6 +156,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/closing': typeof ClosingRoute
   '/county-connect': typeof CountyConnectRoute
+  '/history': typeof HistoryRoute
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
   '/queue': typeof QueueRoute
@@ -168,6 +177,7 @@ export interface FileRouteTypes {
     | '/'
     | '/closing'
     | '/county-connect'
+    | '/history'
     | '/mail'
     | '/orders'
     | '/queue'
@@ -186,6 +196,7 @@ export interface FileRouteTypes {
     | '/'
     | '/closing'
     | '/county-connect'
+    | '/history'
     | '/mail'
     | '/orders'
     | '/queue'
@@ -204,6 +215,7 @@ export interface FileRouteTypes {
     | '/'
     | '/closing'
     | '/county-connect'
+    | '/history'
     | '/mail'
     | '/orders'
     | '/queue'
@@ -223,6 +235,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ClosingRoute: typeof ClosingRoute
   CountyConnectRoute: typeof CountyConnectRoute
+  HistoryRoute: typeof HistoryRoute
   MailRoute: typeof MailRoute
   OrdersRoute: typeof OrdersRoute
   QueueRoute: typeof QueueRoute
@@ -287,6 +300,13 @@ declare module '@tanstack/react-router' {
       path: '/mail'
       fullPath: '/mail'
       preLoaderRoute: typeof MailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/history': {
+      id: '/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/county-connect': {
@@ -359,6 +379,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ClosingRoute: ClosingRoute,
   CountyConnectRoute: CountyConnectRoute,
+  HistoryRoute: HistoryRoute,
   MailRoute: MailRoute,
   OrdersRoute: OrdersRoute,
   QueueRoute: QueueRoute,

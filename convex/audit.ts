@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { paginationOptsValidator } from 'convex/server'
 import { query } from './_generated/server'
 import { components } from './_generated/api'
 import { optionalTenant, requireTenant } from './lib/tenant'
@@ -14,6 +15,14 @@ type ActorInfo =
     }
   | { kind: 'system' }
   | { kind: 'unknown'; type: string }
+
+type FileContext = {
+  fileId: Id<'files'>
+  fileNumber: string
+  propertyAddressLine1: string | null
+  city: string | null
+  state: string | null
+} | null
 
 export const listForFile = query({
   args: { fileId: v.id('files'), limit: v.optional(v.number()) },
@@ -32,16 +41,16 @@ export const listForFile = query({
       .order('desc')
       .take(cap)
 
-    return await enrichWithActor(ctx, events)
+    return await enrichEvents(ctx, events)
   },
 })
 
 export const listForTenant = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
-    // Subscribed by the admin audit-log viewer, which is reachable before
-    // tenant-resolution settles on first login. Use optionalTenant so the
-    // initial render doesn't log a NO_ACTIVE_TENANT.
+    // Subscribed by the dashboard's "Recently" feed, which is reachable
+    // before tenant-resolution settles on first login. Use optionalTenant
+    // so the initial render doesn't log a NO_ACTIVE_TENANT.
     const tc = await optionalTenant(ctx)
     if (!tc) return []
     const cap = Math.min(limit ?? 100, 500)
@@ -52,21 +61,89 @@ export const listForTenant = query({
       .order('desc')
       .take(cap)
 
-    return await enrichWithActor(ctx, events)
+    return await enrichEvents(ctx, events)
   },
 })
 
-async function enrichWithActor(
+// Paginated history feed for the dedicated /history page. Same enrichment
+// as listForTenant; the cursor is opaque and threaded by the client.
+export const paginateForTenant = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    actionPrefix: v.optional(v.string()),
+  },
+  handler: async (ctx, { paginationOpts, actionPrefix }) => {
+    const tc = await optionalTenant(ctx)
+    if (!tc) {
+      return { page: [], isDone: true, continueCursor: '' }
+    }
+    const result = await ctx.db
+      .query('auditEvents')
+      .withIndex('by_tenant_time', (q) => q.eq('tenantId', tc.tenantId))
+      .order('desc')
+      .paginate(paginationOpts)
+
+    const filtered = actionPrefix
+      ? result.page.filter((e) => e.action.startsWith(actionPrefix))
+      : result.page
+
+    const enriched = await enrichEvents(ctx, filtered)
+    return {
+      page: enriched,
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    }
+  },
+})
+
+async function enrichEvents(
   ctx: { db: any; runQuery: any },
   events: ReadonlyArray<Doc<'auditEvents'>>
 ) {
-  // Cache member + auth-user lookups so the same actor isn't hit repeatedly.
   const memberCache = new Map<
     string,
     { email: string; name: string | null; role: string } | null
   >()
+  const fileCache = new Map<string, FileContext>()
 
-  const out: Array<Doc<'auditEvents'> & { actor: ActorInfo }> = []
+  // Resolve the file context for an event, in this order:
+  //   1. resourceType === 'file' → resourceId is the file id
+  //   2. metadata.fileId → many cross-cutting events (extractions, comments,
+  //      followups, finding actions, email-classifier-attached) carry it
+  // Returns null when neither applies.
+  const loadFile = async (
+    event: Doc<'auditEvents'>
+  ): Promise<FileContext> => {
+    let fileId: string | null = null
+    if (event.resourceType === 'file') {
+      fileId = event.resourceId
+    } else {
+      const md = (event.metadata ?? {}) as Record<string, unknown>
+      if (typeof md.fileId === 'string') fileId = md.fileId
+    }
+    if (!fileId) return null
+    if (fileCache.has(fileId)) return fileCache.get(fileId) ?? null
+    const file = (await ctx.db.get(fileId as Id<'files'>)) as
+      | Doc<'files'>
+      | null
+    if (!file) {
+      fileCache.set(fileId, null)
+      return null
+    }
+    const ctx_: FileContext = {
+      fileId: file._id,
+      fileNumber: file.fileNumber,
+      propertyAddressLine1: file.propertyAddress?.line1 ?? null,
+      city: file.propertyAddress?.city ?? null,
+      state: file.propertyAddress?.state ?? null,
+    }
+    fileCache.set(fileId, ctx_)
+    return ctx_
+  }
+
+  const out: Array<
+    Doc<'auditEvents'> & { actor: ActorInfo; file: FileContext }
+  > = []
   for (const e of events) {
     let actor: ActorInfo =
       e.actorType === 'system'
@@ -109,7 +186,8 @@ async function enrichWithActor(
       }
     }
 
-    out.push({ ...e, actor })
+    const file = await loadFile(e)
+    out.push({ ...e, actor, file })
   }
   return out
 }
