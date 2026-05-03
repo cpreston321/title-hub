@@ -5,7 +5,7 @@ import { Loader2, Sparkles } from 'lucide-react'
 
 import { AppShell } from '@/components/app-shell'
 import { Button } from '@/components/ui/button'
-import { Loading } from '@/components/loading'
+import { SectionSkeleton } from '@/components/skeletons'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 
@@ -124,7 +124,7 @@ function HistoryPage() {
         </div>
 
         {status === 'LoadingFirstPage' ? (
-          <Loading block label="Loading history" />
+          <SectionSkeleton rows={8} withHeader={false} />
         ) : rows.length === 0 ? (
           <div className="rounded-2xl border border-border/60 bg-card/60 px-8 py-14 text-center shadow-sm ring-1 ring-foreground/5">
             <Sparkles className="mx-auto size-6 text-muted-foreground/60" />

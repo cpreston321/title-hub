@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -22,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AppShell } from "@/components/app-shell";
 import { Loading } from "@/components/loading";
+import { DashboardSkeleton } from "@/components/skeletons";
 import { toKebabCase } from "@/lib/utils";
 import { api } from "../../convex/_generated/api";
 
@@ -40,6 +42,20 @@ export const Route = createFileRoute("/")({
         { name: "twitter:description", content: description },
       ],
     };
+  },
+  // Authenticated users hit this route on every login. Kick the dashboard
+  // queries off in the loader so the first paint already has data.
+  loader: ({ context }) => {
+    const { queryClient, isAuthenticated } = context as {
+      queryClient: QueryClient;
+      isAuthenticated?: boolean;
+    };
+    if (!isAuthenticated) return;
+    void queryClient.ensureQueryData(convexQuery(api.tenants.current, {}));
+    void queryClient.ensureQueryData(convexQuery(api.files.list, {}));
+    void queryClient.ensureQueryData(
+      convexQuery(api.audit.listForTenant, { limit: 10 }),
+    );
   },
   component: App,
 });
@@ -1169,12 +1185,13 @@ function Dashboard() {
   });
 
   // Until the active-tenant check resolves we don't know whether to render the
-  // dashboard or the org picker. Render a neutral shell so the user doesn't
-  // see dashboard content flash before the picker appears.
+  // dashboard or the org picker. Render the dashboard skeleton (the common
+  // case after first paint) so the user sees structure immediately instead of
+  // a centered spinner.
   if (current.isPending) {
     return (
-      <AppShell isAuthenticated noHeader title="Loading">
-        <Loading block size="lg" label="Pressing the seal" />
+      <AppShell isAuthenticated title="Dashboard">
+        <DashboardSkeleton />
       </AppShell>
     );
   }
@@ -1211,11 +1228,12 @@ function Dashboard() {
   // Hold the dashboard until `files` has actually resolved. Without this, the
   // onboarding panel flashes during the first paint because `files.data` is
   // undefined → length 0 → "new tenant" is briefly true even when the user
-  // has files.
+  // has files. Render the dashboard skeleton so layout is stable while we
+  // wait for the files subscription.
   if (files.isPending) {
     return (
-      <AppShell isAuthenticated noHeader title="Loading">
-        <Loading block size="lg" label="Pressing the seal" />
+      <AppShell isAuthenticated title="Dashboard" subtitle={subtitle}>
+        <DashboardSkeleton />
       </AppShell>
     );
   }
@@ -1251,19 +1269,39 @@ type FileRow = {
 };
 
 function DashboardContent({ files }: { files: ReadonlyArray<FileRow> }) {
-  const open = files.filter(
-    (f) => f.status !== "policied" && f.status !== "cancelled",
-  );
-  const closingSoon = open
-    .filter(
-      (f) =>
-        f.targetCloseDate &&
-        f.targetCloseDate < Date.now() + 7 * 24 * 3600 * 1000,
-    )
-    .sort((a, b) => (a.targetCloseDate ?? 0) - (b.targetCloseDate ?? 0))
-    .slice(0, 5);
-  const cancelled = files.filter((f) => f.status === "cancelled").length;
-  const inExam = open.filter((f) => f.status === "in_exam").length;
+  // Single pass over files instead of four .filter()/.sort() chains. With
+  // a Convex live subscription, files updates land on every server-side
+  // change — re-deriving these on each render would be wasted work.
+  const { open, closingSoon, cancelled, inExam } = useMemo<{
+    open: ReadonlyArray<FileRow>;
+    closingSoon: ReadonlyArray<FileRow>;
+    cancelled: number;
+    inExam: number;
+  }>(() => {
+    const cutoff = Date.now() + 7 * 24 * 3600 * 1000;
+    const openList: FileRow[] = [];
+    let cancelledCount = 0;
+    let inExamCount = 0;
+    for (const f of files) {
+      if (f.status === "cancelled") {
+        cancelledCount += 1;
+        continue;
+      }
+      if (f.status === "policied") continue;
+      openList.push(f);
+      if (f.status === "in_exam") inExamCount += 1;
+    }
+    const closing = openList
+      .filter((f) => f.targetCloseDate && f.targetCloseDate < cutoff)
+      .sort((a, b) => (a.targetCloseDate ?? 0) - (b.targetCloseDate ?? 0))
+      .slice(0, 5);
+    return {
+      open: openList,
+      closingSoon: closing,
+      cancelled: cancelledCount,
+      inExam: inExamCount,
+    };
+  }, [files]);
 
   return (
     <div className="flex flex-col gap-6 pb-12">

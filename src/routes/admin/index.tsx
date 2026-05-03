@@ -1,6 +1,7 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   CheckCircle2,
@@ -30,7 +31,10 @@ import {
   SelectTrigger,
 } from '@/components/ui/select'
 import { AppShell } from '@/components/app-shell'
-import { Loading } from '@/components/loading'
+import {
+  PageHeaderSkeleton,
+  SectionSkeleton,
+} from '@/components/skeletons'
 import { authClient } from '@/lib/auth-client'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -52,6 +56,11 @@ export const Route = createFileRoute('/admin/')({
       throw redirect({ to: '/signin' })
     }
   },
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient }
+    void queryClient.ensureQueryData(convexQuery(api.tenants.current, {}))
+    void queryClient.ensureQueryData(convexQuery(api.tenants.listMembers, {}))
+  },
   component: AdminPage,
 })
 
@@ -61,7 +70,17 @@ function AdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Admin">
-        <Loading block size="lg" label="Loading the bureau" />
+        <div className="flex flex-col gap-6 pb-12">
+          <PageHeaderSkeleton />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+            <div className="lg:col-span-3">
+              <SectionSkeleton rows={4} />
+            </div>
+            <div className="lg:col-span-2">
+              <SectionSkeleton rows={3} />
+            </div>
+          </div>
+        </div>
       </AppShell>
     )
   }

@@ -65,6 +65,8 @@ import {
 } from "@/components/ui/select";
 import { AppShell } from "@/components/app-shell";
 import { Loading } from "@/components/loading";
+import { FileDetailSkeleton } from "@/components/skeletons";
+import type { QueryClient } from "@tanstack/react-query";
 import { api } from "../../../convex/_generated/api";
 import type { Doc, Id } from "../../../convex/_generated/dataModel";
 
@@ -84,6 +86,25 @@ export const Route = createFileRoute("/files/$fileId")({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: "/signin" });
     }
+  },
+  // Hover-prefetch from any link (Files index, dashboard, search, queue).
+  // The detail page fires four queries in parallel — kicking the primary one
+  // off in the loader means the page's first render usually finds data ready.
+  loader: ({ context, params }) => {
+    const { queryClient } = context as { queryClient: QueryClient };
+    const fileId = params.fileId as Id<"files">;
+    void queryClient.ensureQueryData(
+      convexQuery(api.files.get, { fileId }),
+    );
+    void queryClient.ensureQueryData(
+      convexQuery(api.audit.listForFile, { fileId }),
+    );
+    void queryClient.ensureQueryData(
+      convexQuery(api.extractions.listForFile, { fileId }),
+    );
+    void queryClient.ensureQueryData(
+      convexQuery(api.reconciliation.listForFile, { fileId }),
+    );
   },
   component: FileDetailPage,
 });
@@ -127,7 +148,7 @@ function FileDetailPage() {
   if (detail.isLoading || !detail.data) {
     return (
       <AppShell isAuthenticated title="File">
-        <Loading block size="lg" label="Pulling the file" />
+        <FileDetailSkeleton />
       </AppShell>
     );
   }

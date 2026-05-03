@@ -1,6 +1,7 @@
 import { Link, createFileRoute, redirect } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   Archive,
@@ -32,6 +33,11 @@ import { AppShell } from '@/components/app-shell'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/confirm-dialog'
 import { Loading } from '@/components/loading'
+import {
+  CardListSkeleton,
+  KpiStripSkeleton,
+  ToolbarSkeleton,
+} from '@/components/skeletons'
 import {
   Sheet,
   SheetContent,
@@ -70,6 +76,14 @@ export const Route = createFileRoute('/mail')({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: '/signin' })
     }
+  },
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient }
+    void queryClient.ensureQueryData(
+      convexQuery(api.inboundEmail.list, { limit: 100 }),
+    )
+    void queryClient.ensureQueryData(convexQuery(api.inboundEmail.stats, {}))
+    void queryClient.ensureQueryData(convexQuery(api.tenants.current, {}))
   },
   component: MailPage,
 })
@@ -349,7 +363,11 @@ function MailPage() {
           )}
 
           {isLoading ? (
-            <Loading block label="Loading inbox" />
+            <div className="flex flex-col gap-6">
+              <KpiStripSkeleton />
+              <ToolbarSkeleton />
+              <CardListSkeleton count={6} height="h-24" />
+            </div>
           ) : isEmpty ? (
             <EmptyState />
           ) : filtered.length === 0 ? (

@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   Plus,
@@ -27,7 +28,7 @@ import {
 } from '@/components/ui/select'
 import { AppShell } from '@/components/app-shell'
 import { CountyCombobox } from '@/components/county-combobox'
-import { Loading } from '@/components/loading'
+import { TableSkeleton } from '@/components/skeletons'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 
@@ -49,6 +50,15 @@ export const Route = createFileRoute('/files/')({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: '/signin' })
     }
+  },
+  // Prefetch on hover (defaultPreload: 'intent') so the register is hot by
+  // the time the user clicks. ensureQueryData reuses any cached payload
+  // from a recent visit, so back-nav is instant.
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient }
+    void queryClient.ensureQueryData(convexQuery(api.files.list, {}))
+    void queryClient.ensureQueryData(convexQuery(api.tenants.current, {}))
+    void queryClient.ensureQueryData(convexQuery(api.seed.listIndianaCounties, {}))
   },
   validateSearch: (raw): FilesSearch => {
     const v = (raw as Record<string, unknown>).new
@@ -301,7 +311,7 @@ function FilesListPage() {
         )}
 
         {list.isLoading ? (
-          <Loading block label="Pulling the register" />
+          <TableSkeleton rows={8} cols={5} />
         ) : isFirstFile ? (
           <FirstFileCoach onCreate={() => setShowForm(true)} />
         ) : filtered.length === 0 ? (

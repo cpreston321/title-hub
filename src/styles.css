@@ -354,13 +354,123 @@
   animation: title-hub-seal-press 2.6s ease-in-out infinite;
 }
 
+/* Notice-of-defect stamp press: the seal arrives like a stamp finding paper. */
+@keyframes title-hub-stamp-press {
+  0% {
+    transform: scale(1.65) rotate(-14deg);
+    opacity: 0;
+    filter: blur(6px);
+  }
+  55% {
+    transform: scale(0.92) rotate(-3deg);
+    opacity: 1;
+    filter: blur(0);
+  }
+  78% {
+    transform: scale(1.04) rotate(1deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+.tk-stamp-press {
+  animation: title-hub-stamp-press 0.95s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+/* Document arriving on the desk. */
+@keyframes title-hub-doc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px) rotate(-0.4deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+.tk-doc-rise {
+  animation: title-hub-doc-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Signature being drawn with a fountain pen. */
+@keyframes title-hub-signature-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.tk-signature-draw {
+  stroke-dasharray: 720;
+  stroke-dashoffset: 720;
+  animation: title-hub-signature-draw 2.2s ease-out 0.7s forwards;
+}
+
+/* Drifting paper dust / ink motes. */
+@keyframes title-hub-dust-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(8px, -22px, 0);
+  }
+  100% {
+    transform: translate3d(-4px, -44px, 0);
+    opacity: 0;
+  }
+}
+.tk-dust {
+  animation: title-hub-dust-drift 7s ease-in-out infinite;
+}
+
+/* Cursor blink for the typewriter effect on the filing reference. */
+@keyframes title-hub-cursor-blink {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  61%,
+  100% {
+    opacity: 0;
+  }
+}
+.tk-cursor-blink {
+  animation: title-hub-cursor-blink 1.05s steps(2, jump-none) infinite;
+}
+
+/* Slow ambient drift for the wax/ink halos sitting under the document. */
+@keyframes title-hub-halo-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: translate3d(8px, -10px, 0) scale(1.08);
+    opacity: 1;
+  }
+}
+.tk-halo-drift {
+  animation: title-hub-halo-drift 11s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tk-seal-rotor,
   .tk-seal-sheen,
   .tk-seal-disc,
   .tk-shimmer-bar,
   .tk-soft-pulse,
-  .tk-dot {
+  .tk-dot,
+  .tk-stamp-press,
+  .tk-doc-rise,
+  .tk-signature-draw,
+  .tk-dust,
+  .tk-cursor-blink,
+  .tk-halo-drift {
     animation: none;
   }
 }

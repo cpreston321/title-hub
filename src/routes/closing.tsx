@@ -1,6 +1,7 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   AlarmClock,
@@ -17,7 +18,7 @@ import {
 
 import { AppShell } from '@/components/app-shell'
 import { Button } from '@/components/ui/button'
-import { Loading } from '@/components/loading'
+import { CardListSkeleton } from '@/components/skeletons'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 
@@ -37,6 +38,14 @@ export const Route = createFileRoute('/closing')({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: '/signin' })
     }
+  },
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient }
+    // Default to "today" — matches the initial useState in ClosingDayPage.
+    void queryClient.ensureQueryData(
+      convexQuery(api.closingDay.list, { window: 'today' as const }),
+    )
+    void queryClient.ensureQueryData(convexQuery(api.closingDay.summary, {}))
   },
   component: ClosingDayPage,
 })
@@ -112,13 +121,19 @@ function ClosingDayPage() {
     blockers: 0,
   }) as Record<WindowKey | 'blockers', number>
 
-  const ready = rows.filter(
-    (r) => r.readiness.blockers === 0 && r.readiness.pendingAttestations === 0
-  ).length
-  const stuck = rows.filter((r) => r.readiness.blockers > 0).length
-  const awaiting = rows.filter(
-    (r) => r.readiness.blockers === 0 && r.readiness.pendingAttestations > 0
-  ).length
+  const { ready, stuck, awaiting } = useMemo(() => {
+    let r = 0
+    let s = 0
+    let a = 0
+    for (const row of rows) {
+      const blocked = row.readiness.blockers > 0
+      const pending = row.readiness.pendingAttestations > 0
+      if (blocked) s += 1
+      else if (pending) a += 1
+      else r += 1
+    }
+    return { ready: r, stuck: s, awaiting: a }
+  }, [rows])
 
   return (
     <AppShell isAuthenticated title="Closing day">
@@ -138,7 +153,7 @@ function ClosingDayPage() {
         />
 
         {list.isLoading && !list.data ? (
-          <Loading block label="Loading the day's closings" />
+          <CardListSkeleton count={3} height="h-40" />
         ) : rows.length === 0 ? (
           <EmptyState windowKey={windowKey} />
         ) : (

@@ -159,10 +159,13 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                   </div>
                 ) : (
                   <>
-                    <div className="truncate font-serif text-base tracking-wide text-white">
+                    <div
+                      className="line-clamp-2 font-serif text-sm leading-tight tracking-wide text-white break-words"
+                      title={tenant?.legalName ?? "Title Hub"}
+                    >
                       {tenant?.legalName ?? "Title Hub"}
                     </div>
-                    <div className="truncate text-xs text-white/60">
+                    <div className="mt-0.5 truncate text-xs text-white/60">
                       {tenant ? tenant.role : "No active org"}
                     </div>
                   </>

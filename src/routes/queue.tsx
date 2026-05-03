@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   AlarmClock,
@@ -15,7 +16,7 @@ import {
 
 import { AppShell } from '@/components/app-shell'
 import { Button } from '@/components/ui/button'
-import { Loading } from '@/components/loading'
+import { SectionSkeleton } from '@/components/skeletons'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 
@@ -35,6 +36,10 @@ export const Route = createFileRoute('/queue')({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: '/signin' })
     }
+  },
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient }
+    void queryClient.ensureQueryData(convexQuery(api.myQueue.list, {}))
   },
   component: MyQueuePage,
 })
@@ -120,7 +125,10 @@ function MyQueuePage() {
         <PageHeader totalMine={totalMine} />
 
         {data.isLoading && !data.data ? (
-          <Loading block label="Loading your queue" />
+          <div className="flex flex-col gap-6">
+            <SectionSkeleton rows={3} />
+            <SectionSkeleton rows={2} />
+          </div>
         ) : totalMine === 0 &&
           queue.unownedBlockers.length === 0 &&
           queue.unownedTriage.length === 0 ? (

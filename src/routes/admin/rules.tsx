@@ -1,6 +1,7 @@
 import { createFileRoute, Link, redirect } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import { Stamp, X } from 'lucide-react'
 import {
@@ -13,7 +14,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { AppShell } from '@/components/app-shell'
-import { Loading } from '@/components/loading'
+import {
+  PageHeaderSkeleton,
+  SectionSkeleton,
+} from '@/components/skeletons'
 import { CountyCombobox } from '@/components/county-combobox'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -34,6 +38,13 @@ export const Route = createFileRoute('/admin/rules')({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: '/signin' })
     }
+  },
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient }
+    void queryClient.ensureQueryData(convexQuery(api.tenants.current, {}))
+    void queryClient.ensureQueryData(
+      convexQuery(api.seed.listIndianaCounties, {}),
+    )
   },
   component: RulesAdminPage,
 })
@@ -58,7 +69,10 @@ function RulesAdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Recording rules">
-        <Loading block size="lg" label="Loading the codex" />
+        <div className="flex flex-col gap-6 pb-12">
+          <PageHeaderSkeleton />
+          <SectionSkeleton rows={5} />
+        </div>
       </AppShell>
     )
   }

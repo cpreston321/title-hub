@@ -6,6 +6,7 @@ import {
 } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
 import { convexQuery, useConvexMutation } from '@convex-dev/react-query'
 import {
   AlertTriangle,
@@ -23,7 +24,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { AppShell } from '@/components/app-shell'
 import { useConfirm } from '@/components/confirm-dialog'
-import { Loading } from '@/components/loading'
+import { CardListSkeleton } from '@/components/skeletons'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
 
@@ -43,6 +44,12 @@ export const Route = createFileRoute('/orders')({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: '/signin' })
     }
+  },
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient }
+    void queryClient.ensureQueryData(convexQuery(api.orders.list, {}))
+    void queryClient.ensureQueryData(convexQuery(api.orders.summary, {}))
+    void queryClient.ensureQueryData(convexQuery(api.tenants.current, {}))
   },
   component: OrdersPage,
 })
@@ -246,7 +253,7 @@ function OrdersPage() {
         )}
 
         {isLoading ? (
-          <Loading block label="Pulling the inbox" />
+          <CardListSkeleton count={4} height="h-32" />
         ) : isEmpty ? (
           <EmptyState onCreate={() => navigate({ to: '/files', search: { new: true } })} />
         ) : filtered.length === 0 ? (

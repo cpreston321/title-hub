@@ -1,6 +1,7 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
 import {
   ArrowRight,
@@ -37,7 +38,10 @@ import {
 } from "@/components/ui/select";
 import { AppShell } from "@/components/app-shell";
 import { useConfirm } from "@/components/confirm-dialog";
-import { Loading } from "@/components/loading";
+import {
+  PageHeaderSkeleton,
+  SectionSkeleton,
+} from "@/components/skeletons";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 
@@ -57,6 +61,11 @@ export const Route = createFileRoute("/admin/integrations")({
     if (!(context as { isAuthenticated?: boolean }).isAuthenticated) {
       throw redirect({ to: "/signin" });
     }
+  },
+  loader: ({ context }) => {
+    const { queryClient } = context as { queryClient: QueryClient };
+    void queryClient.ensureQueryData(convexQuery(api.tenants.current, {}));
+    void queryClient.ensureQueryData(convexQuery(api.integrations.list, {}));
   },
   component: IntegrationsAdminPage,
 });
@@ -172,7 +181,11 @@ function IntegrationsAdminPage() {
   if (current.isLoading) {
     return (
       <AppShell isAuthenticated title="Integrations">
-        <Loading block size="lg" label="Patching in" />
+        <div className="flex flex-col gap-6 pb-12">
+          <PageHeaderSkeleton />
+          <SectionSkeleton rows={4} />
+          <SectionSkeleton rows={3} />
+        </div>
       </AppShell>
     );
   }
