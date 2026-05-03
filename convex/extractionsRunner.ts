@@ -400,10 +400,10 @@ export const runJob = internalAction({
 
         await emit(
           'phase',
-          `Asking ${ANTHROPIC_MODEL} to extract fields`,
+          'Asking the extractor to read fields',
           docTypeHint
-            ? `Hint: ${docTypeHint}. The model is reading the PDF directly.`
-            : 'No type hint — the model is classifying and extracting in one pass.'
+            ? `Hint: ${docTypeHint}. The extractor is reading the PDF directly.`
+            : 'No type hint — the extractor is classifying and extracting in one pass.'
         )
 
         const response = await c.messages.create({

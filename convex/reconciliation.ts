@@ -1,5 +1,10 @@
 import { ConvexError, v } from 'convex/values'
-import { internalMutation, mutation, query } from './_generated/server'
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from './_generated/server'
 import type { MutationCtx } from './_generated/server'
 import { internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
@@ -1390,6 +1395,151 @@ export const resolveWith = mutation({
     }
 
     return { ok: true, promoted }
+  },
+})
+
+// ── AI risk explainer ──────────────────────────────────────────────────
+// `requestExplanation` schedules the Node-side findingExplainer action,
+// which calls Claude and writes back via `_applyExplanation`. We split the
+// query/mutation here from the action (in convex/findingExplainer.ts) so
+// the V8 + Node runtime boundary stays clean.
+
+export const _loadExplainerContext = internalQuery({
+  args: { findingId: v.id('reconciliationFindings') },
+  handler: async (ctx, { findingId }) => {
+    const finding = await ctx.db.get(findingId)
+    if (!finding) return null
+    const file = await ctx.db.get(finding.fileId)
+    if (!file) return null
+
+    // Pull involved-document extractions so the prompt has the actual
+    // values that diverged. Bounded so a runaway finding can't drag in
+    // hundreds of docs.
+    const docViews: Array<{
+      documentId: string
+      docType: string
+      title: string | null
+      kind: string | null
+      summary: string | null
+    }> = []
+    for (const docId of finding.involvedDocumentIds.slice(0, 8)) {
+      const doc = await ctx.db.get(docId)
+      if (!doc) continue
+      const ext = await ctx.db
+        .query('documentExtractions')
+        .withIndex('by_tenant_document', (q) =>
+          q.eq('tenantId', finding.tenantId).eq('documentId', docId)
+        )
+        .unique()
+      const payload = ext?.payload as
+        | { documentKind?: string }
+        | null
+        | undefined
+      docViews.push({
+        documentId: docId,
+        docType: doc.docType,
+        title: doc.title ?? null,
+        kind: payload?.documentKind ?? null,
+        summary: ext ? summarizeExtraction(ext.payload) : null,
+      })
+    }
+
+    // Other open findings on the same file — gives the model context like
+    // "there's also a wire alert here" so the explanation can connect dots.
+    const peerFindings = await ctx.db
+      .query('reconciliationFindings')
+      .withIndex('by_tenant_file_status', (q) =>
+        q
+          .eq('tenantId', finding.tenantId)
+          .eq('fileId', finding.fileId)
+          .eq('status', 'open')
+      )
+      .take(15)
+
+    return {
+      finding: {
+        _id: finding._id,
+        findingType: finding.findingType,
+        severity: finding.severity,
+        message: finding.message,
+        involvedFields: finding.involvedFields,
+        rawDetail: finding.rawDetail,
+      },
+      file: {
+        fileNumber: file.fileNumber,
+        transactionType: file.transactionType,
+        propertyAddress: file.propertyAddress ?? null,
+        purchasePrice: file.purchasePrice ?? null,
+      },
+      docViews,
+      peers: peerFindings
+        .filter((p) => p._id !== finding._id)
+        .map((p) => ({
+          findingType: p.findingType,
+          severity: p.severity,
+          message: p.message,
+        })),
+    }
+  },
+})
+
+function summarizeExtraction(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+  const p = payload as Record<string, unknown>
+  const parts: string[] = []
+  if (p.documentKind) parts.push(`kind=${p.documentKind}`)
+  const fin = p.financial as Record<string, unknown> | undefined
+  if (fin?.purchasePrice !== undefined) {
+    parts.push(`price=$${(fin.purchasePrice as number).toLocaleString()}`)
+  }
+  const dates = p.dates as Record<string, unknown> | undefined
+  if (dates?.closingDate) parts.push(`closing=${dates.closingDate}`)
+  const tc = p.titleCompany as Record<string, unknown> | undefined
+  if (tc?.name) parts.push(`title=${tc.name}`)
+  const wi = p.wireInstructions as Record<string, unknown> | undefined
+  if (wi?.payeeName) parts.push(`wire→${wi.payeeName}`)
+  return parts.length > 0 ? parts.join(' · ') : null
+}
+
+export const _applyExplanation = internalMutation({
+  args: {
+    findingId: v.id('reconciliationFindings'),
+    why: v.string(),
+    next: v.string(),
+    modelId: v.optional(v.string()),
+  },
+  handler: async (ctx, { findingId, why, next, modelId }) => {
+    const finding = await ctx.db.get(findingId)
+    if (!finding) return
+    await ctx.db.patch(findingId, {
+      aiSummary: {
+        why: why.trim().slice(0, 800),
+        next: next.trim().slice(0, 800),
+        generatedAt: Date.now(),
+        modelId,
+      },
+    })
+  },
+})
+
+// Public: editor schedules the explainer. Audited so we know which
+// findings actually got AI review on a deployment.
+export const requestExplanation = mutation({
+  args: { findingId: v.id('reconciliationFindings') },
+  handler: async (ctx, { findingId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...editorRoles)
+    const finding = await ctx.db.get(findingId)
+    if (!finding || finding.tenantId !== tc.tenantId) {
+      throw new ConvexError('FINDING_NOT_FOUND')
+    }
+    await ctx.scheduler.runAfter(0, internal.findingExplainer.explain, {
+      findingId,
+    })
+    await recordAudit(ctx, tc, 'finding.explanation_requested', 'file', finding.fileId, {
+      findingId,
+    })
+    return { ok: true }
   },
 })
 

@@ -1070,6 +1070,11 @@ export type SnapshotForFile = {
   property: PropertyProfile | null
   documents: ReadonlyArray<RecordedDocument>
   tax: TaxData | null
+  chainSummary: {
+    bullets: ReadonlyArray<string>
+    missing: ReadonlyArray<string>
+    generatedAt: number
+  } | null
 }
 
 export const getSnapshotForFile = query({
@@ -1096,6 +1101,7 @@ export const getSnapshotForFile = query({
       property: row.property,
       documents: row.documents,
       tax: row.tax,
+      chainSummary: row.chainSummary ?? null,
     }
   },
 })
@@ -1209,5 +1215,87 @@ export const clearRecentSearches = mutation({
       .take(RECENTS_KEEP + 10)
     for (const r of all) await ctx.db.delete(r._id)
     return null
+  },
+})
+
+// ── AI chain-of-title summary ─────────────────────────────────────────
+// Loads context for the chainSummary action and applies the result back.
+// Action lives in convex/chainSummary.ts ('use node') for the Anthropic
+// SDK; the helpers live here next to the table they manage.
+
+export const _loadChainContext = internalQuery({
+  args: { snapshotId: v.id('propertySnapshots') },
+  handler: async (ctx, { snapshotId }) => {
+    const snap = await ctx.db.get(snapshotId)
+    if (!snap) return null
+    const file = await ctx.db.get(snap.fileId)
+    if (!file) return null
+    return {
+      snapshotId: snap._id,
+      tenantId: snap.tenantId,
+      property: snap.property,
+      documents: snap.documents,
+      tax: snap.tax,
+      file: {
+        fileNumber: file.fileNumber,
+        transactionType: file.transactionType,
+        propertyAddress: file.propertyAddress ?? null,
+      },
+    }
+  },
+})
+
+export const _applyChainSummary = internalMutation({
+  args: {
+    snapshotId: v.id('propertySnapshots'),
+    bullets: v.array(v.string()),
+    missing: v.array(v.string()),
+  },
+  handler: async (ctx, { snapshotId, bullets, missing }) => {
+    const snap = await ctx.db.get(snapshotId)
+    if (!snap) return
+    await ctx.db.patch(snapshotId, {
+      chainSummary: {
+        bullets: bullets
+          .map((b) => b.trim())
+          .filter((b) => b.length > 0)
+          .slice(0, 6)
+          .map((b) => b.slice(0, 400)),
+        missing: missing
+          .map((m) => m.trim())
+          .filter((m) => m.length > 0)
+          .slice(0, 6)
+          .map((m) => m.slice(0, 400)),
+        generatedAt: Date.now(),
+      },
+    })
+  },
+})
+
+const summaryRoles = ['owner', 'admin', 'processor', 'closer', 'reviewer'] as const
+
+// Public: editor schedules a chain-of-title summary. Audited so deployments
+// can see which snapshots were AI-reviewed.
+export const requestChainSummary = mutation({
+  args: { snapshotId: v.id('propertySnapshots') },
+  handler: async (ctx, { snapshotId }) => {
+    const tc = await requireTenant(ctx)
+    requireRole(tc, ...summaryRoles)
+    const snap = await ctx.db.get(snapshotId)
+    if (!snap || snap.tenantId !== tc.tenantId) {
+      throw new ConvexError('SNAPSHOT_NOT_FOUND')
+    }
+    await ctx.scheduler.runAfter(0, internal.chainSummary.summarize, {
+      snapshotId,
+    })
+    await recordAudit(
+      ctx,
+      tc,
+      'chain_summary.requested',
+      'file',
+      snap.fileId,
+      { snapshotId }
+    )
+    return { ok: true }
   },
 })

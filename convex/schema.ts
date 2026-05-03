@@ -421,6 +421,19 @@ export default defineSchema({
     // exact shape varies by findingType.
     resolvedDocumentId: v.optional(v.id('documents')),
     resolvedValue: v.optional(v.any()),
+    // Optional AI-generated explanation for junior processors. Populated by
+    // the findingExplainer action on demand (never auto-generated to keep
+    // costs predictable and the trail honest about which findings were
+    // reviewed by a model). `why` is the plain-English risk; `next` is the
+    // suggested action to take.
+    aiSummary: v.optional(
+      v.object({
+        why: v.string(),
+        next: v.string(),
+        generatedAt: v.number(),
+        modelId: v.optional(v.string()),
+      })
+    ),
     createdAt: v.number(),
   })
     .index('by_tenant_file', ['tenantId', 'fileId'])
@@ -533,6 +546,18 @@ export default defineSchema({
         property: v.optional(v.any()),
         documents: v.optional(v.any()),
         tax: v.optional(v.any()),
+      })
+    ),
+    // Optional AI-generated chain-of-title narrative. Populated on demand
+    // by the chainSummary action — never auto-generated to keep model
+    // costs tied to deliberate operator action. `bullets` is the 3-line
+    // story; `missing` flags suspected gaps (no release for a recorded
+    // mortgage, untraceable transfers, etc).
+    chainSummary: v.optional(
+      v.object({
+        bullets: v.array(v.string()),
+        missing: v.array(v.string()),
+        generatedAt: v.number(),
       })
     ),
   })

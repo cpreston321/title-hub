@@ -1859,28 +1859,20 @@ function DocumentRow({
             ? "Retry"
             : "Extract";
 
-  // Derive a 4-stage "stage tracker" so users see the full pipeline live:
-  // upload → extracting → reconciling → ready. The "reconciling" stage is
-  // synthetic — auto-reconcile fires on extraction.success but completes in
-  // ~1s, so we show it briefly using a time-since-completion heuristic.
-  const completedAt = ext.data?.completedAt as number | undefined;
-  const justCompleted =
-    status === "succeeded" && !!completedAt && Date.now() - completedAt < 2000;
-  const activeStage:
-    | "uploaded"
-    | "extracting"
-    | "reconciling"
-    | "ready"
-    | "failed" =
+  // 4-stage tracker: upload → extracting → reconciling → ready. We don't
+  // gate "ready" on a time-elapsed heuristic anymore — when the extraction
+  // status flips to `succeeded` we jump straight there. (Earlier code used
+  // a `Date.now() - completedAt < 2000` check, but that's a snapshot at
+  // render time and React doesn't re-render at the 2s mark, so the
+  // "reconciling" pseudo-stage and its shimmer would get stuck.)
+  const activeStage: "uploaded" | "extracting" | "ready" | "failed" =
     status === "failed"
       ? "failed"
       : !status
         ? "uploaded"
-        : status === "succeeded" && justCompleted
-          ? "reconciling"
-          : status === "succeeded"
-            ? "ready"
-            : "extracting";
+        : status === "succeeded"
+          ? "ready"
+          : "extracting";
 
   const friendly =
     activeStage === "uploaded"
@@ -1889,14 +1881,11 @@ function DocumentRow({
         ? isStale
           ? "Stuck — try again"
           : "Reading the document..."
-        : activeStage === "reconciling"
-          ? "Cross-checking against other docs..."
-          : activeStage === "ready"
-            ? "Ready"
-            : "Extraction failed";
+        : activeStage === "ready"
+          ? "Ready"
+          : "Extraction failed";
 
-  const isActive =
-    activeStage === "extracting" || activeStage === "reconciling";
+  const isActive = activeStage === "extracting";
 
   return (
     <li
@@ -2024,12 +2013,9 @@ function ExtractionTrailRow({
   active: boolean;
 }) {
   const [open, setOpen] = useState(active);
-
-  // Auto-expand the trail while extraction is running so the trail is
-  // visible without a click; auto-collapse once it settles.
-  useEffect(() => {
-    if (active) setOpen(true);
-  }, [active]);
+  // Track whether the user has touched the toggle. Once they have, we stop
+  // auto-collapsing — the user's intent wins.
+  const userTouchedRef = useRef(false);
 
   const events = useQuery({
     ...convexQuery(
@@ -2039,7 +2025,6 @@ function ExtractionTrailRow({
     enabled: !!extractionId && open,
   });
 
-  if (!extractionId) return null;
   const rows = (events.data ?? []) as ReadonlyArray<{
     _id: string;
     seq: number;
@@ -2049,11 +2034,39 @@ function ExtractionTrailRow({
     createdAt: number;
   }>;
 
+  const completed = rows.some(
+    (e) => e.kind === "done" || e.kind === "error",
+  );
+
+  // Auto-expand while running, auto-collapse a moment after the trail
+  // logs a `done` (or `error`) event — but never override a manual toggle.
+  useEffect(() => {
+    if (userTouchedRef.current) return;
+    if (active) {
+      setOpen(true);
+    }
+  }, [active]);
+
+  useEffect(() => {
+    if (userTouchedRef.current) return;
+    if (!active && completed) {
+      const t = setTimeout(() => setOpen(false), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [active, completed]);
+
+  const handleToggle = () => {
+    userTouchedRef.current = true;
+    setOpen((v) => !v);
+  };
+
+  if (!extractionId) return null;
+
   return (
     <div className="relative z-10 border-t border-border/40 bg-muted/20 px-4 py-2 text-xs">
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         aria-expanded={open}
         className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium text-[#7a5818] transition hover:bg-[#fdf6e8]"
       >
@@ -2061,7 +2074,8 @@ function ExtractionTrailRow({
         {open ? "Hide thinking trail" : "Show thinking trail"}
         {rows.length > 0 && !open && (
           <span className="ml-1 text-muted-foreground">
-            · {rows.length} steps
+            · {rows.length} step{rows.length === 1 ? "" : "s"}
+            {completed ? " · done" : ""}
           </span>
         )}
       </button>
@@ -2118,16 +2132,15 @@ function ProcessingTracker({
   stage,
   friendly,
 }: {
-  stage: "uploaded" | "extracting" | "reconciling" | "ready" | "failed";
+  stage: "uploaded" | "extracting" | "ready" | "failed";
   friendly: string;
 }) {
   const STAGES: ReadonlyArray<{
-    key: "uploaded" | "extracting" | "reconciling" | "ready";
+    key: "uploaded" | "extracting" | "ready";
     label: string;
   }> = [
     { key: "uploaded", label: "Uploaded" },
     { key: "extracting", label: "Reading" },
-    { key: "reconciling", label: "Cross-checking" },
     { key: "ready", label: "Ready" },
   ];
   const currentIndex =
@@ -2164,13 +2177,13 @@ function ProcessingTracker({
             ? "text-[#2f5d4b]"
             : stage === "failed"
               ? "text-[#8a3942]"
-              : stage === "extracting" || stage === "reconciling"
+              : stage === "extracting"
                 ? "text-[#7a5818]"
                 : "text-muted-foreground"
         }`}
       >
         {friendly}
-        {(stage === "extracting" || stage === "reconciling") && (
+        {stage === "extracting" && (
           <span className="ml-0.5 inline-flex gap-0.5">
             <span className="tk-dot inline-block">.</span>
             <span className="tk-dot inline-block" data-i="1">
@@ -2404,6 +2417,12 @@ type Finding = {
   resolvedDocumentId?: string;
   resolvedValue?: unknown;
   assigneeMemberId?: string;
+  aiSummary?: {
+    why: string;
+    next: string;
+    generatedAt: number;
+    modelId?: string;
+  };
 };
 
 const DocumentPreviewContext = createContext<
@@ -2760,6 +2779,22 @@ function PublicRecordsPanel({
               }
             />
           </div>
+          {snap.documents.length > 0 && (
+            <ChainOfTitleSummary
+              snapshotId={snap._id as Id<"propertySnapshots">}
+              summary={
+                snap.chainSummary
+                  ? {
+                      bullets: [...snap.chainSummary.bullets],
+                      missing: [...snap.chainSummary.missing],
+                      generatedAt: snap.chainSummary.generatedAt,
+                    }
+                  : null
+              }
+              docCount={snap.documents.length}
+            />
+          )}
+
           {snap.documents.length > 0 && (
             <details className="rounded-md border bg-card">
               <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium text-foreground">
@@ -3579,6 +3614,8 @@ function DisagreedFactCard({
         <p className={`mt-1.5 text-sm ${tone.text}`}>{finding.message}</p>
       )}
 
+      {finding && <FindingExplainer finding={finding} />}
+
       <FactEvidenceTable
         rows={fact.evidence}
         documents={documents}
@@ -4028,6 +4065,8 @@ function OtherIssueCard({
       </div>
 
       <p className={`mt-1.5 text-sm ${tone.text}`}>{finding.message}</p>
+
+      <FindingExplainer finding={finding} />
 
       {verifyOpen && suggested && onVerify && (
         <div className="mt-2.5 rounded-lg bg-card/80 p-3 ring-1 ring-border ring-inset">
@@ -4718,6 +4757,232 @@ function personInitials(name?: string | null, email?: string | null): string {
     return (local.slice(0, 2) || "··").toUpperCase();
   }
   return "··";
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// AI risk explainer block. Shown inline on a finding card; populated
+// on-demand via reconciliation.requestExplanation. Stays out of the way
+// when there's nothing to render.
+// ─────────────────────────────────────────────────────────────────────
+
+function FindingExplainer({ finding }: { finding: Finding }) {
+  const requestExplanation = useConvexMutation(
+    api.reconciliation.requestExplanation,
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const summary = finding.aiSummary;
+
+  const onRequest = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await requestExplanation({
+        findingId: finding._id as Id<"reconciliationFindings">,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      // Action runs out-of-band; the finding subscription pushes the
+      // result. Drop busy after a short tick so the spinner doesn't flash
+      // away before the user sees that anything happened.
+      setTimeout(() => setBusy(false), 600);
+    }
+  };
+
+  if (!summary) {
+    return (
+      <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+        <button
+          type="button"
+          onClick={onRequest}
+          disabled={busy}
+          className="inline-flex items-center gap-1 rounded-full bg-card px-2 py-0.5 font-medium text-[#593157] ring-1 ring-border/60 ring-inset transition hover:bg-[#fdf6e8] disabled:opacity-60"
+        >
+          <Sparkles className="size-3" />
+          {busy ? "Reading the file…" : "Explain this risk"}
+        </button>
+        {error && (
+          <span className="text-[#8a3942]">
+            {error.replace(/^.*ConvexError:\s*/, "")}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-xl border border-[#b78625]/30 bg-[#fdf6e8]/60 p-3 ring-1 ring-[#b78625]/20 ring-inset">
+      <div className="flex items-start gap-2">
+        <Sparkles className="mt-0.5 size-3.5 shrink-0 text-[#7a5818]" />
+        <div className="min-w-0 flex-1 text-xs leading-relaxed text-[#5e441b]">
+          <div>
+            <span className="font-semibold uppercase tracking-wider text-[10px] text-[#7a5818]">
+              Why it matters
+            </span>
+            <p className="mt-0.5">{summary.why}</p>
+          </div>
+          <div className="mt-2">
+            <span className="font-semibold uppercase tracking-wider text-[10px] text-[#7a5818]">
+              Next step
+            </span>
+            <p className="mt-0.5">{summary.next}</p>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
+            <span>
+              Generated {new Date(summary.generatedAt).toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </span>
+            <span aria-hidden>·</span>
+            <button
+              type="button"
+              onClick={onRequest}
+              disabled={busy}
+              className="text-[#593157] hover:underline"
+            >
+              {busy ? "Re-running…" : "Re-run"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Chain-of-title summary block. Sits above the recorded-documents list in
+// the public-records panel; populated on demand via
+// countyConnect.requestChainSummary.
+// ─────────────────────────────────────────────────────────────────────
+
+function ChainOfTitleSummary({
+  snapshotId,
+  summary,
+  docCount,
+}: {
+  snapshotId: Id<"propertySnapshots">;
+  summary: {
+    bullets: Array<string>;
+    missing: Array<string>;
+    generatedAt: number;
+  } | null;
+  docCount: number;
+}) {
+  const requestSummary = useConvexMutation(
+    api.countyConnect.requestChainSummary,
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onRequest = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await requestSummary({ snapshotId });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTimeout(() => setBusy(false), 600);
+    }
+  };
+
+  if (!summary) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-card/60 px-3 py-2.5">
+        <div className="text-xs text-muted-foreground">
+          {docCount} recorded documents — let an AI summarize the chain and
+          flag gaps.
+        </div>
+        <Button
+          onClick={onRequest}
+          disabled={busy}
+          size="sm"
+          variant="outline"
+          className="gap-1.5"
+        >
+          <Sparkles className="size-3.5" />
+          {busy ? "Reading the chain…" : "Summarize chain"}
+        </Button>
+        {error && (
+          <span className="text-[11px] text-[#8a3942]">
+            {error.replace(/^.*ConvexError:\s*/, "")}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-[#b78625]/30 bg-[#fdf6e8]/60 p-4 ring-1 ring-[#b78625]/20 ring-inset">
+      <div className="flex items-start gap-2">
+        <Sparkles className="mt-0.5 size-4 shrink-0 text-[#7a5818]" />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#7a5818]">
+              Chain of title
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              Summarized {new Date(summary.generatedAt).toLocaleString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+              {" · "}
+              <button
+                type="button"
+                onClick={onRequest}
+                disabled={busy}
+                className="text-[#593157] hover:underline"
+              >
+                {busy ? "Re-running…" : "Re-run"}
+              </button>
+            </span>
+          </div>
+
+          {summary.bullets.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1.5 text-sm leading-relaxed text-[#5e441b]">
+              {summary.bullets.map((b, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span
+                    aria-hidden
+                    className="mt-2 inline-block size-1.5 shrink-0 rounded-full bg-[#b78625]"
+                  />
+                  <span>{b}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {summary.missing.length > 0 && (
+            <div className="mt-3 rounded-lg border border-[#b94f58]/30 bg-[#fdecee]/50 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-[#8a3942]">
+                Suspected gaps ({summary.missing.length})
+              </div>
+              <ul className="mt-1.5 flex flex-col gap-1 text-xs leading-relaxed text-[#6c2c33]">
+                {summary.missing.map((m, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <CircleAlert className="mt-0.5 size-3 shrink-0 text-[#8a3942]" />
+                    <span>{m}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {summary.bullets.length === 0 && summary.missing.length === 0 && (
+            <p className="mt-2 text-xs italic text-muted-foreground">
+              No narrative produced. Try re-running.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────

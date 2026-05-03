@@ -2094,17 +2094,6 @@ function ClassifierBlock({
             <span className="whitespace-nowrap">
               Classified {formatRelative(classification.classifiedAt)}
             </span>
-            {classification.modelId && (
-              <>
-                <span aria-hidden>·</span>
-                <span
-                  className="min-w-0 max-w-[16ch] truncate font-mono"
-                  title={classification.modelId}
-                >
-                  {classification.modelId}
-                </span>
-              </>
-            )}
             {onReclassify && (
               <>
                 <span aria-hidden>·</span>
