@@ -12,6 +12,7 @@ import type * as agentBootstrap from "../agentBootstrap.js";
 import type * as audit from "../audit.js";
 import type * as auth from "../auth.js";
 import type * as authTriggers from "../authTriggers.js";
+import type * as closingDay from "../closingDay.js";
 import type * as countyConnect from "../countyConnect.js";
 import type * as email from "../email.js";
 import type * as extractionEvents from "../extractionEvents.js";
@@ -59,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   audit: typeof audit;
   auth: typeof auth;
   authTriggers: typeof authTriggers;
+  closingDay: typeof closingDay;
   countyConnect: typeof countyConnect;
   email: typeof email;
   extractionEvents: typeof extractionEvents;

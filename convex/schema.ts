@@ -377,6 +377,23 @@ export default defineSchema({
     .index('by_tenant_extraction_seq', ['tenantId', 'extractionId', 'seq'])
     .index('by_tenant_file_time', ['tenantId', 'fileId', 'createdAt']),
 
+  // Per-file-per-item human attestations for the Closing Day workflow.
+  // Drives the checklist on /closing — items like "I've issued the CPL",
+  // "Funds confirmed in escrow", "IDs verified" can't be derived from
+  // extractions, so we record an explicit attestation. One row per
+  // (file, item) combo: the index enforces idempotency client-side and
+  // unattest hard-deletes.
+  closingAttestations: defineTable({
+    tenantId: v.id('tenants'),
+    fileId: v.id('files'),
+    item: v.string(),
+    attestedByMemberId: v.id('tenantMembers'),
+    attestedAt: v.number(),
+    note: v.optional(v.string()),
+  })
+    .index('by_tenant_file', ['tenantId', 'fileId'])
+    .index('by_tenant_file_item', ['tenantId', 'fileId', 'item']),
+
   reconciliationFindings: defineTable({
     tenantId: v.id('tenants'),
     fileId: v.id('files'),

@@ -8,6 +8,7 @@ import {
   Shield,
   ScrollText,
   Building2,
+  CalendarClock,
   ScanLine,
   Wallet,
   Mail,
@@ -296,6 +297,13 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
+              <NavLink
+                to="/closing"
+                label="Closing day"
+                icon={<CalendarClock className="size-4" />}
+                active={location.pathname.startsWith("/closing")}
+                disabled={!hasActiveOrg}
+              />
               <DisabledNavItem
                 label="Escrow"
                 icon={<Wallet className="size-4" />}

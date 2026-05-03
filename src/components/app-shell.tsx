@@ -107,6 +107,7 @@ export function AppShell({
 // Pathname → breadcrumb. Pages can override by passing the `breadcrumb` prop.
 function deriveBreadcrumb(pathname: string): ReadonlyArray<Crumb> {
   if (pathname === '/') return [{ label: 'Dashboard' }]
+  if (pathname === '/closing') return [{ label: 'Closing day' }]
   if (pathname === '/files') return [{ label: 'Files' }]
   if (/^\/files\/[^/]+/.test(pathname)) {
     return [{ label: 'Files', to: '/files' }, { label: 'File' }]
@@ -1039,7 +1040,7 @@ function NotificationsBell() {
                 </div>
               </div>
             ) : (
-              <ol className="divide-y divide-border/40">
+              <ol className="space-y-1.5 p-2">
                 {groups.map((g) => (
                   <NotificationGroupView
                     key={g.groupKey}
@@ -1100,11 +1101,17 @@ function NotificationGroupView({
               chip: 'bg-muted text-muted-foreground',
             }
 
+  const isThread = group.count > 1
+  const cardBg = group.unread > 0 ? 'bg-[#fdf6e8]/40' : 'bg-card'
+
   return (
-    <li>
+    <li
+      className={`overflow-hidden rounded-lg border border-border/50 ${cardBg}`}
+    >
       <NotificationRowView
         n={group.headline}
         onClick={onHeadlineClick}
+        threadCount={isThread ? group.count : undefined}
         leadingDot={
           group.unread > 0 ? (
             <span
@@ -1114,16 +1121,40 @@ function NotificationGroupView({
           ) : undefined
         }
       />
-      {group.count > 1 && (
-        <div className="flex items-center justify-between gap-2 px-4 pt-0 pb-2">
+      {expanded && isThread && members.length > 1 && (
+        <div className="relative border-t border-border/40 bg-muted/20">
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute top-0 bottom-0 left-[22px] w-px bg-border/60"
+          />
+          <ol>
+            {members
+              .filter((m) => m._id !== group.headline._id)
+              .map((m) => (
+                <NotificationRowView
+                  key={m._id}
+                  n={m}
+                  onClick={() => onMemberClick(m)}
+                  compact
+                />
+              ))}
+          </ol>
+        </div>
+      )}
+      {isThread && (
+        <div className="flex items-center justify-between gap-2 border-t border-border/40 bg-muted/30 px-3 py-1.5">
           <button
             type="button"
             onClick={onToggle}
             aria-expanded={expanded}
             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition hover:opacity-80 ${tone.chip}`}
           >
-            {expanded ? '−' : '+'} {group.count - 1} more like this
-            {group.unread > 0 ? ` · ${group.unread} unread` : ''}
+            {expanded
+              ? 'Hide thread'
+              : `Show ${group.count - 1} more`}
+            {!expanded && group.unread > 0
+              ? ` · ${group.unread} unread`
+              : ''}
           </button>
           <button
             type="button"
@@ -1135,20 +1166,6 @@ function NotificationGroupView({
           </button>
         </div>
       )}
-      {expanded && members.length > 1 && (
-        <ol className="border-t border-border/30 bg-muted/20 pl-3">
-          {members
-            .filter((m) => m._id !== group.headline._id)
-            .map((m) => (
-              <NotificationRowView
-                key={m._id}
-                n={m}
-                onClick={() => onMemberClick(m)}
-                compact
-              />
-            ))}
-        </ol>
-      )}
     </li>
   )
 }
@@ -1158,11 +1175,13 @@ function NotificationRowView({
   onClick,
   leadingDot,
   compact = false,
+  threadCount,
 }: {
   n: NotificationRow
   onClick: () => void
   leadingDot?: React.ReactNode
   compact?: boolean
+  threadCount?: number
 }) {
   const [expanded, setExpanded] = useState(false)
   const [overflows, setOverflows] = useState(false)
@@ -1239,12 +1258,22 @@ function NotificationRowView({
       {leadingDot && (
         <span className="mt-2 inline-flex shrink-0">{leadingDot}</span>
       )}
-      <div
-        className={`mt-0.5 grid shrink-0 place-items-center rounded-full ring-1 ring-inset ${tone.bg} ${tone.text} ${
-          compact ? 'size-5' : 'size-6'
-        }`}
-      >
-        {tone.icon}
+      <div className="relative mt-0.5 shrink-0">
+        <div
+          className={`grid place-items-center rounded-full ring-1 ring-inset ${tone.bg} ${tone.text} ${
+            compact ? 'size-5' : 'size-6'
+          }`}
+        >
+          {tone.icon}
+        </div>
+        {threadCount && threadCount > 1 ? (
+          <span
+            aria-label={`${threadCount} in thread`}
+            className="absolute -right-1.5 -bottom-1 inline-flex h-3.5 min-w-[14px] items-center justify-center rounded-full bg-[#40233f] px-1 text-[9px] font-bold leading-none text-white ring-2 ring-card"
+          >
+            {threadCount > 99 ? '99+' : threadCount}
+          </span>
+        ) : null}
       </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-2">
