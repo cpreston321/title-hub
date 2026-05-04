@@ -107,7 +107,7 @@ function SettingsPage() {
       title="Settings"
       subtitle="Account, organizations, and session."
     >
-      <div className="grid gap-10 lg:grid-cols-[280px_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-10">
         <aside className="lg:sticky lg:top-24 lg:self-start">
           <IdentityHero
             name={user?.name ?? ''}
@@ -161,7 +161,7 @@ function IdentityHero({
   const since = memberSince ? new Date(memberSince) : null
 
   return (
-    <div className="relative mb-6 overflow-hidden rounded-3xl border border-border/60 bg-card/70 p-6 shadow-[0_1px_0_rgba(0,0,0,0.02),0_24px_48px_-32px_rgba(64,35,63,0.25)]">
+    <div className="relative mb-4 overflow-hidden rounded-2xl border border-border/60 bg-card/70 p-4 shadow-[0_1px_0_rgba(0,0,0,0.02),0_24px_48px_-32px_rgba(64,35,63,0.25)] sm:mb-6 sm:rounded-3xl sm:p-6">
       <div
         className="pointer-events-none absolute -top-20 -right-16 size-48 rounded-full opacity-70 blur-3xl"
         style={{
@@ -179,8 +179,9 @@ function IdentityHero({
         aria-hidden
       />
 
-      <div className="relative flex flex-col items-center text-center">
-        <div className="relative">
+      {/* Horizontal compact layout on mobile, centered hero on lg+. */}
+      <div className="relative flex items-center gap-4 lg:flex-col lg:items-center lg:text-center">
+        <div className="relative shrink-0">
           <div
             className="absolute -inset-2 rounded-full opacity-60 blur-xl"
             style={{
@@ -189,41 +190,43 @@ function IdentityHero({
             }}
             aria-hidden
           />
-          <div className="relative grid size-16 place-items-center rounded-full bg-gradient-to-br from-[#f3d08a] via-[#d6a447] to-[#8c6210] font-serif text-2xl font-semibold text-[#40233f] shadow-inner ring-1 ring-[#40233f]/15">
-            {monogram || <CircleUserRound className="size-7" />}
+          <div className="relative grid size-12 place-items-center rounded-full bg-gradient-to-br from-[#f3d08a] via-[#d6a447] to-[#8c6210] font-serif text-lg font-semibold text-[#40233f] shadow-inner ring-1 ring-[#40233f]/15 sm:size-14 sm:text-xl lg:size-16 lg:text-2xl">
+            {monogram || <CircleUserRound className="size-6 lg:size-7" />}
           </div>
         </div>
-        <div className="mt-4 font-serif text-xl font-semibold tracking-tight text-[#40233f]">
-          {name || '—'}
-        </div>
-        <div className="mt-1 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Mail className="size-3" />
-          <span className="truncate">{email || 'no email'}</span>
-          {verified && (
-            <span
-              className="ml-1 inline-flex items-center gap-1 rounded-full border border-[#3f7c64]/25 bg-[#3f7c64]/10 px-1.5 py-0.5 text-xs font-medium text-[#3f7c64]"
-              title="Verified"
-            >
-              <Check className="size-2.5" />
-              verified
-            </span>
+        <div className="min-w-0 flex-1 lg:mt-4 lg:flex-none">
+          <div className="truncate font-serif text-base font-semibold tracking-tight text-[#40233f] sm:text-lg lg:text-xl">
+            {name || '—'}
+          </div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground lg:mt-1 lg:justify-center">
+            <Mail className="size-3 shrink-0" />
+            <span className="truncate">{email || 'no email'}</span>
+            {verified && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-[#3f7c64]/25 bg-[#3f7c64]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#3f7c64] sm:text-xs"
+                title="Verified"
+              >
+                <Check className="size-2.5" />
+                verified
+              </span>
+            )}
+          </div>
+          {since && (
+            <div className="mt-2 hidden text-xs text-muted-foreground/70 lg:block">
+              Member since{' '}
+              {since.toLocaleDateString(undefined, {
+                month: 'long',
+                year: 'numeric',
+              })}
+            </div>
           )}
         </div>
-        {since && (
-          <div className="mt-3 text-xs text-muted-foreground/70">
-            Member since{' '}
-            {since.toLocaleDateString(undefined, {
-              month: 'long',
-              year: 'numeric',
-            })}
-          </div>
-        )}
       </div>
 
       {activeOrg && (
         <>
           <div
-            className="my-5 h-px"
+            className="my-4 h-px sm:my-5"
             style={{
               background:
                 'linear-gradient(90deg, transparent, rgba(64,35,63,0.18), transparent)',
@@ -286,7 +289,10 @@ function SettingsNav({
     },
   ]
   return (
-    <nav className="flex flex-col gap-0.5">
+    <nav
+      aria-label="Settings sections"
+      className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:flex-col lg:gap-0.5 lg:overflow-visible lg:pb-0"
+    >
       {items.map((it) => {
         const active = it.key === current
         return (
@@ -297,7 +303,7 @@ function SettingsNav({
             onClick={() => onSelect(it.key)}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'group/navitem relative h-auto w-full justify-start gap-3 rounded-2xl px-4 py-2.5 text-left font-normal whitespace-normal transition-all',
+              'group/navitem relative h-auto shrink-0 justify-start gap-2 rounded-full px-3.5 py-2 text-left font-normal whitespace-nowrap transition-all lg:w-full lg:gap-3 lg:rounded-2xl lg:px-4 lg:py-2.5 lg:whitespace-normal',
               active
                 ? 'bg-[#40233f]/[0.10] text-foreground shadow-[inset_0_0_0_1px_rgba(64,35,63,0.08)] hover:bg-[#40233f]/[0.12]'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
@@ -320,13 +326,13 @@ function SettingsNav({
               >
                 {it.label}
               </span>
-              <span className="text-xs text-muted-foreground/70">
+              <span className="hidden text-xs text-muted-foreground/70 lg:block">
                 {it.hint}
               </span>
             </span>
             <span
               className={cn(
-                'ml-auto size-1.5 shrink-0 rounded-full transition-all',
+                'ml-auto hidden size-1.5 shrink-0 rounded-full transition-all lg:block',
                 active
                   ? 'bg-[#b78625] shadow-[0_0_0_3px_rgba(183,134,37,0.18)]'
                   : 'bg-transparent'

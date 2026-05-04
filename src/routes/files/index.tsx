@@ -649,7 +649,9 @@ type FileRow = {
 function RegisterTable({ rows }: { rows: ReadonlyArray<FileRow> }) {
   return (
     <article className="overflow-hidden rounded-2xl bg-card shadow-sm ring-1 ring-foreground/5">
-      <div className="grid grid-cols-[minmax(0,1fr)_7rem_5.5rem_6rem_7rem_2rem] items-center gap-4 border-b border-border/70 bg-[#fdf6e8]/70 px-6 py-2.5 text-xs text-muted-foreground">
+      {/* Column headers — only render at md+ where the full grid layout
+          actually fits. On mobile, rows render as stacked cards instead. */}
+      <div className="hidden grid-cols-[minmax(0,1fr)_7rem_5.5rem_6rem_7rem_2rem] items-center gap-4 border-b border-border/70 bg-[#fdf6e8]/70 px-6 py-2.5 text-xs text-muted-foreground md:grid">
         <span>File &amp; property</span>
         <span>Type</span>
         <span>County</span>
@@ -667,12 +669,17 @@ function RegisterTable({ rows }: { rows: ReadonlyArray<FileRow> }) {
           const addrText = addr
             ? `${addr.line1}${addr.city ? ` · ${addr.city}, ${addr.state}` : ''}`
             : null
+          const openedDate = new Date(f.openedAt).toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })
+          const opened = days === 0 ? 'today' : `${days}d ago`
           return (
             <li key={f._id}>
               <Link
                 to="/files/$fileId"
                 params={{ fileId: f._id }}
-                className="group/row grid grid-cols-[minmax(0,1fr)_7rem_5.5rem_6rem_7rem_2rem] items-center gap-4 px-6 py-3.5 transition hover:bg-[#fdf6e8]/50"
+                className="group/row grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3 transition hover:bg-[#fdf6e8]/50 md:grid-cols-[minmax(0,1fr)_7rem_5.5rem_6rem_7rem_2rem] md:items-center md:gap-4 md:px-6 md:py-3.5"
               >
                 <div className="min-w-0">
                   <div className="font-numerals truncate text-sm font-medium tracking-tight text-[#2e2430] group-hover/row:text-[#40233f]">
@@ -681,33 +688,37 @@ function RegisterTable({ rows }: { rows: ReadonlyArray<FileRow> }) {
                   <div className="truncate text-xs text-muted-foreground">
                     {addrText ?? 'No property on file yet'}
                   </div>
+                  {/* Mobile-only meta line. Hidden once the full grid layout
+                      kicks in at md, where these values get their own cells. */}
+                  <div className="font-numerals mt-1 truncate text-[11px] text-muted-foreground/80 md:hidden">
+                    <span className="capitalize">{f.transactionType}</span>
+                    {' · '}
+                    {f.stateCode}
+                    {' · '}
+                    {openedDate} ({opened})
+                  </div>
                 </div>
 
-                <div className="text-xs text-foreground/85 capitalize">
+                <div className="hidden text-xs text-foreground/85 capitalize md:block">
                   {f.transactionType}
                 </div>
 
-                <div className="font-numerals text-xsr text-muted-foreground">
+                <div className="font-numerals hidden text-xs text-muted-foreground md:block">
                   {f.stateCode}
                 </div>
 
-                <div className="min-w-0">
-                  <div className="text-xs text-foreground/85">
-                    {new Date(f.openedAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    })}
-                  </div>
+                <div className="hidden min-w-0 md:block">
+                  <div className="text-xs text-foreground/85">{openedDate}</div>
                   <div className="font-numerals text-xs text-muted-foreground tabular-nums">
-                    {days === 0 ? 'today' : `${days}d ago`}
+                    {opened}
                   </div>
                 </div>
 
-                <div>
+                <div className="self-center md:self-auto">
                   <StatusStamp status={f.status} />
                 </div>
 
-                <ChevronRight className="size-3.5 text-muted-foreground/40 transition group-hover/row:translate-x-0.5 group-hover/row:text-[#40233f]" />
+                <ChevronRight className="hidden size-3.5 text-muted-foreground/40 transition group-hover/row:translate-x-0.5 group-hover/row:text-[#40233f] md:inline" />
               </Link>
             </li>
           )
@@ -923,7 +934,7 @@ function StatusStamp({ status }: { status: string }) {
 function FirstFileCoach({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-foreground/5">
-      <div className="grid grid-cols-1 gap-8 p-8 md:grid-cols-[1.2fr_1fr] md:p-10">
+      <div className="grid grid-cols-1 gap-6 p-5 sm:gap-8 sm:p-8 md:grid-cols-[1.2fr_1fr] md:p-10">
         <div>
           <div className="text-xs font-medium text-[#b78625]">Get started</div>
           <h2 className="mt-2 font-display text-3xl leading-tight font-semibold tracking-tight text-[#40233f]">

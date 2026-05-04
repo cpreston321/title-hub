@@ -396,14 +396,14 @@ function Toolbar({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1 rounded-full bg-card p-1 ring-1 ring-border/70">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="-mx-1 flex items-center gap-1 overflow-x-auto rounded-full bg-card p-1 ring-1 ring-border/70 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0">
           {STATUS_FILTERS.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setStatusFilter(s.id)}
-              className={`rounded-full px-3 py-1 text-xs transition ${
+              className={`shrink-0 rounded-full px-3 py-1 text-xs transition ${
                 statusFilter === s.id
                   ? 'bg-[#40233f] text-[#f6e8d9] shadow-sm'
                   : 'text-muted-foreground hover:text-[#40233f]'
@@ -414,13 +414,13 @@ function Toolbar({
           ))}
         </div>
 
-        <div className="flex items-center gap-1 rounded-full bg-card p-1 ring-1 ring-border/70">
+        <div className="-mx-1 flex items-center gap-1 overflow-x-auto rounded-full bg-card p-1 ring-1 ring-border/70 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0">
           {SOURCE_FILTERS.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setSourceFilter(s.id)}
-              className={`rounded-full px-3 py-1 text-xs transition ${
+              className={`shrink-0 rounded-full px-3 py-1 text-xs transition ${
                 sourceFilter === s.id
                   ? 'bg-[#40233f] text-[#f6e8d9] shadow-sm'
                   : 'text-muted-foreground hover:text-[#40233f]'
@@ -431,7 +431,7 @@ function Toolbar({
           ))}
         </div>
 
-        <label className="relative ml-auto flex w-full items-center gap-2 rounded-full bg-card px-3.5 py-1.5 ring-1 ring-border/70 focus-within:ring-2 focus-within:ring-[#593157]/30 sm:w-72">
+        <label className="relative flex w-full items-center gap-2 rounded-full bg-card px-3.5 py-1.5 ring-1 ring-border/70 focus-within:ring-2 focus-within:ring-[#593157]/30 sm:ml-auto sm:w-72">
           <Search className="size-3.5 shrink-0 text-muted-foreground" />
           <input
             value={q}

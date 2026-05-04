@@ -521,11 +521,11 @@ function Toolbar({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         <div
           role="tablist"
           aria-label="Filter by status"
-          className="flex items-center gap-1 rounded-full bg-card p-1 ring-1 ring-border/70"
+          className="-mx-1 flex items-center gap-1 overflow-x-auto rounded-full bg-card p-1 ring-1 ring-border/70 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0"
         >
           {STATUS_FILTERS.map((s) => (
             <button
@@ -534,7 +534,7 @@ function Toolbar({
               role="tab"
               aria-selected={statusFilter === s.id}
               onClick={() => setStatusFilter(s.id)}
-              className={`rounded-full px-3 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#593157]/40 ${
+              className={`shrink-0 rounded-full px-3 py-1 text-xs transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#593157]/40 ${
                 statusFilter === s.id
                   ? 'bg-[#40233f] text-[#f6e8d9] shadow-sm'
                   : 'text-muted-foreground hover:text-[#40233f]'
@@ -545,7 +545,7 @@ function Toolbar({
           ))}
         </div>
 
-        <label className="relative ml-auto flex w-full items-center gap-2 rounded-full bg-card px-3.5 py-1.5 ring-1 ring-border/70 focus-within:ring-2 focus-within:ring-[#593157]/30 sm:w-72">
+        <label className="relative flex w-full items-center gap-2 rounded-full bg-card px-3.5 py-1.5 ring-1 ring-border/70 focus-within:ring-2 focus-within:ring-[#593157]/30 sm:ml-auto sm:w-72">
           <Search className="size-3.5 shrink-0 text-muted-foreground" />
           <input
             value={q}
@@ -1651,7 +1651,7 @@ function FilePicker({
         side="top"
         align="start"
         sideOffset={6}
-        className="w-[28rem] overflow-hidden border-border/70 p-0 shadow-md"
+        className="w-[min(28rem,calc(100vw-1rem))] overflow-hidden border-border/70 p-0 shadow-md"
       >
         <Command shouldFilter={false}>
           <CommandInput

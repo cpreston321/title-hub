@@ -196,6 +196,10 @@ function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null)
   const [q, setQ] = useState('')
   const [open, setOpen] = useState(false)
+  // Below sm, the inline search bar is hidden behind an icon trigger so it
+  // doesn't crowd the breadcrumb. Tapping the icon opens a fixed top overlay
+  // that contains the same input/results.
+  const [mobileOpen, setMobileOpen] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const trimmed = q.trim()
 
@@ -321,6 +325,22 @@ function GlobalSearch() {
     return () => document.removeEventListener('mousedown', onPointer)
   }, [open])
 
+  // Focus the input as soon as the mobile overlay opens, and lock body scroll
+  // so the page underneath stays put while the user types.
+  useEffect(() => {
+    if (!mobileOpen) return
+    const t = setTimeout(() => {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }, 0)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      clearTimeout(t)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [mobileOpen])
+
   // Global ⌘K / Ctrl+K to focus the search input.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -369,6 +389,7 @@ function GlobalSearch() {
     if (e.key === 'Escape') {
       e.preventDefault()
       setOpen(false)
+      setMobileOpen(false)
       inputRef.current?.blur()
       return
     }
@@ -394,11 +415,8 @@ function GlobalSearch() {
     (!('documents' in data) || data.documents.length === 0) &&
     (!('emails' in data) || data.emails.length === 0)
 
-  return (
-    <div
-      ref={containerRef}
-      className="relative flex w-72 max-w-full items-center gap-2 rounded-xl border border-input bg-card px-3 py-1.5 shadow-xs sm:w-80"
-    >
+  const SearchInputAndPanel = (
+    <>
       <Search className="size-4 shrink-0 text-muted-foreground" />
       <Input
         ref={inputRef}
@@ -423,7 +441,7 @@ function GlobalSearch() {
         <div
           id="global-search-results"
           role="listbox"
-          className="absolute top-full right-0 z-50 mt-2 max-h-[70vh] w-[36rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl bg-popover p-2 text-popover-foreground shadow-lg ring-1 ring-foreground/5"
+          className="absolute top-full right-0 left-0 z-50 mt-2 max-h-[70vh] w-full overflow-y-auto rounded-2xl bg-popover p-2 text-popover-foreground shadow-lg ring-1 ring-foreground/5 sm:left-auto sm:w-[36rem] sm:max-w-[calc(100vw-2rem)]"
         >
           {results.isLoading && !data && (
             <div className="px-3 py-4 text-sm text-muted-foreground">
@@ -446,7 +464,7 @@ function GlobalSearch() {
             />
           )}
           {flat.length > 0 && (
-            <div className="mt-1 flex items-center justify-between border-t border-border/40 px-3 pt-2 text-[10px] text-muted-foreground">
+            <div className="mt-1 hidden items-center justify-between border-t border-border/40 px-3 pt-2 text-[10px] text-muted-foreground sm:flex">
               <span>
                 <kbd className="rounded border border-border bg-muted px-1 font-mono">
                   ↑↓
@@ -468,7 +486,63 @@ function GlobalSearch() {
           )}
         </div>
       )}
-    </div>
+    </>
+  )
+
+  return (
+    <>
+      {/* Inline search bar — visible at sm+ where there's room. */}
+      <div
+        ref={containerRef}
+        className="relative hidden w-72 max-w-full items-center gap-2 rounded-xl border border-input bg-card px-3 py-1.5 shadow-xs sm:flex sm:w-80"
+      >
+        {SearchInputAndPanel}
+      </div>
+
+      {/* Mobile-only icon trigger. */}
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        aria-label="Open search"
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-input bg-card text-[#40233f] transition hover:bg-[#fdf6e8] sm:hidden"
+      >
+        <Search className="size-4" />
+      </button>
+
+      {/* Mobile overlay — fixed at the top of the viewport with a scrim
+          beneath. The same input/results panel renders inside. */}
+      {mobileOpen && (
+        <div
+          role="dialog"
+          aria-label="Search"
+          className="fixed inset-0 z-50 sm:hidden"
+        >
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-foreground/30 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="relative mx-auto mt-3 flex w-[calc(100vw-1rem)] flex-col gap-2 px-2">
+            <div
+              ref={containerRef}
+              className="relative flex items-center gap-2 rounded-xl border border-input bg-card px-3 py-2 shadow-lg"
+            >
+              {SearchInputAndPanel}
+              <button
+                type="button"
+                onClick={() => setMobileOpen(false)}
+                aria-label="Close search"
+                className="ml-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-[#40233f]"
+              >
+                <span aria-hidden className="text-base leading-none">
+                  ×
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 

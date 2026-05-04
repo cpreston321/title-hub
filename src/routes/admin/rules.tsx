@@ -395,21 +395,21 @@ function DocTypePanel({
         <ol className="relative">
           <div
             aria-hidden
-            className="absolute top-0 bottom-0 left-[5.5rem] w-px bg-gradient-to-b from-transparent via-border to-transparent"
+            className="absolute top-0 bottom-0 left-[5.5rem] hidden w-px bg-gradient-to-b from-transparent via-border to-transparent sm:block"
           />
           {sorted.map((v, i) => {
             const active = !v.effectiveTo
             return (
               <li
                 key={v._id}
-                className={`relative grid grid-cols-[5.5rem_auto_1fr] items-start gap-6 px-7 py-6 ${
+                className={`relative grid grid-cols-[1fr] items-start gap-3 px-4 py-5 sm:grid-cols-[5.5rem_auto_1fr] sm:gap-6 sm:px-7 sm:py-6 ${
                   i < sorted.length - 1 ? 'border-b border-border/40' : ''
                 } ${active ? 'bg-[#fdf6e8]/60' : ''}`}
               >
-                <div className="text-right">
+                <div className="flex items-baseline justify-between gap-3 sm:block sm:text-right">
                   <div className="text-xs text-muted-foreground">Version</div>
                   <div
-                    className={`font-display text-4xl leading-none font-semibold tabular-nums ${
+                    className={`font-display text-3xl leading-none font-semibold tabular-nums sm:text-4xl ${
                       active ? 'text-[#40233f]' : 'text-muted-foreground/70'
                     }`}
                   >
@@ -418,7 +418,7 @@ function DocTypePanel({
                 </div>
 
                 <div
-                  className={`relative z-10 mt-2 grid size-4 place-items-center rounded-full ${
+                  className={`relative z-10 hidden size-4 place-items-center rounded-full sm:mt-2 sm:grid ${
                     active
                       ? 'bg-[#40233f] ring-4 ring-[#f8eed7]'
                       : 'bg-muted ring-4 ring-card'
@@ -656,7 +656,7 @@ function PublishRuleForm({
           <legend className="px-2 text-xs font-medium text-[#40233f]">
             Margins · inches
           </legend>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <NumberCell label="Top" value={marginTop} onChange={setMarginTop} />
             <NumberCell
               label="Bottom"
@@ -695,7 +695,7 @@ function PublishRuleForm({
           <legend className="px-2 text-xs font-medium text-[#40233f]">
             Fee schedule · USD
           </legend>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <NumberCell
               label="First page"
               value={firstPage}
