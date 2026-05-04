@@ -757,6 +757,26 @@ function NewFilePanel({
   pending: boolean
   onCancel: () => void
 }) {
+  // Pull the active tenant's file-number policy. If a pattern is configured,
+  // an empty `fileNumber` is allowed and the server will assign one — the
+  // placeholder previews what they'll get.
+  const policy = useQuery(convexQuery(api.fileNumberPolicy.get, {}))
+  const preview = useQuery(
+    convexQuery(api.fileNumberPolicy.previewBatch, {
+      count: 1,
+      countyId: (countyId || undefined) as Id<'counties'> | undefined,
+      transactionType,
+    }),
+  )
+
+  const policyConfigured = policy.data?.isCustomized === true
+  const suggestion = preview.data?.previews?.[0] ?? null
+  const trimmed = fileNumber.trim()
+  const hasFileNumber = trimmed.length > 0
+  const usingAuto = policyConfigured && !hasFileNumber
+  const submitDisabled =
+    pending || !countyId || (!hasFileNumber && !policyConfigured)
+
   return (
     <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm ring-1 ring-foreground/5">
       <header className="flex items-center justify-between border-b border-border/60 bg-[#fdf6e8] px-6 py-3.5">
@@ -786,16 +806,37 @@ function NewFilePanel({
       <form onSubmit={onSubmit} className="grid gap-5 px-6 py-5 md:grid-cols-3">
         <Field
           label="File number"
-          hint="Your firm's reference, e.g. QT-2026-0001"
-          required
+          hint={
+            policyConfigured
+              ? `Auto-assigned from ${policy.data!.pattern}. Type to override.`
+              : "Your firm's reference, e.g. QT-2026-0001"
+          }
+          required={!policyConfigured}
         >
-          <Input
-            placeholder="QT-2026-0001"
-            value={fileNumber}
-            onChange={(e) => setFileNumber(e.target.value)}
-            required
-            className="font-numerals"
-          />
+          <div className="relative">
+            <Input
+              placeholder={suggestion ?? 'QT-2026-0001'}
+              value={fileNumber}
+              onChange={(e) => setFileNumber(e.target.value)}
+              required={!policyConfigured}
+              className="font-numerals pr-24"
+            />
+            {usingAuto && suggestion && (
+              <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 rounded-full bg-[#fdf6e8] px-2 py-0.5 text-[10px] font-semibold tracking-wide text-[#7a5818]">
+                AUTO
+              </span>
+            )}
+            {!usingAuto && policyConfigured && suggestion && (
+              <button
+                type="button"
+                onClick={() => setFileNumber('')}
+                className="absolute top-1/2 right-1.5 -translate-y-1/2 rounded-full bg-card px-2 py-0.5 text-[10px] font-medium text-[#593157] transition hover:bg-[#f1eaf3]"
+                title="Use the next auto-assigned number"
+              >
+                Use suggested
+              </button>
+            )}
+          </div>
         </Field>
         <Field label="County" hint="Where it will be recorded" required>
           <CountyCombobox
@@ -827,17 +868,20 @@ function NewFilePanel({
         <div className="flex flex-wrap items-center justify-between gap-3 md:col-span-3">
           <div className="text-xs text-muted-foreground">
             <span className="text-[#b94f58]">*</span> required.{' '}
-            {!fileNumber.trim() && 'Add a file number. '}
+            {!hasFileNumber && !policyConfigured && 'Add a file number. '}
             {!countyId && 'Pick a county.'}
+            {usingAuto && suggestion && (
+              <span>
+                Will be assigned{' '}
+                <span className="font-mono text-[#40233f]">{suggestion}</span>.
+              </span>
+            )}
           </div>
           <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={pending || !fileNumber.trim() || !countyId}
-            >
+            <Button type="submit" disabled={submitDisabled}>
               {pending ? 'Opening...' : 'Open file'}
             </Button>
           </div>

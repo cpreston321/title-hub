@@ -7,11 +7,13 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
+  Hash,
   Lock,
   Mail,
   Plug,
   ScrollText,
   Send,
+  SlidersHorizontal,
   Users,
 } from 'lucide-react'
 import {
@@ -166,8 +168,9 @@ function PageHeader({ orgName, role }: { orgName: string; role: string }) {
             Admin
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-            Manage your roster and invitations, integration keys, and recording
-            rules — the workshop behind the file register.
+            Manage your roster and invitations, recording rules, reconciliation
+            policy, file numbering, and integrations — the workshop behind the
+            file register.
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end rounded-xl border border-border/70 bg-card px-4 py-2.5 ring-1 ring-foreground/5">
@@ -194,6 +197,18 @@ function SubAreas() {
         title="Recording rules"
         description="Versioned per county and document type. Margins, fees, exhibits, notarial requirements."
         icon={<ScrollText className="size-5" />}
+      />
+      <SubAreaTile
+        to="/admin/reconciliation"
+        title="Reconciliation policy"
+        description="Severity matrix per finding, numeric tolerances, and required documents per transaction type."
+        icon={<SlidersHorizontal className="size-5" />}
+      />
+      <SubAreaTile
+        to="/admin/file-numbering"
+        title="File numbering"
+        description="Pattern, counter, and reset cadence for new files. Tokens for year, county, transaction, and sequence."
+        icon={<Hash className="size-5" />}
       />
       <SubAreaTile
         to="/admin/integrations"

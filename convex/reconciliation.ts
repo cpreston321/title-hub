@@ -10,6 +10,14 @@ import { internal } from './_generated/api'
 import type { Doc, Id } from './_generated/dataModel'
 import { requireRole, requireTenant, type TenantContext } from './lib/tenant'
 import { recordAudit } from './lib/audit'
+import {
+  getCatalogEntry,
+  loadPolicyMap,
+  loadRequiredDocsByCode,
+  loadTolerances,
+  resolveSeverity,
+  type Tolerances,
+} from './lib/reconciliationPolicy'
 import { normalizeLegalName, type NormalizedName } from './lib/vesting'
 import { fanOutNotification } from './notifications'
 import { autoPromoteFileStatus } from './files'
@@ -424,7 +432,8 @@ function verifyWireInstructions(
     view: ExtractionView
     uploadedAt: number
   }>,
-  out: Pending[]
+  out: Pending[],
+  tolerances: Tolerances
 ) {
   const wires = extractions.filter(
     (e) =>
@@ -517,7 +526,7 @@ function verifyWireInstructions(
     // far below price), since those would false-positive every time.
     if (latestPrice !== null && typeof wi.amount === 'number') {
       const ratio = wi.amount / latestPrice
-      if (ratio > 1.5) {
+      if (ratio >= tolerances.wireAmountRedFlagRatio) {
         out.push({
           findingType: 'wire.amount_unusual',
           severity: 'warn',
@@ -917,20 +926,20 @@ function flagSalePriceVariance(
     uploadedAt: number
   }>,
   snapshot: Doc<'propertySnapshots'>,
-  out: Pending[]
+  out: Pending[],
+  tolerances: Tolerances
 ) {
   const market = snapshot.tax?.marketValue
   if (market === null || market === undefined || market <= 0) return
   const latest = pickLatestPrice(extractions)
   if (!latest) return
   const ratio = latest.price / market
-  // Widened to ±40% (was ±25%) — flip-heavy markets like Indianapolis and
-  // non-disclosure states routinely produce 25–35% gaps without anything
-  // being wrong. Tighten if you see false-positive volume; widen if real
-  // flips are getting flagged.
-  if (ratio >= 0.6 && ratio <= 1.4) return
+  const { salePriceVarianceLow: lo, salePriceVarianceHigh: hi } = tolerances
+  // Owner-tunable band. Defaults to [0.6, 1.4] (±40%) which suits flip-heavy
+  // and non-disclosure markets; tighten for steady-state retail.
+  if (ratio >= lo && ratio <= hi) return
 
-  const direction = ratio < 0.6 ? 'below' : 'above'
+  const direction = ratio < lo ? 'below' : 'above'
   const pct = Math.round(Math.abs(ratio - 1) * 100)
   out.push({
     findingType: 'sale_price_variance_market',
@@ -949,33 +958,27 @@ function flagSalePriceVariance(
 }
 
 function checkRequiredDocs(
-  ctx: MutationCtx,
   file: Doc<'files'>,
   uploadedDocTypes: Set<string>,
+  requiredDocsByCode: ReadonlyMap<string, ReadonlyArray<string>>,
   out: Pending[]
-): Promise<void> {
-  // Looking up the transactionType row to read requiredDocs.
-  return ctx.db
-    .query('transactionTypes')
-    .withIndex('by_code', (q) => q.eq('code', file.transactionType))
-    .unique()
-    .then((tt) => {
-      if (!tt) return
-      const missing = tt.requiredDocs.filter((d) => !uploadedDocTypes.has(d))
-      if (missing.length === 0) return
-      out.push({
-        findingType: 'missing_required_documents',
-        severity: missing.length >= 2 ? 'warn' : 'info',
-        message: `${file.transactionType} requires: ${missing.join(', ')}.`,
-        involvedDocumentIds: [],
-        involvedFields: [],
-        rawDetail: {
-          transactionType: file.transactionType,
-          missing,
-          uploaded: Array.from(uploadedDocTypes),
-        },
-      })
-    })
+): void {
+  const required = requiredDocsByCode.get(file.transactionType)
+  if (!required) return
+  const missing = required.filter((d) => !uploadedDocTypes.has(d))
+  if (missing.length === 0) return
+  out.push({
+    findingType: 'missing_required_documents',
+    severity: missing.length >= 2 ? 'warn' : 'info',
+    message: `${file.transactionType} requires: ${missing.join(', ')}.`,
+    involvedDocumentIds: [],
+    involvedFields: [],
+    rawDetail: {
+      transactionType: file.transactionType,
+      missing,
+      uploaded: Array.from(uploadedDocTypes),
+    },
+  })
 }
 
 // Shared core: do the reconciliation work without making any assumption
@@ -1021,6 +1024,8 @@ async function runReconciliationCore(
   const usable = enriched.filter((e): e is NonNullable<typeof e> => e !== null)
   usable.sort((a, b) => b.uploadedAt - a.uploadedAt) // newest first
 
+  const tolerances = await loadTolerances(ctx, tenantId)
+
   const findings: Pending[] = []
   comparePrices(usable, findings)
   compareTitleCompany(usable, findings)
@@ -1029,7 +1034,7 @@ async function runReconciliationCore(
   compareFinancingWindow(usable, findings)
   compareParties(usable, findings)
   compareVesting(usable, findings)
-  verifyWireInstructions(usable, findings)
+  verifyWireInstructions(usable, findings, tolerances)
 
   // County-records evidence (from the latest propertySnapshot, populated by
   // countyConnect.runForFile). All four checks no-op when no snapshot exists,
@@ -1045,11 +1050,28 @@ async function runReconciliationCore(
     compareOwnerOfRecord(usable, snapshot, findings)
     compareApn(file, snapshot, findings)
     flagOpenLiens(snapshot, findings)
-    flagSalePriceVariance(usable, snapshot, findings)
+    flagSalePriceVariance(usable, snapshot, findings, tolerances)
   }
 
   const uploadedDocTypes = new Set(usable.map((e) => e.docType))
-  await checkRequiredDocs(ctx, file, uploadedDocTypes, findings)
+  const requiredDocsByCode = await loadRequiredDocsByCode(ctx, tenantId)
+  checkRequiredDocs(file, uploadedDocTypes, requiredDocsByCode, findings)
+
+  // Apply the per-tenant policy. Unknown finding types (not in the catalog)
+  // pass through unchanged so the reconciler can ship new checks without
+  // waiting on a catalog migration. `severity: "off"` drops the finding.
+  const policy = await loadPolicyMap(ctx, tenantId)
+  const policed: Pending[] = []
+  for (const f of findings) {
+    const catalog = getCatalogEntry(f.findingType)
+    if (!catalog) {
+      policed.push(f)
+      continue
+    }
+    const next = resolveSeverity(f.findingType, catalog.defaultSeverity, policy)
+    if (next === null) continue
+    policed.push(next === f.severity ? f : { ...f, severity: next })
+  }
 
   // The user-triggered path uses the existing "wipe open then re-create"
   // policy. The auto path uses the same policy by passing the tenant id
@@ -1058,7 +1080,7 @@ async function runReconciliationCore(
 
   const now = Date.now()
   const insertedIds: Array<Id<'reconciliationFindings'>> = []
-  for (const f of findings) {
+  for (const f of policed) {
     const id = await ctx.db.insert('reconciliationFindings', {
       tenantId,
       fileId,
@@ -1089,9 +1111,9 @@ async function runReconciliationCore(
   // Audit: user-triggered records under the member; system-triggered uses a
   // direct insert with no actor.
   const counts = {
-    info: findings.filter((f) => f.severity === 'info').length,
-    warn: findings.filter((f) => f.severity === 'warn').length,
-    block: findings.filter((f) => f.severity === 'block').length,
+    info: policed.filter((f) => f.severity === 'info').length,
+    warn: policed.filter((f) => f.severity === 'warn').length,
+    block: policed.filter((f) => f.severity === 'block').length,
   }
 
   // Notify the team about the outcome. We only fan out when there's

@@ -128,6 +128,18 @@ function deriveBreadcrumb(pathname: string): ReadonlyArray<Crumb> {
   if (pathname === '/admin/integrations') {
     return [{ label: 'Admin', to: '/admin' }, { label: 'Integrations' }]
   }
+  if (pathname === '/admin/reconciliation') {
+    return [
+      { label: 'Admin', to: '/admin' },
+      { label: 'Reconciliation policy' },
+    ]
+  }
+  if (pathname === '/admin/file-numbering') {
+    return [
+      { label: 'Admin', to: '/admin' },
+      { label: 'File numbering' },
+    ]
+  }
   if (pathname === '/settings') return [{ label: 'Settings' }]
   if (pathname === '/tenants') return [{ label: 'Organizations' }]
   return []
@@ -420,7 +432,7 @@ function GlobalSearch() {
       <Search className="size-4 shrink-0 text-muted-foreground" />
       <Input
         ref={inputRef}
-        className="h-7 border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+        className="h-7 border-0 bg-transparent p-0 text-base shadow-none focus-visible:ring-0 sm:text-sm"
         placeholder="Search files, mail, parties, findings…"
         value={q}
         onChange={(e) => {

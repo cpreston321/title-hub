@@ -7,8 +7,10 @@ import {
   FolderOpen,
   History,
   Inbox,
+  Hash,
   Shield,
   ScrollText,
+  SlidersHorizontal,
   Building2,
   CalendarClock,
   ScanLine,
@@ -37,6 +39,9 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -281,16 +286,35 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                 to="/admin"
                 label="Admin"
                 icon={<Shield className="size-4" />}
-                active={location.pathname === "/admin"}
+                active={location.pathname.startsWith("/admin")}
                 disabled={!hasActiveOrg}
-              />
-              <NavLink
-                to="/admin/rules"
-                label="Recording rules"
-                icon={<ScrollText className="size-4" />}
-                active={location.pathname.startsWith("/admin/rules")}
-                disabled={!hasActiveOrg}
-              />
+              >
+                <SubNavLink
+                  to="/admin/rules"
+                  label="Recording rules"
+                  icon={<ScrollText className="size-4" />}
+                  active={location.pathname.startsWith("/admin/rules")}
+                  disabled={!hasActiveOrg}
+                />
+                <SubNavLink
+                  to="/admin/reconciliation"
+                  label="Reconciliation policy"
+                  icon={<SlidersHorizontal className="size-4" />}
+                  active={location.pathname.startsWith(
+                    "/admin/reconciliation",
+                  )}
+                  disabled={!hasActiveOrg}
+                />
+                <SubNavLink
+                  to="/admin/file-numbering"
+                  label="File numbering"
+                  icon={<Hash className="size-4" />}
+                  active={location.pathname.startsWith(
+                    "/admin/file-numbering",
+                  )}
+                  disabled={!hasActiveOrg}
+                />
+              </NavLink>
             </SidebarMenu>
             {!hasActiveOrg && !memberships.isLoading && (
               <div className="mx-2 mt-2 rounded-md border border-white/10 bg-white/5 px-2.5 py-2 text-[11px] leading-snug text-white/60">
@@ -550,6 +574,7 @@ function NavLink({
   active,
   badge,
   disabled,
+  children,
 }: {
   to: string;
   label: string;
@@ -557,6 +582,7 @@ function NavLink({
   active: boolean;
   badge?: string;
   disabled?: boolean;
+  children?: React.ReactNode;
 }) {
   if (disabled) {
     return (
@@ -590,7 +616,51 @@ function NavLink({
           {badge}
         </SidebarMenuBadge>
       )}
+      {children && <SidebarMenuSub>{children}</SidebarMenuSub>}
     </SidebarMenuItem>
+  );
+}
+
+function SubNavLink({
+  to,
+  label,
+  icon,
+  active,
+  disabled,
+}: {
+  to: string;
+  label: string;
+  icon: React.ReactNode;
+  active: boolean;
+  disabled?: boolean;
+}) {
+  if (disabled) {
+    return (
+      <SidebarMenuSubItem>
+        <SidebarMenuSubButton
+          aria-disabled="true"
+          title="Pick an organization first"
+          className="cursor-not-allowed text-white/35 hover:bg-transparent hover:text-white/35"
+        >
+          {icon}
+          <span>{label}</span>
+        </SidebarMenuSubButton>
+      </SidebarMenuSubItem>
+    );
+  }
+  return (
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton
+        asChild
+        isActive={active}
+        className="text-white/70 hover:bg-white/10 hover:text-white data-[active=true]:bg-white/15 data-[active=true]:text-white"
+      >
+        <Link to={to}>
+          {icon}
+          <span>{label}</span>
+        </Link>
+      </SidebarMenuSubButton>
+    </SidebarMenuSubItem>
   );
 }
 

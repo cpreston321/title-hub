@@ -133,6 +133,83 @@ export default defineSchema({
     .index('by_betterAuthUser', ['betterAuthUserId'])
     .index('by_betterAuthUser_tenant', ['betterAuthUserId', 'tenantId']),
 
+  // Per-tenant numeric tolerances for reconciliation checks. One row per
+  // tenant. Absence = use the catalog defaults defined in
+  // lib/reconciliationPolicy.ts (loadTolerances). Each field is optional so
+  // owners can override one tolerance without touching the others.
+  tenantReconciliationTolerances: defineTable({
+    tenantId: v.id('tenants'),
+    // Sale-price variance band against County Connect market value. A
+    // contract price falling outside [low, high] × marketValue triggers
+    // sale_price_variance_market.
+    salePriceVarianceLow: v.optional(v.number()),
+    salePriceVarianceHigh: v.optional(v.number()),
+    // Wire amount red-flag: any wire whose amount is ≥ ratio × purchase
+    // price triggers wire.amount_unusual. Catches decimal-shift fraud.
+    wireAmountRedFlagRatio: v.optional(v.number()),
+    updatedAt: v.number(),
+    updatedByMemberId: v.optional(v.id('tenantMembers')),
+  }).index('by_tenant', ['tenantId']),
+
+  // Per-tenant file-number generation policy. One row per tenant. Absence
+  // = legacy behaviour (manual fileNumber, no auto-increment). When set,
+  // empty `fileNumber` arguments to files.create get formatted from
+  // `pattern` with `nextSeq` and the counter advances atomically.
+  //
+  // `pattern` is a template with brace-tokens like `{YYYY}-{SEQ:4}`. See
+  // lib/fileNumber.ts for the token registry.
+  //
+  // `seqLastResetBoundary` is a string identifying the last reset window
+  // ("2026" for yearly, "2026-05" for monthly, "" for never). When the
+  // current generation crosses a boundary, the counter resets to 1
+  // before formatting. Storing the boundary string is simpler than
+  // checking timestamps and avoids race conditions across DST shifts.
+  tenantFileNumberPolicy: defineTable({
+    tenantId: v.id('tenants'),
+    pattern: v.string(),
+    nextSeq: v.number(),
+    seqResetCadence: v.union(
+      v.literal('never'),
+      v.literal('yearly'),
+      v.literal('monthly')
+    ),
+    seqLastResetBoundary: v.string(),
+    updatedAt: v.number(),
+    updatedByMemberId: v.optional(v.id('tenantMembers')),
+  }).index('by_tenant', ['tenantId']),
+
+  // Per-tenant overrides on the platform `transactionTypes.requiredDocs`
+  // baseline. One row per (tenant, transactionType code). Absence = use
+  // the platform default. The list IS the source of truth (not a delta) —
+  // simpler shape, simpler diffing, and the lists are short (≤10 doc types).
+  tenantTransactionTypeOverrides: defineTable({
+    tenantId: v.id('tenants'),
+    code: v.string(),
+    requiredDocs: v.array(v.string()),
+    updatedAt: v.number(),
+    updatedByMemberId: v.optional(v.id('tenantMembers')),
+  })
+    .index('by_tenant', ['tenantId'])
+    .index('by_tenant_code', ['tenantId', 'code']),
+
+  // Per-tenant overrides on the reconciliation finding catalog. Each row
+  // overrides the *default severity* for one finding type. Absence of a row
+  // means "use the default". `severity: "off"` suppresses the finding entirely.
+  tenantReconciliationPolicies: defineTable({
+    tenantId: v.id('tenants'),
+    findingType: v.string(),
+    severity: v.union(
+      v.literal('info'),
+      v.literal('warn'),
+      v.literal('block'),
+      v.literal('off')
+    ),
+    updatedAt: v.number(),
+    updatedByMemberId: v.optional(v.id('tenantMembers')),
+  })
+    .index('by_tenant', ['tenantId'])
+    .index('by_tenant_finding', ['tenantId', 'findingType']),
+
   apiKeys: defineTable({
     tenantId: v.id('tenants'),
     name: v.string(),

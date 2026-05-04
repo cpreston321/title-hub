@@ -6,6 +6,11 @@ import { internal } from './_generated/api'
 import { optionalTenant, requireRole, requireTenant } from './lib/tenant'
 import { recordAudit } from './lib/audit'
 import { fileStatus, partyType, propertyAddress } from './schema'
+import {
+  boundaryFor,
+  formatFileNumber,
+  type Cadence,
+} from './lib/fileNumber'
 
 const editorRoles = ['owner', 'admin', 'processor'] as const
 
@@ -93,6 +98,8 @@ export async function autoPromoteFileStatus(
 
 export const create = mutation({
   args: {
+    // Empty string ⇒ generate from the tenant's file-number policy.
+    // A non-empty value uses the caller's chosen number verbatim.
     fileNumber: v.string(),
     countyId: v.id('counties'),
     transactionType: v.string(),
@@ -104,23 +111,87 @@ export const create = mutation({
     const tc = await requireTenant(ctx)
     requireRole(tc, ...editorRoles)
 
-    if (args.fileNumber.trim() === '')
-      throw new ConvexError('INVALID_FILE_NUMBER')
-
     const county = await ctx.db.get(args.countyId)
     if (!county) throw new ConvexError('COUNTY_NOT_FOUND')
 
-    const dup = await ctx.db
-      .query('files')
-      .withIndex('by_tenant_filenumber', (q) =>
-        q.eq('tenantId', tc.tenantId).eq('fileNumber', args.fileNumber)
-      )
-      .unique()
-    if (dup) throw new ConvexError('FILE_NUMBER_TAKEN')
+    let fileNumber = args.fileNumber.trim()
+    let autoAssigned = false
+
+    if (fileNumber === '') {
+      // Caller wants the server to allocate. Pull the policy, format,
+      // bump the counter atomically. If a generated number happens to
+      // collide (rare — e.g. a manual entry took the slot before us),
+      // try the next few seq values before giving up.
+      const policyRow = await ctx.db
+        .query('tenantFileNumberPolicy')
+        .withIndex('by_tenant', (q) => q.eq('tenantId', tc.tenantId))
+        .unique()
+      if (!policyRow) {
+        // Tenant hasn't configured auto-numbering — keep the legacy
+        // contract: fileNumber is required.
+        throw new ConvexError('INVALID_FILE_NUMBER')
+      }
+
+      const date = new Date()
+      const cadence = policyRow.seqResetCadence as Cadence
+      const currentBoundary = boundaryFor(date, cadence)
+      const startSeq =
+        currentBoundary !== policyRow.seqLastResetBoundary
+          ? 1
+          : policyRow.nextSeq
+
+      const countyCode = county.name.replace(/\s+/g, '').toUpperCase()
+      const formatCtx = {
+        date,
+        countyCode,
+        stateCode: county.stateCode,
+        transactionType: args.transactionType,
+      }
+
+      let chosen: { number: string; seq: number } | null = null
+      for (let offset = 0; offset < 20 && chosen === null; offset++) {
+        const seq = startSeq + offset
+        const candidate = formatFileNumber(policyRow.pattern, {
+          ...formatCtx,
+          seq,
+        })
+        const existing = await ctx.db
+          .query('files')
+          .withIndex('by_tenant_filenumber', (q) =>
+            q.eq('tenantId', tc.tenantId).eq('fileNumber', candidate)
+          )
+          .unique()
+        if (!existing) chosen = { number: candidate, seq }
+      }
+      if (!chosen) {
+        throw new ConvexError({
+          kind: 'FILE_NUMBER_EXHAUSTED',
+          message:
+            'Could not allocate a unique file number after 20 attempts. Bump the counter or change the pattern.',
+        })
+      }
+      fileNumber = chosen.number
+      autoAssigned = true
+
+      // Advance the counter past the chosen seq. We don't reuse the
+      // skipped numbers — gaps are fine; what matters is monotonicity.
+      await ctx.db.patch(policyRow._id, {
+        nextSeq: chosen.seq + 1,
+        seqLastResetBoundary: currentBoundary,
+      })
+    } else {
+      const dup = await ctx.db
+        .query('files')
+        .withIndex('by_tenant_filenumber', (q) =>
+          q.eq('tenantId', tc.tenantId).eq('fileNumber', fileNumber)
+        )
+        .unique()
+      if (dup) throw new ConvexError('FILE_NUMBER_TAKEN')
+    }
 
     const searchText = buildFileSearchText(
       {
-        fileNumber: args.fileNumber,
+        fileNumber,
         transactionType: args.transactionType,
         propertyApn: args.propertyApn,
         propertyAddress: args.propertyAddress,
@@ -130,7 +201,7 @@ export const create = mutation({
 
     const fileId = await ctx.db.insert('files', {
       tenantId: tc.tenantId,
-      fileNumber: args.fileNumber,
+      fileNumber,
       stateCode: county.stateCode,
       countyId: args.countyId,
       transactionType: args.transactionType,
@@ -143,11 +214,12 @@ export const create = mutation({
     })
 
     await recordAudit(ctx, tc, 'file.created', 'file', fileId, {
-      fileNumber: args.fileNumber,
+      fileNumber,
       countyId: args.countyId,
+      autoAssigned,
     })
 
-    return { fileId }
+    return { fileId, fileNumber, autoAssigned }
   },
 })
 

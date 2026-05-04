@@ -25,7 +25,9 @@ import { Route as FilesIndexRouteImport } from './routes/files/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as FilesFileIdRouteImport } from './routes/files/$fileId'
 import { Route as AdminRulesRouteImport } from './routes/admin/rules'
+import { Route as AdminReconciliationRouteImport } from './routes/admin/reconciliation'
 import { Route as AdminIntegrationsRouteImport } from './routes/admin/integrations'
+import { Route as AdminFileNumberingRouteImport } from './routes/admin/file-numbering'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
 const TenantsRoute = TenantsRouteImport.update({
@@ -108,9 +110,19 @@ const AdminRulesRoute = AdminRulesRouteImport.update({
   path: '/admin/rules',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminReconciliationRoute = AdminReconciliationRouteImport.update({
+  id: '/admin/reconciliation',
+  path: '/admin/reconciliation',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminIntegrationsRoute = AdminIntegrationsRouteImport.update({
   id: '/admin/integrations',
   path: '/admin/integrations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminFileNumberingRoute = AdminFileNumberingRouteImport.update({
+  id: '/admin/file-numbering',
+  path: '/admin/file-numbering',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
@@ -132,7 +144,9 @@ export interface FileRoutesByFullPath {
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/file-numbering': typeof AdminFileNumberingRoute
   '/admin/integrations': typeof AdminIntegrationsRoute
+  '/admin/reconciliation': typeof AdminReconciliationRoute
   '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
   '/admin/': typeof AdminIndexRoute
@@ -152,7 +166,9 @@ export interface FileRoutesByTo {
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/file-numbering': typeof AdminFileNumberingRoute
   '/admin/integrations': typeof AdminIntegrationsRoute
+  '/admin/reconciliation': typeof AdminReconciliationRoute
   '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
   '/admin': typeof AdminIndexRoute
@@ -173,7 +189,9 @@ export interface FileRoutesById {
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
   '/tenants': typeof TenantsRoute
+  '/admin/file-numbering': typeof AdminFileNumberingRoute
   '/admin/integrations': typeof AdminIntegrationsRoute
+  '/admin/reconciliation': typeof AdminReconciliationRoute
   '/admin/rules': typeof AdminRulesRoute
   '/files/$fileId': typeof FilesFileIdRoute
   '/admin/': typeof AdminIndexRoute
@@ -195,7 +213,9 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/file-numbering'
     | '/admin/integrations'
+    | '/admin/reconciliation'
     | '/admin/rules'
     | '/files/$fileId'
     | '/admin/'
@@ -215,7 +235,9 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/file-numbering'
     | '/admin/integrations'
+    | '/admin/reconciliation'
     | '/admin/rules'
     | '/files/$fileId'
     | '/admin'
@@ -235,7 +257,9 @@ export interface FileRouteTypes {
     | '/sign-up'
     | '/signin'
     | '/tenants'
+    | '/admin/file-numbering'
     | '/admin/integrations'
+    | '/admin/reconciliation'
     | '/admin/rules'
     | '/files/$fileId'
     | '/admin/'
@@ -256,7 +280,9 @@ export interface RootRouteChildren {
   SignUpRoute: typeof SignUpRoute
   SigninRoute: typeof SigninRoute
   TenantsRoute: typeof TenantsRoute
+  AdminFileNumberingRoute: typeof AdminFileNumberingRoute
   AdminIntegrationsRoute: typeof AdminIntegrationsRoute
+  AdminReconciliationRoute: typeof AdminReconciliationRoute
   AdminRulesRoute: typeof AdminRulesRoute
   FilesFileIdRoute: typeof FilesFileIdRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -378,11 +404,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRulesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/reconciliation': {
+      id: '/admin/reconciliation'
+      path: '/admin/reconciliation'
+      fullPath: '/admin/reconciliation'
+      preLoaderRoute: typeof AdminReconciliationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin/integrations': {
       id: '/admin/integrations'
       path: '/admin/integrations'
       fullPath: '/admin/integrations'
       preLoaderRoute: typeof AdminIntegrationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/file-numbering': {
+      id: '/admin/file-numbering'
+      path: '/admin/file-numbering'
+      fullPath: '/admin/file-numbering'
+      preLoaderRoute: typeof AdminFileNumberingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
@@ -408,7 +448,9 @@ const rootRouteChildren: RootRouteChildren = {
   SignUpRoute: SignUpRoute,
   SigninRoute: SigninRoute,
   TenantsRoute: TenantsRoute,
+  AdminFileNumberingRoute: AdminFileNumberingRoute,
   AdminIntegrationsRoute: AdminIntegrationsRoute,
+  AdminReconciliationRoute: AdminReconciliationRoute,
   AdminRulesRoute: AdminRulesRoute,
   FilesFileIdRoute: FilesFileIdRoute,
   AdminIndexRoute: AdminIndexRoute,
