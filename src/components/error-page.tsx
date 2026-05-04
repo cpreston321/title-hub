@@ -1,6 +1,12 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { ArrowLeft, FileSearch, RotateCcw, ScrollText } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  motion,
+  useMotionTemplate,
+  useMotionValue,
+  useSpring,
+} from "motion/react";
 
 type ErrorPageProps = {
   variant?: "not-found" | "error";
@@ -74,8 +80,17 @@ function DocumentCard({
   isNotFound: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
+
   // Subtle 3D parallax: tilt the document toward the cursor like a lifted
-  // page on a desk. Reset gracefully when the cursor leaves.
+  // page on a desk. Spring-damped so it has weight, doesn't feel artificial.
+  // Decoration-only — switches off under prefers-reduced-motion.
+  const tiltX = useMotionValue(0);
+  const tiltY = useMotionValue(0);
+  const springConfig = { stiffness: 120, damping: 18, mass: 0.9 };
+  const springTiltX = useSpring(tiltX, springConfig);
+  const springTiltY = useSpring(tiltY, springConfig);
+  const transform = useMotionTemplate`perspective(1400px) rotateX(${springTiltX}deg) rotateY(${springTiltY}deg)`;
+
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
@@ -85,12 +100,12 @@ function DocumentCard({
       const r = el.getBoundingClientRect();
       const dx = (e.clientX - (r.left + r.width / 2)) / r.width;
       const dy = (e.clientY - (r.top + r.height / 2)) / r.height;
-      el.style.setProperty("--tilt-x", `${(-dy * 2.4).toFixed(2)}deg`);
-      el.style.setProperty("--tilt-y", `${(dx * 2.4).toFixed(2)}deg`);
+      tiltX.set(-dy * 2.4);
+      tiltY.set(dx * 2.4);
     };
     const onLeave = () => {
-      el.style.setProperty("--tilt-x", "0deg");
-      el.style.setProperty("--tilt-y", "0deg");
+      tiltX.set(0);
+      tiltY.set(0);
     };
     window.addEventListener("mousemove", onMove);
     el.addEventListener("mouseleave", onLeave);
@@ -98,16 +113,12 @@ function DocumentCard({
       window.removeEventListener("mousemove", onMove);
       el.removeEventListener("mouseleave", onLeave);
     };
-  }, []);
+  }, [tiltX, tiltY]);
 
   return (
-    <div
+    <motion.div
       ref={cardRef}
-      style={{
-        transform:
-          "perspective(1400px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg))",
-        transition: "transform 380ms cubic-bezier(0.2, 0.8, 0.2, 1)",
-      }}
+      style={{ transform }}
       className="paper-grain relative overflow-hidden rounded-[1.75rem] border border-border/60 bg-card shadow-[0_38px_80px_-30px_rgba(64,35,63,0.4),0_18px_40px_-15px_rgba(64,35,63,0.18),0_2px_0_rgba(255,255,255,0.6)_inset]"
     >
       {/* Header — recorder identity + filing reference */}
@@ -151,7 +162,7 @@ function DocumentCard({
 
       {/* Footer — date, jurisdiction, signature */}
       <DocumentFooter />
-    </div>
+    </motion.div>
   );
 }
 

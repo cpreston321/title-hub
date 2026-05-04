@@ -98,6 +98,16 @@
   --severity-warn: #c9652e;
   --severity-info: #3f668f;
   --severity-ok: #3f7c64;
+
+  /* Motion easings — built-in CSS easings are too weak. These give UI the
+     punch that makes interactions feel intentional. Pulled from Emil
+     Kowalski's animations.dev recommendations:
+       — ease-out-strong: enters/exits, sharp decel, feels responsive
+       — ease-in-out-strong: on-screen movement (tabs, layout shift)
+       — ease-drawer: iOS-feel for sheets, drawers, larger panels */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .dark {
@@ -442,6 +452,47 @@
   animation: title-hub-cursor-blink 1.05s steps(2, jump-none) infinite;
 }
 
+/* Fade + rise — short, decel, used by stagger reveals. */
+@keyframes title-hub-fade-rise {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.tk-fade-rise {
+  animation: title-hub-fade-rise 280ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+/* Stagger utility for skeleton/list reveals. Apply tk-stagger on the parent
+   and each child gets a 30ms delay step. Caps at 12 children — beyond that
+   the cascade gets noticeable to the user. */
+.tk-stagger > *:nth-child(1)  { animation-delay: 0ms; }
+.tk-stagger > *:nth-child(2)  { animation-delay: 30ms; }
+.tk-stagger > *:nth-child(3)  { animation-delay: 60ms; }
+.tk-stagger > *:nth-child(4)  { animation-delay: 90ms; }
+.tk-stagger > *:nth-child(5)  { animation-delay: 120ms; }
+.tk-stagger > *:nth-child(6)  { animation-delay: 150ms; }
+.tk-stagger > *:nth-child(7)  { animation-delay: 180ms; }
+.tk-stagger > *:nth-child(8)  { animation-delay: 210ms; }
+.tk-stagger > *:nth-child(9)  { animation-delay: 240ms; }
+.tk-stagger > *:nth-child(10) { animation-delay: 270ms; }
+.tk-stagger > *:nth-child(11) { animation-delay: 300ms; }
+.tk-stagger > *:nth-child(12) { animation-delay: 330ms; }
+
+/* Bell shake — the notifications bell ringing when a new blocker arrives.
+   Spring-y feel, fast, decel. Used by NotificationsBell via React state. */
+@keyframes title-hub-bell-ring {
+  0%   { transform: rotate(0deg); }
+  15%  { transform: rotate(-14deg); }
+  32%  { transform: rotate(11deg); }
+  50%  { transform: rotate(-7deg); }
+  68%  { transform: rotate(4deg); }
+  84%  { transform: rotate(-2deg); }
+  100% { transform: rotate(0deg); }
+}
+.tk-bell-ring {
+  transform-origin: 50% 12%;
+  animation: title-hub-bell-ring 0.7s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
 /* Slow ambient drift for the wax/ink halos sitting under the document. */
 @keyframes title-hub-halo-drift {
   0%,
@@ -458,6 +509,108 @@
   animation: title-hub-halo-drift 11s ease-in-out infinite;
 }
 
+/* Subtle rise-and-fade entrance — used inside skeleton groups via tk-stagger
+   so each row arrives a beat after the one above it. Cheaper visual energy
+   than discrete shimmers on every block. */
+@keyframes title-hub-fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tk-fade-rise {
+  animation: title-hub-fade-rise 0.5s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+/* Brass-strip ticker that scrolls leftward forever. Pair with a track that
+   contains the same content twice so the seam is invisible. */
+@keyframes title-hub-marquee {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+.tk-marquee {
+  animation: title-hub-marquee 38s linear infinite;
+  will-change: transform;
+}
+
+/* Letterpress on hover for primary marketing CTAs — the wax seal pressing
+   into the paper. */
+@keyframes title-hub-letterpress {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.tk-letterpress:hover {
+  animation: title-hub-letterpress 0.45s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+/* Editorial drop-cap for a leading paragraph. The first letter renders large
+   in the display serif, with a soft brass underglow. */
+.tk-drop-cap::first-letter {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 4.5em;
+  line-height: 0.82;
+  float: left;
+  margin: 0.05em 0.12em 0 0;
+  color: #40233f;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(244, 212, 143, 0.55),
+    transparent 60%
+  );
+  padding: 0.04em 0.08em 0.02em;
+}
+
+/* Status pill entrance — used inside the hero preview when the status flips
+   on a cycle. Pair with a React `key` so the element remounts on each tick. */
+@keyframes title-hub-pill-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.tk-pill-fade {
+  animation: title-hub-pill-fade 0.45s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+/* Number tick: a digit briefly lifts and brass-flashes when it changes. */
+@keyframes title-hub-num-tick {
+  0% {
+    transform: translateY(0);
+    color: inherit;
+  }
+  35% {
+    transform: translateY(-2px);
+    color: #b78625;
+  }
+  100% {
+    transform: translateY(0);
+    color: inherit;
+  }
+}
+.tk-num-tick {
+  animation: title-hub-num-tick 0.7s ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tk-seal-rotor,
   .tk-seal-sheen,
@@ -470,7 +623,15 @@
   .tk-signature-draw,
   .tk-dust,
   .tk-cursor-blink,
-  .tk-halo-drift {
+  .tk-halo-drift,
+  .tk-bell-ring,
+  .tk-fade-rise,
+  .tk-marquee,
+  .tk-pill-fade,
+  .tk-num-tick {
+    animation: none;
+  }
+  .tk-letterpress:hover {
     animation: none;
   }
 }

@@ -26,11 +26,11 @@ export function PageHeaderSkeleton({
 
 export function KpiStripSkeleton({ tiles = 4 }: { tiles?: number }) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="tk-stagger grid grid-cols-2 gap-3 md:grid-cols-4">
       {Array.from({ length: tiles }).map((_, i) => (
         <div
           key={i}
-          className="flex flex-col gap-2 rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/5"
+          className="tk-fade-rise flex flex-col gap-2 rounded-2xl border border-border/70 bg-card px-4 py-3 shadow-sm ring-1 ring-foreground/5"
         >
           <Skeleton className="h-3 w-20 rounded" />
           <Skeleton className="h-7 w-12 rounded" />
@@ -67,11 +67,11 @@ export function TableSkeleton({
           <Skeleton className="h-7 w-20 rounded-md" />
         </header>
       )}
-      <ol className="divide-y divide-border/60">
+      <ol className="tk-stagger divide-y divide-border/60">
         {Array.from({ length: rows }).map((_, i) => (
           <li
             key={i}
-            className={`grid ${colClass} items-center gap-4 px-6 py-3.5`}
+            className={`tk-fade-rise grid ${colClass} items-center gap-4 px-6 py-3.5`}
           >
             {Array.from({ length: cols }).map((__, j) => (
               <Skeleton
@@ -94,11 +94,11 @@ export function CardListSkeleton({
   height?: string
 }) {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="tk-stagger flex flex-col gap-3">
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className={`rounded-2xl border border-border/60 bg-card ${height} shadow-sm ring-1 ring-foreground/5`}
+          className={`tk-fade-rise rounded-2xl border border-border/60 bg-card ${height} shadow-sm ring-1 ring-foreground/5`}
         >
           <div className="flex h-full flex-col justify-between p-5">
             <div className="flex items-center gap-3">
@@ -133,11 +133,11 @@ export function ToolbarSkeleton() {
 export function PipelineStripSkeleton() {
   return (
     <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm ring-1 ring-foreground/5">
-      <div className="grid grid-cols-2 gap-px sm:grid-cols-4 md:grid-cols-7">
+      <div className="tk-stagger grid grid-cols-2 gap-px sm:grid-cols-4 md:grid-cols-7">
         {Array.from({ length: 7 }).map((_, i) => (
           <div
             key={i}
-            className="flex flex-col gap-1.5 bg-card px-4 py-3"
+            className="tk-fade-rise flex flex-col gap-1.5 bg-card px-4 py-3"
           >
             <Skeleton className="h-3 w-16 rounded" />
             <Skeleton className="h-6 w-8 rounded" />

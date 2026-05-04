@@ -145,7 +145,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="group/orgswitch mx-2 mt-1 mb-2 flex items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-white/10 data-[state=open]:bg-white/10"
+              className="group/orgswitch mx-2 mt-1 mb-2 flex items-center gap-3 rounded-lg px-2 py-2 text-left transition-[background-color,transform] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-white/10 active:scale-[0.985] data-[state=open]:bg-white/10"
               aria-label="Switch organization"
             >
               <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#f4d48f] to-[#b78625] text-[#40233f] shadow-inner">
@@ -171,7 +171,7 @@ export function AppSidebar({ isAuthenticated }: AppSidebarProps) {
                   </>
                 )}
               </div>
-              <ChevronsUpDown className="size-3.5 shrink-0 text-white/60 group-hover/orgswitch:text-white/85" />
+              <ChevronsUpDown className="size-3.5 shrink-0 text-white/60 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] group-hover/orgswitch:text-white/85 group-data-[state=open]/orgswitch:rotate-180 group-data-[state=open]/orgswitch:text-white/85" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -438,7 +438,7 @@ function NewFileCTA({ hasActiveOrg }: { hasActiveOrg: boolean }) {
       <Link
         to="/files"
         search={{ new: true }}
-        className="group/newfile flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-[#f4d48f] to-[#b78625] px-3 py-2 text-sm font-semibold text-[#40233f] shadow-sm ring-1 ring-[#40233f]/15 transition ring-inset hover:from-[#f6dca0] hover:to-[#c2902c] hover:shadow"
+        className="group/newfile flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-br from-[#f4d48f] to-[#b78625] px-3 py-2 text-sm font-semibold text-[#40233f] shadow-sm ring-1 ring-[#40233f]/15 ring-inset transition-[transform,box-shadow,background-color,filter] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] hover:from-[#f6dca0] hover:to-[#c2902c] hover:shadow hover:brightness-105 active:scale-[0.985] [&_svg]:transition-transform [&_svg]:duration-[160ms] hover:[&_svg]:rotate-90"
       >
         <Plus className="size-4" />
         New file

@@ -17,6 +17,7 @@ import {
   User,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion, useAnimate } from 'motion/react'
 
 import {
   SidebarProvider,
@@ -1155,6 +1156,49 @@ function NotificationsBell() {
     }
   }, [open])
 
+  // Ring the bell when blockers exist on first paint, and again whenever
+  // the count strictly increases. Linear easing + decaying amplitude reads
+  // like real bell physics — one strike, multiple oscillations that settle.
+  // Hooks run unconditionally — must live above the `!hasTenant` early return.
+  const [bellScope, animateBell] = useAnimate<HTMLSpanElement>()
+  const previousBlockers = useRef<number | null>(null)
+  useEffect(() => {
+    if (summaryQ.data === undefined) return
+    const next = summaryQ.data.blockers
+    const prev = previousBlockers.current
+    const isFirstPaint = prev === null
+    previousBlockers.current = next
+    if (next === 0) return
+    if (!isFirstPaint && next <= prev) return
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    // Settle delay on first paint so the bell rings AFTER the page has
+    // finished arriving — otherwise the user is still parsing the layout
+    // and the ring goes unnoticed.
+    const settle = isFirstPaint ? 450 : 0
+    const id = window.setTimeout(() => {
+      if (!bellScope.current) return
+      animateBell(
+        bellScope.current,
+        {
+          transform: [
+            'rotate(0deg) scale(1)',
+            'rotate(-26deg) scale(1.1)',
+            'rotate(22deg) scale(1.06)',
+            'rotate(-16deg) scale(1.04)',
+            'rotate(11deg) scale(1.02)',
+            'rotate(-7deg) scale(1.01)',
+            'rotate(4deg) scale(1)',
+            'rotate(-2deg) scale(1)',
+            'rotate(0deg) scale(1)',
+          ],
+        },
+        { duration: 1.1, ease: 'linear' },
+      )
+    }, settle)
+    return () => window.clearTimeout(id)
+  }, [summaryQ.data?.blockers, animateBell, bellScope])
+
   if (!hasTenant) return null
 
   const onHeadlineClick = async (g: NotificationGroup) => {
@@ -1245,20 +1289,42 @@ function NotificationsBell() {
               : 'Notifications'
         }
         aria-expanded={open}
-        className={`relative inline-flex size-9 items-center justify-center rounded-xl border border-input bg-card text-[#40233f] transition hover:bg-[#fdf6e8] ${
+        className={`relative inline-flex size-9 items-center justify-center rounded-xl border border-input bg-card text-[#40233f] transition-[background-color,transform,box-shadow] duration-[160ms] ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-[#fdf6e8] active:scale-[0.94] ${
           open ? 'ring-2 ring-[#593157]/30' : ''
         }`}
       >
-        <Bell className="size-4" />
-        {blockerCount > 0 ? (
-          <span className="absolute -top-1.5 -right-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b94f58] px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-background">
-            {blockerCount > 99 ? '99+' : blockerCount}
-          </span>
-        ) : nonBlockerUnread > 0 ? (
-          <span className="absolute -top-1.5 -right-1.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#7a5818] px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-background">
-            {nonBlockerUnread > 99 ? '99+' : nonBlockerUnread}
-          </span>
-        ) : null}
+        <span
+          ref={bellScope}
+          className="inline-flex"
+          style={{ transformOrigin: '50% 12%' }}
+        >
+          <Bell className="size-4" />
+        </span>
+        <AnimatePresence mode="popLayout" initial={false}>
+          {blockerCount > 0 ? (
+            <motion.span
+              key={`blocker-${blockerCount}`}
+              initial={{ transform: 'scale(0.5)', opacity: 0 }}
+              animate={{ transform: 'scale(1)', opacity: 1 }}
+              exit={{ transform: 'scale(0.5)', opacity: 0 }}
+              transition={{ type: 'spring', duration: 0.45, bounce: 0.35 }}
+              className="absolute -top-1.5 -right-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#b94f58] px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-background"
+            >
+              {blockerCount > 99 ? '99+' : blockerCount}
+            </motion.span>
+          ) : nonBlockerUnread > 0 ? (
+            <motion.span
+              key={`unread-${nonBlockerUnread}`}
+              initial={{ transform: 'scale(0.5)', opacity: 0 }}
+              animate={{ transform: 'scale(1)', opacity: 1 }}
+              exit={{ transform: 'scale(0.5)', opacity: 0 }}
+              transition={{ type: 'spring', duration: 0.4, bounce: 0.25 }}
+              className="absolute -top-1.5 -right-1.5 inline-flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-[#7a5818] px-1 text-[10px] leading-none font-semibold text-white ring-2 ring-background"
+            >
+              {nonBlockerUnread > 99 ? '99+' : nonBlockerUnread}
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
       </button>
 
       {open && (
