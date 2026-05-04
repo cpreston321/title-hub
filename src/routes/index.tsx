@@ -140,6 +140,7 @@ function MarketingHome() {
         eyebrow="Built right"
         title="The trade's quiet machinery."
         lede="The parts you can't see, but every closing depends on."
+        layout="stack"
       >
         <TrustGrid />
       </MarketingSection>
@@ -149,6 +150,7 @@ function MarketingHome() {
         eyebrow="The workflow"
         title="Six steps. Opened to policy."
         lede="The same path every file follows. Each step unlocks the next."
+        layout="stack"
       >
         <WorkflowSteps />
       </MarketingSection>
@@ -264,7 +266,7 @@ function MarketingTopNav() {
             <Link to="/signin">Sign in</Link>
           </Button>
           <Button asChild size="sm" className="tk-letterpress gap-1.5">
-            <Link to="/signin" search={{ mode: "sign-up" }}>
+            <Link to="/request-invite">
               Request access
               <ArrowRight className="size-3.5" />
             </Link>
@@ -322,9 +324,7 @@ function MarketingHero() {
               variant="outline"
               className="tk-letterpress gap-2"
             >
-              <Link to="/signin" search={{ mode: "sign-up" }}>
-                Request an invitation
-              </Link>
+              <Link to="/request-invite">Request an invitation</Link>
             </Button>
           </div>
           <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
@@ -655,6 +655,7 @@ function MarketingSection({
   eyebrow,
   title,
   lede,
+  layout = "side",
   children,
 }: {
   id?: string;
@@ -662,36 +663,59 @@ function MarketingSection({
   eyebrow: string;
   title: string;
   lede?: string;
+  // "side": header sits in a 5/12 column, content takes the other 7/12.
+  // "stack": header sits above and content takes the full 12-col width —
+  // use for grids of cards (trust, workflow) that need room to breathe.
+  layout?: "side" | "stack";
   children: React.ReactNode;
 }) {
+  const Header = (
+    <header
+      className={
+        layout === "stack" ? "mb-12 max-w-3xl" : undefined
+      }
+    >
+      <div className="flex items-baseline gap-3">
+        <span
+          aria-hidden
+          className="font-display text-5xl leading-none font-semibold text-[#b78625]/85 italic"
+        >
+          {numeral}
+        </span>
+        <span className="h-px flex-1 bg-[#40233f]/15" />
+        <span className="font-numerals text-[10px] font-semibold tracking-[0.32em] text-muted-foreground uppercase">
+          §·{eyebrow}
+        </span>
+      </div>
+      <h2 className="mt-6 font-display text-[2.25rem] leading-[1.05] font-semibold tracking-tight text-[#40233f] md:text-[2.75rem]">
+        {title}
+      </h2>
+      {lede && (
+        <p
+          className={`mt-5 text-[15px] leading-[1.65] text-foreground/75 italic font-display ${
+            layout === "stack" ? "max-w-[42rem]" : "max-w-[28rem]"
+          }`}
+        >
+          {lede}
+        </p>
+      )}
+    </header>
+  );
+
   return (
     <section id={id} className="relative border-b border-border/40">
       <div className="mx-auto w-full max-w-[1280px] px-6 py-20 lg:py-24">
-        <div className="grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-16">
-          <header className="lg:col-span-5">
-            <div className="flex items-baseline gap-3">
-              <span
-                aria-hidden
-                className="font-display text-5xl leading-none font-semibold text-[#b78625]/85 italic"
-              >
-                {numeral}
-              </span>
-              <span className="h-px flex-1 bg-[#40233f]/15" />
-              <span className="font-numerals text-[10px] font-semibold tracking-[0.32em] text-muted-foreground uppercase">
-                §·{eyebrow}
-              </span>
-            </div>
-            <h2 className="mt-6 font-display text-[2.25rem] leading-[1.05] font-semibold tracking-tight text-[#40233f] md:text-[2.75rem]">
-              {title}
-            </h2>
-            {lede && (
-              <p className="mt-5 max-w-[28rem] text-[15px] leading-[1.65] text-foreground/75 italic font-display">
-                {lede}
-              </p>
-            )}
-          </header>
-          <div className="lg:col-span-7">{children}</div>
-        </div>
+        {layout === "stack" ? (
+          <>
+            {Header}
+            <div>{children}</div>
+          </>
+        ) : (
+          <div className="grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-16">
+            <div className="lg:col-span-5">{Header}</div>
+            <div className="lg:col-span-7">{children}</div>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -1590,30 +1614,30 @@ function TrustGrid() {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
       {tiles.map((t, i) => (
         <article
           key={i}
-          className="group/tile relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 shadow-sm ring-1 ring-foreground/5 transition hover:-translate-y-0.5 hover:shadow-md"
+          className="group/tile relative overflow-hidden rounded-2xl border border-border/60 bg-card p-6 shadow-sm ring-1 ring-foreground/5 transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <div
             aria-hidden
-            className="absolute -top-12 -right-12 size-32 rounded-full bg-[radial-gradient(circle,rgba(244,212,143,0.18),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover/tile:opacity-100"
+            className="absolute -top-14 -right-14 size-36 rounded-full bg-[radial-gradient(circle,rgba(244,212,143,0.18),transparent_60%)] opacity-0 transition-opacity duration-500 group-hover/tile:opacity-100"
           />
           <div className="relative flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-xl border border-[#40233f]/15 bg-[#fdf6e8] text-[#40233f]">
+            <span className="grid size-10 place-items-center rounded-xl border border-[#40233f]/15 bg-[#fdf6e8] text-[#40233f]">
               {t.icon}
             </span>
             <span className="h-px flex-1 bg-border/60" />
-            <ShieldCheck className="size-3 text-[#b78625]/60" />
+            <ShieldCheck className="size-3.5 text-[#b78625]/60" />
           </div>
-          <h3 className="relative mt-4 font-display text-lg font-semibold tracking-tight text-[#40233f]">
+          <h3 className="relative mt-5 font-display text-xl font-semibold tracking-tight text-[#40233f]">
             {t.title}
           </h3>
-          <p className="relative mt-2 text-[13px] leading-[1.55] text-muted-foreground">
+          <p className="relative mt-2.5 text-[14px] leading-[1.6] text-muted-foreground">
             {t.body}
           </p>
-          <p className="relative mt-3 font-numerals text-[10px] tracking-[0.14em] text-[#b78625] uppercase">
+          <p className="relative mt-4 font-numerals text-[10px] tracking-[0.18em] text-[#b78625] uppercase">
             {t.detail}
           </p>
         </article>
@@ -1636,26 +1660,26 @@ function WorkflowSteps() {
     { t: "Close it out", d: "Funded, recorded, policy issued." },
   ];
   return (
-    <ol className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <ol className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {steps.map((s, i) => (
         <li
           key={i}
-          className="group/step flex items-start gap-4 rounded-2xl border border-border/60 bg-card px-5 py-4 shadow-sm ring-1 ring-foreground/5 transition hover:border-[#40233f]/30 hover:bg-[#fdf6e8]/40"
+          className="group/step flex items-start gap-4 rounded-2xl border border-border/60 bg-card px-6 py-5 shadow-sm ring-1 ring-foreground/5 transition hover:border-[#40233f]/30 hover:bg-[#fdf6e8]/40"
         >
-          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#40233f] text-[#f4d48f] shadow-inner">
-            <span className="font-display text-sm font-semibold tracking-wide italic">
+          <span className="grid size-11 shrink-0 place-items-center rounded-full bg-[#40233f] text-[#f4d48f] shadow-inner">
+            <span className="font-display text-base font-semibold tracking-wide italic">
               {ROMAN[i]}
             </span>
           </span>
-          <div className="min-w-0">
-            <div className="font-display text-lg leading-tight font-semibold tracking-tight text-[#40233f]">
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-xl leading-tight font-semibold tracking-tight text-[#40233f]">
               {s.t}
             </div>
-            <div className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+            <div className="mt-1 text-[14px] leading-relaxed text-muted-foreground">
               {s.d}
             </div>
           </div>
-          <ArrowRight className="ml-auto size-3.5 self-center text-muted-foreground/30 transition group-hover/step:translate-x-0.5 group-hover/step:text-[#40233f]" />
+          <ArrowRight className="size-4 self-center text-muted-foreground/30 transition group-hover/step:translate-x-0.5 group-hover/step:text-[#40233f]" />
         </li>
       ))}
     </ol>
@@ -1696,7 +1720,7 @@ function SealCTA() {
               size="lg"
               className="tk-letterpress gap-2 shadow-lg shadow-[#40233f]/15"
             >
-              <Link to="/signin" search={{ mode: "sign-up" }}>
+              <Link to="/request-invite">
                 Request an invitation
                 <ArrowRight className="size-4" />
               </Link>
@@ -1722,8 +1746,7 @@ function SealCTA() {
         </div>
 
         <Link
-          to="/signin"
-          search={{ mode: "sign-up" }}
+          to="/request-invite"
           className="tk-letterpress group/seal relative grid place-items-center"
           aria-label="Press the seal — request access"
         >
@@ -1929,9 +1952,7 @@ function MarketingFooter() {
           </FooterCol>
           <FooterCol heading="Access">
             <Link to="/signin">Sign in</Link>
-            <Link to="/signin" search={{ mode: "sign-up" }}>
-              Request invitation
-            </Link>
+            <Link to="/request-invite">Request invitation</Link>
             <a href="mailto:hello@titlehub.example">hello@titlehub.example</a>
           </FooterCol>
           <FooterCol heading="Made in">

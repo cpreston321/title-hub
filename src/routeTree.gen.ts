@@ -13,6 +13,7 @@ import { Route as TenantsRouteImport } from './routes/tenants'
 import { Route as SigninRouteImport } from './routes/signin'
 import { Route as SignUpRouteImport } from './routes/sign-up'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RequestInviteRouteImport } from './routes/request-invite'
 import { Route as QueueRouteImport } from './routes/queue'
 import { Route as OrdersRouteImport } from './routes/orders'
 import { Route as MailRouteImport } from './routes/mail'
@@ -45,6 +46,11 @@ const SignUpRoute = SignUpRouteImport.update({
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RequestInviteRoute = RequestInviteRouteImport.update({
+  id: '/request-invite',
+  path: '/request-invite',
   getParentRoute: () => rootRouteImport,
 } as any)
 const QueueRoute = QueueRouteImport.update({
@@ -121,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
   '/queue': typeof QueueRoute
+  '/request-invite': typeof RequestInviteRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -140,6 +147,7 @@ export interface FileRoutesByTo {
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
   '/queue': typeof QueueRoute
+  '/request-invite': typeof RequestInviteRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -160,6 +168,7 @@ export interface FileRoutesById {
   '/mail': typeof MailRoute
   '/orders': typeof OrdersRoute
   '/queue': typeof QueueRoute
+  '/request-invite': typeof RequestInviteRoute
   '/settings': typeof SettingsRoute
   '/sign-up': typeof SignUpRoute
   '/signin': typeof SigninRoute
@@ -181,6 +190,7 @@ export interface FileRouteTypes {
     | '/mail'
     | '/orders'
     | '/queue'
+    | '/request-invite'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -200,6 +210,7 @@ export interface FileRouteTypes {
     | '/mail'
     | '/orders'
     | '/queue'
+    | '/request-invite'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -219,6 +230,7 @@ export interface FileRouteTypes {
     | '/mail'
     | '/orders'
     | '/queue'
+    | '/request-invite'
     | '/settings'
     | '/sign-up'
     | '/signin'
@@ -239,6 +251,7 @@ export interface RootRouteChildren {
   MailRoute: typeof MailRoute
   OrdersRoute: typeof OrdersRoute
   QueueRoute: typeof QueueRoute
+  RequestInviteRoute: typeof RequestInviteRoute
   SettingsRoute: typeof SettingsRoute
   SignUpRoute: typeof SignUpRoute
   SigninRoute: typeof SigninRoute
@@ -279,6 +292,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/request-invite': {
+      id: '/request-invite'
+      path: '/request-invite'
+      fullPath: '/request-invite'
+      preLoaderRoute: typeof RequestInviteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/queue': {
@@ -383,6 +403,7 @@ const rootRouteChildren: RootRouteChildren = {
   MailRoute: MailRoute,
   OrdersRoute: OrdersRoute,
   QueueRoute: QueueRoute,
+  RequestInviteRoute: RequestInviteRoute,
   SettingsRoute: SettingsRoute,
   SignUpRoute: SignUpRoute,
   SigninRoute: SigninRoute,

@@ -880,4 +880,24 @@ export default defineSchema({
       'readAt',
       'occurredAt',
     ]),
+
+  // Public-facing "request an invitation" submissions from the marketing
+  // page. Tenant-less by design — the requester does not yet have an
+  // account. Reviewed by ops; invitations are sent manually for now.
+  accessRequests: defineTable({
+    email: v.string(),
+    contactName: v.string(),
+    firmName: v.string(),
+    role: v.optional(v.string()),
+    region: v.optional(v.string()),
+    monthlyVolume: v.optional(v.string()),
+    note: v.optional(v.string()),
+    source: v.optional(v.string()),
+    status: v.string(), // "new" | "reviewed" | "invited" | "rejected"
+    submittedAt: v.number(),
+    reviewedAt: v.optional(v.number()),
+    reviewedBy: v.optional(v.string()),
+  })
+    .index('by_status_time', ['status', 'submittedAt'])
+    .index('by_email_time', ['email', 'submittedAt']),
 })
