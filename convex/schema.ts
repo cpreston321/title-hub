@@ -641,6 +641,78 @@ export default defineSchema({
     .index('by_tenant_file', ['tenantId', 'fileId'])
     .index('by_tenant_file_fetched', ['tenantId', 'fileId', 'fetchedAt']),
 
+  // Title search orders — async vendor lookups that deliver as a PDF
+  // (e.g. DataTrace TPS Full Title, a title-plant search). One row per
+  // order; the lifecycle is `requested → in_progress → delivered | failed`,
+  // with `cancelled` available before delivery. On delivery the vendor's
+  // webhook lands, we download the PDF into `_storage`, mint a `documents`
+  // row (docType = `title_search`), and run the same extraction pipeline
+  // an uploaded title search would. `callbackToken` is a per-order HMAC
+  // secret that the vendor signs delivery callbacks with; binding the
+  // secret to one order means a leaked token can only complete the order
+  // it belongs to.
+  titleSearchOrders: defineTable({
+    tenantId: v.id('tenants'),
+    fileId: v.id('files'),
+    vendor: v.union(v.literal('datatrace'), v.literal('mock')),
+    product: v.literal('tps_full_title'),
+    status: v.union(
+      v.literal('requested'),
+      v.literal('in_progress'),
+      v.literal('delivered'),
+      v.literal('failed'),
+      v.literal('cancelled')
+    ),
+    requestedByMemberId: v.id('tenantMembers'),
+    requestedAt: v.number(),
+    // Snapshot of the file's address at order time. Files can be
+    // re-addressed; a delivered title search refers back to the address
+    // it was ordered for, not whatever the file says now.
+    queryAddress: propertyAddress,
+    // Free-form reference we send the vendor (typically `file.fileNumber`)
+    // so their CSR / portal can correlate. Optional — vendor APIs vary.
+    vendorReference: v.optional(v.string()),
+    // Vendor's order id once they acknowledge the request.
+    vendorOrderId: v.optional(v.string()),
+    // Per-order HMAC secret the vendor signs delivery callbacks with.
+    // Verifying `?orderId=<id>` + this secret is enough to authenticate
+    // the callback without a global webhook key.
+    callbackToken: v.string(),
+    inProgressAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    pdfStorageId: v.optional(v.id('_storage')),
+    // Linked `documents` row created when the PDF lands. Lets the UI
+    // deep-link to the rendered title-search doc + extraction.
+    deliveryDocumentId: v.optional(v.id('documents')),
+    failedAt: v.optional(v.number()),
+    failureMessage: v.optional(v.string()),
+    cancelledAt: v.optional(v.number()),
+    cancelledByMemberId: v.optional(v.id('tenantMembers')),
+    // Recent status updates from the vendor. Capped client-side at 20
+    // entries (oldest dropped) to stay well under the 1MB doc limit.
+    vendorMessages: v.array(
+      v.object({
+        at: v.number(),
+        level: v.union(
+          v.literal('info'),
+          v.literal('warn'),
+          v.literal('error')
+        ),
+        message: v.string(),
+      })
+    ),
+  })
+    .index('by_tenant_file', ['tenantId', 'fileId'])
+    .index('by_tenant_status_requested', [
+      'tenantId',
+      'status',
+      'requestedAt',
+    ])
+    .index('by_tenant_vendor_order', ['tenantId', 'vendor', 'vendorOrderId'])
+    // Cross-tenant index used by the retention cron — needs `status` first
+    // so `eq(status).lt(requestedAt)` stays index-resident.
+    .index('by_status_requested', ['status', 'requestedAt']),
+
   webhookEndpoints: defineTable({
     tenantId: v.id('tenants'),
     url: v.string(),

@@ -1238,4 +1238,137 @@ http.route({
   handler: bootstrapHandler('sh'),
 })
 
+// ─── DataTrace delivery webhook ─────────────────────────────────────────
+//
+// Vendor calls this when a title-search order changes state. Per-order
+// callback secret means a leaked token only completes the order it
+// belongs to. Wire format:
+//
+//   POST /integrations/datatrace/delivery?orderId=<id>
+//   Headers:
+//     X-Title-Timestamp: <unix ms>
+//     X-Title-Signature: sha256=<hex(HMAC-SHA256(callbackToken,
+//                                ts + "." + rawBody))>
+//   Body JSON:
+//     {
+//       "status":  "in_progress" | "completed" | "failed",
+//       "vendorOrderId": "<vendor order id>",   // optional
+//       "downloadUrl":   "<signed URL>",        // required for "completed"
+//       "message":       "<vendor-supplied note>"   // optional
+//     }
+//
+// On "completed" we schedule `receiveDeliveryAction` to download the PDF
+// off the action runtime — the HTTP body itself shouldn't carry the file.
+http.route({
+  path: '/integrations/datatrace/delivery',
+  method: 'POST',
+  handler: httpAction(async (ctx, req) => {
+    const url = new URL(req.url)
+    const orderIdParam = url.searchParams.get('orderId')
+    const timestamp = req.headers.get('X-Title-Timestamp')
+    const signature = req.headers.get('X-Title-Signature')
+
+    if (!orderIdParam || !timestamp || !signature) {
+      return new Response('missing required params or headers', {
+        status: 400,
+      })
+    }
+    const ts = Number(timestamp)
+    if (!Number.isFinite(ts) || Math.abs(Date.now() - ts) > 5 * 60_000) {
+      return new Response('stale timestamp', { status: 400 })
+    }
+
+    const orderId = orderIdParam as Id<'titleSearchOrders'>
+    const row = await ctx.runQuery(
+      internal.titleSearchOrders._loadForCallback,
+      { orderId }
+    )
+    if (!row) return new Response('unauthorized', { status: 401 })
+
+    const rawBody = await req.text()
+    const sigOk = await verifySignature(
+      row.callbackToken,
+      rawBody,
+      timestamp,
+      signature
+    )
+    if (!sigOk) return new Response('unauthorized', { status: 401 })
+
+    if (row.status === 'cancelled') {
+      // Idempotent ACK so the vendor stops retrying. Don't mutate state.
+      return new Response(JSON.stringify({ ok: true, ignored: 'cancelled' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    let parsed: {
+      status?: unknown
+      vendorOrderId?: unknown
+      downloadUrl?: unknown
+      message?: unknown
+    }
+    try {
+      parsed = JSON.parse(rawBody) as typeof parsed
+    } catch {
+      return new Response('invalid json', { status: 400 })
+    }
+
+    const statusStr = typeof parsed.status === 'string' ? parsed.status : ''
+    const vendorOrderId =
+      typeof parsed.vendorOrderId === 'string' ? parsed.vendorOrderId : undefined
+    const downloadUrl =
+      typeof parsed.downloadUrl === 'string' ? parsed.downloadUrl : undefined
+    const message =
+      typeof parsed.message === 'string' ? parsed.message : undefined
+
+    if (statusStr === 'in_progress') {
+      await ctx.runMutation(internal.titleSearchOrders._markInProgress, {
+        orderId,
+        vendorOrderId,
+        message,
+      })
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (statusStr === 'completed') {
+      if (!downloadUrl) {
+        return new Response(
+          JSON.stringify({ error: 'downloadUrl required on completed' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      // Don't fetch the PDF inline — actions handle the bytes so the HTTP
+      // request returns quickly and the vendor doesn't time out.
+      await ctx.runAction(
+        internal.titleSearchOrders.receiveDeliveryAction,
+        { orderId, downloadUrl }
+      )
+      return new Response(JSON.stringify({ ok: true, accepted: true }), {
+        status: 202,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (statusStr === 'failed') {
+      await ctx.runMutation(internal.titleSearchOrders._markFailed, {
+        orderId,
+        failureMessage: message ?? 'vendor reported failure',
+      })
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    return new Response(
+      JSON.stringify({ error: `unknown status: ${statusStr}` }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    )
+  }),
+})
+
 export default http

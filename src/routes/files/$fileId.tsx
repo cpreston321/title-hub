@@ -10,6 +10,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useAction } from "convex/react";
 import { convexQuery, useConvexMutation } from "@convex-dev/react-query";
+import { motion } from "motion/react";
 import {
   Drawer,
   DrawerClose,
@@ -93,9 +94,7 @@ export const Route = createFileRoute("/files/$fileId")({
   loader: ({ context, params }) => {
     const { queryClient } = context as { queryClient: QueryClient };
     const fileId = params.fileId as Id<"files">;
-    void queryClient.ensureQueryData(
-      convexQuery(api.files.get, { fileId }),
-    );
+    void queryClient.ensureQueryData(convexQuery(api.files.get, { fileId }));
     void queryClient.ensureQueryData(
       convexQuery(api.audit.listForFile, { fileId }),
     );
@@ -405,6 +404,8 @@ function FileDetailContent({
           <PartiesPanel fileId={id} parties={parties} />
 
           <DocumentsPanel fileId={id} documents={documents} />
+
+          <TitleSearchOrdersPanel fileId={id} hasProperty={hasProperty} />
 
           <PublicRecordsPanel fileId={id} hasProperty={hasProperty} />
 
@@ -2055,9 +2056,7 @@ function ExtractionTrailRow({
     createdAt: number;
   }>;
 
-  const completed = rows.some(
-    (e) => e.kind === "done" || e.kind === "error",
-  );
+  const completed = rows.some((e) => e.kind === "done" || e.kind === "error");
 
   // Auto-expand while running, auto-collapse a moment after the trail
   // logs a `done` (or `error`) event — but never override a manual toggle.
@@ -2912,6 +2911,491 @@ function formatRelative(ts: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+}
+
+const TITLE_SEARCH_ORDER_ROLES = new Set([
+  "owner",
+  "admin",
+  "processor",
+  "closer",
+]);
+
+function TitleSearchOrdersPanel({
+  fileId,
+  hasProperty,
+}: {
+  fileId: Id<"files">;
+  hasProperty: boolean;
+}) {
+  const ordersQ = useQuery(
+    convexQuery(api.titleSearchOrders.listForFile, { fileId }),
+  );
+  const meQ = useQuery(convexQuery(api.tenants.current, {}));
+  const place = useConvexMutation(api.titleSearchOrders.place);
+  const cancel = useConvexMutation(api.titleSearchOrders.cancel);
+  const alert = useAlert();
+  const confirm = useConfirm();
+  const [busy, setBusy] = useState<"place" | string | null>(null);
+
+  const orders = ordersQ.data ?? [];
+  const inFlight = orders.find(
+    (o) => o.status === "requested" || o.status === "in_progress",
+  );
+  const role = meQ.data?.role ?? null;
+  const canOrder = role !== null && TITLE_SEARCH_ORDER_ROLES.has(role);
+
+  const onPlace = async () => {
+    if (!canOrder) return;
+    const ok = await confirm({
+      title: "Order title search?",
+      description:
+        "DataTrace TPS Full Title — examiner-grade title-plant search delivered as a PDF. Per-order vendor cost applies.",
+      confirmText: "Order",
+    });
+    if (!ok) return;
+    setBusy("place");
+    try {
+      await place({ fileId });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await alert({
+        title: "Could not place order",
+        description: msg.replace(/^.*ConvexError:\s*/, ""),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const onCancel = async (orderId: Id<"titleSearchOrders">) => {
+    const ok = await confirm({
+      title: "Cancel order?",
+      description:
+        "If the vendor has already started work, cancellation may not stop the charge.",
+      confirmText: "Cancel order",
+      destructive: true,
+    });
+    if (!ok) return;
+    setBusy(orderId);
+    try {
+      await cancel({ orderId });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await alert({
+        title: "Could not cancel order",
+        description: msg.replace(/^.*ConvexError:\s*/, ""),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const buttonTitle = !hasProperty
+    ? "Set the property address first"
+    : !canOrder
+      ? "Requires owner, admin, processor, or closer role"
+      : inFlight
+        ? "An order is already in flight"
+        : "Place a DataTrace TPS Full Title order";
+
+  return (
+    <SectionShell
+      id="step-title-search"
+      icon={<ScrollText className="size-4" />}
+      eyebrow="Vendor reports"
+      title="Title search"
+      description="Order an examiner-grade title-plant search (DataTrace TPS Full Title). Delivers as a PDF and runs through the same extraction pipeline as uploaded title searches."
+      actions={
+        <Button
+          onClick={onPlace}
+          disabled={busy === "place" || !hasProperty || !canOrder || !!inFlight}
+          size="sm"
+          variant={orders.length > 0 ? "outline" : "default"}
+          className="gap-1.5"
+          title={buttonTitle}
+        >
+          {busy === "place" ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <ScrollText className="size-3.5" />
+          )}
+          {busy === "place" ? "Ordering..." : "Order title search"}
+        </Button>
+      }
+    >
+      {orders.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border bg-muted/30 px-4 py-6 text-center text-sm text-muted-foreground">
+          {!hasProperty ? (
+            <>Set the property address to enable title-search orders.</>
+          ) : (
+            <>
+              No title search ordered yet. Click{" "}
+              <strong>Order title search</strong> to request a DataTrace TPS
+              Full Title report.
+            </>
+          )}
+        </div>
+      ) : (
+        <ol className="flex flex-col gap-3">
+          {orders.map((o) => (
+            <TitleSearchOrderRow
+              key={o._id}
+              order={o}
+              onCancel={onCancel}
+              cancelling={busy === o._id}
+              canCancel={canOrder}
+            />
+          ))}
+        </ol>
+      )}
+    </SectionShell>
+  );
+}
+
+type TitleSearchOrder = {
+  _id: Id<"titleSearchOrders">;
+  vendor: "datatrace" | "mock";
+  status: "requested" | "in_progress" | "delivered" | "failed" | "cancelled";
+  requestedAt: number;
+  inProgressAt: number | null;
+  deliveredAt: number | null;
+  failedAt: number | null;
+  cancelledAt: number | null;
+  failureMessage: string | null;
+  vendorOrderId: string | null;
+  deliveryDocumentId: Id<"documents"> | null;
+  vendorMessages: ReadonlyArray<{
+    at: number;
+    level: "info" | "warn" | "error";
+    message: string;
+  }>;
+};
+
+function TitleSearchOrderRow({
+  order,
+  onCancel,
+  cancelling,
+  canCancel,
+}: {
+  order: TitleSearchOrder;
+  onCancel: (orderId: Id<"titleSearchOrders">) => Promise<void>;
+  cancelling: boolean;
+  canCancel: boolean;
+}) {
+  if (order.status === "requested" || order.status === "in_progress") {
+    return (
+      <ActiveTitleSearchCard
+        order={order}
+        onCancel={onCancel}
+        cancelling={cancelling}
+        canCancel={canCancel}
+      />
+    );
+  }
+  return <ResolvedTitleSearchRow order={order} />;
+}
+
+// Keeps the elapsed label fresh without a per-second tick. One minute is
+// the right grain for a wait that's measured in tens of minutes — the user
+// glances down, the number has moved, the system feels alive.
+function useElapsedNow(intervalMs = 60_000) {
+  const [now, setNow] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function formatElapsed(ms: number): string {
+  if (ms < 60_000) return "just started";
+  const totalMinutes = Math.floor(ms / 60_000);
+  if (totalMinutes < 60) return `${totalMinutes}m elapsed`;
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return m === 0 ? `${h}h elapsed` : `${h}h ${m}m elapsed`;
+}
+
+function ActiveTitleSearchCard({
+  order,
+  onCancel,
+  cancelling,
+  canCancel,
+}: {
+  order: TitleSearchOrder;
+  onCancel: (orderId: Id<"titleSearchOrders">) => Promise<void>;
+  cancelling: boolean;
+  canCancel: boolean;
+}) {
+  const startedAt = order.inProgressAt ?? order.requestedAt;
+  const now = useElapsedNow();
+  const elapsedLabel = formatElapsed(now - startedAt);
+
+  const acknowledged = order.status === "in_progress";
+  const lastMessage =
+    order.vendorMessages.length > 0
+      ? order.vendorMessages[order.vendorMessages.length - 1]
+      : null;
+
+  return (
+    <li className="relative isolate overflow-hidden rounded-xl border border-[#b78625]/30 bg-[#fdf6e8]/55 px-4 py-4 shadow-sm ring-1 ring-[#b78625]/10">
+      {/* Slow gold sweep — the visual "thinking" cue. Animates its own
+          transform on a long loop so the card never feels static, but the
+          gradient is faint enough not to compete with content. */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 -left-1/2 -z-10 w-[200%]"
+        style={{
+          background:
+            "linear-gradient(90deg, transparent 0%, transparent 42%, rgba(183,134,37,0.10) 50%, transparent 58%, transparent 100%)",
+        }}
+        animate={{ x: ["-25%", "25%"] }}
+        transition={{ duration: 7, repeat: Infinity, ease: "linear" }}
+      />
+
+      <div className="flex flex-col gap-3.5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <BreathingDot />
+            <span className="font-display text-base font-semibold tracking-tight text-[#40233f]">
+              {acknowledged ? "Working on it" : "Submitting"}
+            </span>
+            {order.vendor === "mock" && (
+              <span className="rounded-sm bg-[#40233f]/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#40233f]/70">
+                Demo
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-[#40233f]/55">
+            <span className="tabular-nums">{elapsedLabel}</span>
+            <span className="opacity-50">·</span>
+            <span>typical 15–60 min</span>
+          </div>
+        </div>
+
+        <PhaseTrack acknowledged={acknowledged} />
+
+        <div className="flex flex-wrap items-end justify-between gap-3 pt-0.5">
+          <div className="min-w-0 max-w-prose text-xs leading-relaxed text-[#40233f]/75">
+            {lastMessage ? (
+              <>
+                <span className="font-medium text-[#40233f]/85">Latest: </span>
+                <span>{lastMessage.message}</span>
+                <span className="ml-1.5 text-[#40233f]/40">
+                  · {formatRelative(lastMessage.at)}
+                </span>
+              </>
+            ) : (
+              <span className="italic text-[#40233f]/45">
+                Awaiting first update from vendor…
+              </span>
+            )}
+            {order.vendorOrderId && (
+              <div className="mt-1 text-[10px] uppercase tracking-[0.08em] text-[#40233f]/40">
+                Vendor ref ·{" "}
+                <span className="font-mono normal-case tracking-normal text-[#40233f]/55">
+                  {order.vendorOrderId}
+                </span>
+              </div>
+            )}
+          </div>
+          {canCancel && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onCancel(order._id)}
+              disabled={cancelling}
+              className="gap-1.5 text-[#40233f]/70 hover:bg-[#40233f]/5 hover:text-[#40233f]"
+            >
+              {cancelling ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <X className="size-3.5" />
+              )}
+              Cancel
+            </Button>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function BreathingDot() {
+  return (
+    <motion.span
+      aria-hidden
+      className="relative grid size-2.5 place-items-center rounded-full bg-[#b78625]"
+      animate={{
+        boxShadow: [
+          "0 0 0 0 rgba(183, 134, 37, 0.45)",
+          "0 0 0 8px rgba(183, 134, 37, 0)",
+        ],
+      }}
+      transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }}
+    />
+  );
+}
+
+const TITLE_SEARCH_PHASES = [
+  { id: "submitted", label: "Submitted", icon: Check },
+  { id: "working", label: "Searching records", icon: ScrollText },
+  { id: "delivered", label: "Delivered", icon: FileText },
+] as const;
+
+function PhaseTrack({ acknowledged }: { acknowledged: boolean }) {
+  // 0 = active "Submitted" (still requested, vendor hasn't picked up yet)
+  // 1 = active "Searching records" (in_progress)
+  const activeIdx = acknowledged ? 1 : 0;
+  return (
+    <ol className="flex flex-wrap items-center gap-1.5">
+      {TITLE_SEARCH_PHASES.map((p, i) => {
+        const state =
+          i < activeIdx ? "done" : i === activeIdx ? "active" : "pending";
+        return (
+          <li key={p.id} className="flex items-center gap-1.5">
+            <PhasePill phase={p} state={state} />
+            {i < TITLE_SEARCH_PHASES.length - 1 && (
+              <span aria-hidden className="h-px w-3 bg-[#40233f]/15 sm:w-5" />
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function PhasePill({
+  phase,
+  state,
+}: {
+  phase: (typeof TITLE_SEARCH_PHASES)[number];
+  state: "done" | "active" | "pending";
+}) {
+  const Icon = phase.icon;
+  const base =
+    "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium";
+  if (state === "done") {
+    return (
+      <span className={`${base} bg-[#40233f] text-[#fdf6e8]`}>
+        <Check className="size-3" />
+        {phase.label}
+      </span>
+    );
+  }
+  if (state === "active") {
+    return (
+      <motion.span
+        className={`${base} border border-[#b78625]/40 bg-[#fdf6e8] text-[#40233f]`}
+        animate={{
+          boxShadow: [
+            "0 0 0 0 rgba(183, 134, 37, 0)",
+            "0 0 0 5px rgba(183, 134, 37, 0.18)",
+            "0 0 0 0 rgba(183, 134, 37, 0)",
+          ],
+        }}
+        transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <Icon className="size-3 text-[#b78625]" />
+        <span>{phase.label}</span>
+      </motion.span>
+    );
+  }
+  return (
+    <span
+      className={`${base} border border-border/60 bg-muted/20 text-muted-foreground`}
+    >
+      <Icon className="size-3 opacity-60" />
+      {phase.label}
+    </span>
+  );
+}
+
+function ResolvedTitleSearchRow({ order }: { order: TitleSearchOrder }) {
+  const tone =
+    order.status === "delivered"
+      ? "border-emerald-300/70 bg-emerald-50/40"
+      : order.status === "failed"
+        ? "border-[#b94f58]/30 bg-[#fdecee]"
+        : "border-border bg-muted/20";
+  const label =
+    order.status === "delivered"
+      ? "Delivered"
+      : order.status === "failed"
+        ? "Failed"
+        : "Cancelled";
+
+  return (
+    <li className={`rounded-md border ${tone} px-3 py-2.5`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span>{label}</span>
+            {order.vendor === "mock" && (
+              <span className="rounded-sm bg-muted px-1.5 py-0.5 text-xs uppercase tracking-wide text-muted-foreground">
+                Demo
+              </span>
+            )}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            Requested {formatRelative(order.requestedAt)}
+            {order.deliveredAt && (
+              <> · Delivered {formatRelative(order.deliveredAt)}</>
+            )}
+            {order.failedAt && <> · Failed {formatRelative(order.failedAt)}</>}
+            {order.cancelledAt && (
+              <> · Cancelled {formatRelative(order.cancelledAt)}</>
+            )}
+            {order.vendorOrderId && (
+              <>
+                {" "}
+                · Vendor #
+                <span className="font-mono">{order.vendorOrderId}</span>
+              </>
+            )}
+          </div>
+          {order.failureMessage && (
+            <div className="mt-1.5 text-xs text-[#8a3942]">
+              {order.failureMessage}
+            </div>
+          )}
+          {order.status === "delivered" && order.deliveryDocumentId && (
+            <div className="mt-1.5 inline-flex items-center gap-1 text-xs text-emerald-800">
+              <FileText className="size-3.5" /> Attached as a title-search
+              document — see Documents above.
+            </div>
+          )}
+        </div>
+      </div>
+      {order.vendorMessages.length > 0 && (
+        <details className="mt-2">
+          <summary className="cursor-pointer select-none text-xs text-muted-foreground">
+            Vendor log ({order.vendorMessages.length})
+          </summary>
+          <ul className="mt-1 space-y-1 text-xs">
+            {order.vendorMessages.map((m, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="text-muted-foreground tabular-nums">
+                  {formatRelative(m.at)}
+                </span>
+                <span
+                  className={
+                    m.level === "error"
+                      ? "text-[#8a3942]"
+                      : m.level === "warn"
+                        ? "text-amber-700"
+                        : "text-foreground"
+                  }
+                >
+                  {m.message}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </li>
+  );
 }
 
 // The ordering reconciliation surfaces facts in: needs-attention first
@@ -4851,7 +5335,8 @@ function FindingExplainer({ finding }: { finding: Finding }) {
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-muted-foreground">
             <span>
-              Generated {new Date(summary.generatedAt).toLocaleString("en-US", {
+              Generated{" "}
+              {new Date(summary.generatedAt).toLocaleString("en-US", {
                 month: "short",
                 day: "numeric",
                 hour: "numeric",
@@ -4915,8 +5400,8 @@ function ChainOfTitleSummary({
     return (
       <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 bg-card/60 px-3 py-2.5">
         <div className="text-xs text-muted-foreground">
-          {docCount} recorded documents — let an AI summarize the chain and
-          flag gaps.
+          {docCount} recorded documents — let an AI summarize the chain and flag
+          gaps.
         </div>
         <Button
           onClick={onRequest}
@@ -4947,7 +5432,8 @@ function ChainOfTitleSummary({
               Chain of title
             </span>
             <span className="text-[10px] text-muted-foreground">
-              Summarized {new Date(summary.generatedAt).toLocaleString("en-US", {
+              Summarized{" "}
+              {new Date(summary.generatedAt).toLocaleString("en-US", {
                 month: "short",
                 day: "numeric",
                 hour: "numeric",

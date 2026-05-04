@@ -85,7 +85,7 @@ export function AppShell({
       {isAuthenticated && <AppSidebar isAuthenticated={isAuthenticated} />}
       <SidebarInset className="bg-background">
         {!noHeader && (
-          <header className="sticky top-0 z-10 flex flex-col border-b border-border/60 bg-background/85 px-4 py-3 backdrop-blur lg:px-8">
+          <header className="sticky top-0 z-20 flex flex-col border-b border-border/60 bg-background/85 px-4 py-3 backdrop-blur lg:px-8">
             <div className="flex items-center gap-3">
               {isAuthenticated && (
                 <SidebarTrigger className="-ml-1 lg:hidden" />

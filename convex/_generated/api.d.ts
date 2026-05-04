@@ -17,6 +17,7 @@ import type * as chainSummary from "../chainSummary.js";
 import type * as closingDay from "../closingDay.js";
 import type * as comments from "../comments.js";
 import type * as countyConnect from "../countyConnect.js";
+import type * as crons from "../crons.js";
 import type * as email from "../email.js";
 import type * as extractionEvents from "../extractionEvents.js";
 import type * as extractions from "../extractions.js";
@@ -56,6 +57,7 @@ import type * as secrets from "../secrets.js";
 import type * as seed from "../seed.js";
 import type * as systemAdmins from "../systemAdmins.js";
 import type * as tenants from "../tenants.js";
+import type * as titleSearchOrders from "../titleSearchOrders.js";
 import type * as webhooks from "../webhooks.js";
 import type * as webhooksRunner from "../webhooksRunner.js";
 
@@ -75,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   closingDay: typeof closingDay;
   comments: typeof comments;
   countyConnect: typeof countyConnect;
+  crons: typeof crons;
   email: typeof email;
   extractionEvents: typeof extractionEvents;
   extractions: typeof extractions;
@@ -114,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   systemAdmins: typeof systemAdmins;
   tenants: typeof tenants;
+  titleSearchOrders: typeof titleSearchOrders;
   webhooks: typeof webhooks;
   webhooksRunner: typeof webhooksRunner;
 }>;
