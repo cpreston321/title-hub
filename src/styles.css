@@ -559,11 +559,12 @@
 }
 
 /* Editorial drop-cap for a leading paragraph. The first letter renders large
-   in the display serif, with a soft brass underglow. */
+   in the display serif, with a soft brass underglow. Slightly smaller on
+   narrow viewports so it doesn't dominate the column. */
 .tk-drop-cap::first-letter {
   font-family: var(--font-display);
   font-weight: 700;
-  font-size: 4.5em;
+  font-size: 3.6em;
   line-height: 0.82;
   float: left;
   margin: 0.05em 0.12em 0 0;
@@ -574,6 +575,11 @@
     transparent 60%
   );
   padding: 0.04em 0.08em 0.02em;
+}
+@media (min-width: 640px) {
+  .tk-drop-cap::first-letter {
+    font-size: 4.5em;
+  }
 }
 
 /* Status pill entrance — used inside the hero preview when the status flips

@@ -223,19 +223,19 @@ function LiveTicker() {
 function MarketingTopNav() {
   return (
     <header className="sticky top-0 z-20 border-b border-border/60 bg-background/85 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-6 py-4">
-        <Link to="/" className="flex items-center gap-3">
+      <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-3 px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
+        <Link to="/" className="flex min-w-0 items-center gap-3">
           <BrandMark />
-          <div className="leading-tight">
-            <div className="font-display text-base font-semibold tracking-tight text-[#40233f]">
+          <div className="min-w-0 leading-tight">
+            <div className="font-display truncate text-base font-semibold tracking-tight text-[#40233f]">
               Title Hub
             </div>
-            <div className="text-[11px] tracking-[0.04em] text-muted-foreground">
+            <div className="hidden text-[11px] tracking-[0.04em] text-muted-foreground sm:block">
               Operations for the title trade
             </div>
           </div>
         </Link>
-        <nav className="hidden items-center gap-6 md:flex">
+        <nav className="hidden items-center gap-6 lg:flex">
           <a
             href="#register"
             className="text-sm text-muted-foreground transition hover:text-[#40233f]"
@@ -261,13 +261,19 @@ function MarketingTopNav() {
             Built right
           </a>
         </nav>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="ghost" size="sm">
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            asChild
+            variant="ghost"
+            size="sm"
+            className="hidden sm:inline-flex"
+          >
             <Link to="/signin">Sign in</Link>
           </Button>
           <Button asChild size="sm" className="tk-letterpress gap-1.5">
             <Link to="/request-invite">
-              Request access
+              <span className="hidden sm:inline">Request access</span>
+              <span className="sm:hidden">Request</span>
               <ArrowRight className="size-3.5" />
             </Link>
           </Button>
@@ -282,13 +288,13 @@ function MarketingTopNav() {
 function MarketingHero() {
   return (
     <section className="relative overflow-hidden border-b border-border/60">
-      <div className="relative mx-auto grid w-full max-w-[1280px] grid-cols-1 items-start gap-14 px-6 py-20 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:py-28">
+      <div className="relative mx-auto grid w-full max-w-[1280px] grid-cols-1 items-start gap-12 px-4 py-14 sm:gap-14 sm:px-6 sm:py-20 lg:grid-cols-[1.05fr_1fr] lg:gap-16 lg:py-28">
         <div className="relative">
           <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card px-3 py-1 text-[11px] font-semibold tracking-[0.1em] text-[#b78625] shadow-sm uppercase">
             <Sparkles className="size-3.5" />
             Pilot · invite only
           </div>
-          <h1 className="mt-6 font-display text-[3.25rem] leading-[0.98] font-semibold tracking-[-0.02em] text-[#40233f] md:text-[4.25rem] lg:text-[5rem]">
+          <h1 className="mt-6 font-display text-[2.5rem] leading-[1] font-semibold tracking-[-0.02em] text-[#40233f] sm:text-[3.25rem] sm:leading-[0.98] md:text-[4.25rem] lg:text-[5rem]">
             Title operations,
             <br />
             <span className="italic font-[450] text-[#593157]">made plain.</span>
@@ -307,7 +313,7 @@ function MarketingHero() {
             draft. Recording rules are versioned per file, per county. Roles
             gate NPI; the audit trail keeps the file's story straight.
           </p>
-          <div className="mt-9 flex flex-wrap items-center gap-3">
+          <div className="mt-9 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center">
             <Button
               asChild
               size="lg"
@@ -402,14 +408,14 @@ function HeroLivePreview() {
         </div>
 
         {/* File header */}
-        <div className="border-b border-border/40 px-6 pt-5 pb-4">
-          <div className="flex items-baseline justify-between gap-3">
+        <div className="border-b border-border/40 px-5 pt-4 pb-3.5 sm:px-6 sm:pt-5 sm:pb-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
             <span className="font-numerals text-[10px] font-semibold tracking-[0.22em] text-[#b78625] uppercase">
               File · QT-2026-0042
             </span>
             <StatusPillMini key={`hero-${tick}`} status={currentStatus} cycling />
           </div>
-          <h3 className="mt-2 font-display text-[26px] leading-[1.1] font-semibold tracking-tight text-[#40233f]">
+          <h3 className="mt-2 font-display text-[22px] leading-[1.1] font-semibold tracking-tight text-[#40233f] sm:text-[26px]">
             1208 N Delaware St
           </h3>
           <div className="mt-1 text-[11px] text-muted-foreground">
@@ -417,8 +423,9 @@ function HeroLivePreview() {
           </div>
         </div>
 
-        {/* KPI strip */}
-        <div className="grid grid-cols-4 gap-px bg-border/40">
+        {/* KPI strip — 2x2 on mobile so labels like "Closing 7d" don't get
+            crushed; opens to 4 across at sm. */}
+        <div className="grid grid-cols-2 gap-px bg-border/40 sm:grid-cols-4">
           <KpiTile
             label="Active"
             value={String(activeCount).padStart(2, "0")}
@@ -619,23 +626,23 @@ function ProofRow() {
   ];
   return (
     <section className="relative border-b border-border/40 bg-[#fdf6e8]/40">
-      <div className="mx-auto w-full max-w-[1280px] px-6 py-7">
-        <div className="grid grid-cols-2 gap-x-8 gap-y-5 md:grid-cols-4">
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-6 sm:py-7">
+        <div className="grid grid-cols-2 gap-x-5 gap-y-4 sm:gap-x-8 sm:gap-y-5 md:grid-cols-4">
           {stats.map((s) => (
-            <div key={s.label} className="flex items-baseline gap-3">
-              <span className="font-display text-3xl leading-none font-semibold tracking-tight text-[#40233f] tabular-nums md:text-4xl">
+            <div key={s.label} className="flex min-w-0 items-baseline gap-2.5 sm:gap-3">
+              <span className="font-display text-2xl leading-none font-semibold tracking-tight text-[#40233f] tabular-nums sm:text-3xl md:text-4xl">
                 {s.figure}
                 {s.unit && (
-                  <span className="ml-0.5 text-base font-medium text-[#b78625]">
+                  <span className="ml-0.5 text-sm font-medium text-[#b78625] sm:text-base">
                     {s.unit}
                   </span>
                 )}
               </span>
-              <div className="flex flex-col gap-px">
-                <span className="text-[11px] font-medium tracking-[0.04em] text-[#40233f]">
+              <div className="flex min-w-0 flex-col gap-px">
+                <span className="truncate text-[11px] font-medium tracking-[0.04em] text-[#40233f]">
                   {s.label}
                 </span>
-                <span className="text-[10px] text-muted-foreground">
+                <span className="truncate text-[10px] text-muted-foreground">
                   {s.note}
                 </span>
               </div>
@@ -672,27 +679,27 @@ function MarketingSection({
   const Header = (
     <header
       className={
-        layout === "stack" ? "mb-12 max-w-3xl" : undefined
+        layout === "stack" ? "mb-10 max-w-3xl sm:mb-12" : undefined
       }
     >
       <div className="flex items-baseline gap-3">
         <span
           aria-hidden
-          className="font-display text-5xl leading-none font-semibold text-[#b78625]/85 italic"
+          className="font-display text-4xl leading-none font-semibold text-[#b78625]/85 italic sm:text-5xl"
         >
           {numeral}
         </span>
         <span className="h-px flex-1 bg-[#40233f]/15" />
-        <span className="font-numerals text-[10px] font-semibold tracking-[0.32em] text-muted-foreground uppercase">
+        <span className="font-numerals shrink-0 text-[9px] font-semibold tracking-[0.28em] text-muted-foreground uppercase sm:text-[10px] sm:tracking-[0.32em]">
           §·{eyebrow}
         </span>
       </div>
-      <h2 className="mt-6 font-display text-[2.25rem] leading-[1.05] font-semibold tracking-tight text-[#40233f] md:text-[2.75rem]">
+      <h2 className="mt-5 font-display text-[1.875rem] leading-[1.05] font-semibold tracking-tight text-[#40233f] sm:mt-6 sm:text-[2.25rem] md:text-[2.75rem]">
         {title}
       </h2>
       {lede && (
         <p
-          className={`mt-5 text-[15px] leading-[1.65] text-foreground/75 italic font-display ${
+          className={`mt-4 text-[14px] leading-[1.65] text-foreground/75 italic font-display sm:mt-5 sm:text-[15px] ${
             layout === "stack" ? "max-w-[42rem]" : "max-w-[28rem]"
           }`}
         >
@@ -704,14 +711,14 @@ function MarketingSection({
 
   return (
     <section id={id} className="relative border-b border-border/40">
-      <div className="mx-auto w-full max-w-[1280px] px-6 py-20 lg:py-24">
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-14 sm:px-6 sm:py-20 lg:py-24">
         {layout === "stack" ? (
           <>
             {Header}
             <div>{children}</div>
           </>
         ) : (
-          <div className="grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-16">
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:gap-16">
             <div className="lg:col-span-5">{Header}</div>
             <div className="lg:col-span-7">{children}</div>
           </div>
@@ -767,33 +774,37 @@ function LiveRegister() {
         className="absolute -inset-6 rounded-[2rem] bg-gradient-to-br from-[#f4d48f]/15 via-transparent to-[#593157]/10 blur-2xl"
       />
       <article className="relative overflow-hidden rounded-2xl bg-card shadow-xl ring-1 ring-foreground/10">
-        {/* Pipeline strip */}
-        <div className="grid grid-cols-7 gap-px border-b border-border/50 bg-border/40">
-          {stages.map((s) => (
-            <div
-              key={s.id}
-              className="flex flex-col gap-0.5 bg-card px-3 py-3"
-            >
-              <span className="text-[9px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
-                {s.label}
-              </span>
-              <span
-                className={`font-display text-[22px] leading-none font-semibold tabular-nums ${s.id === "in_exam" ? "text-[#40233f]" : s.id === "policied" ? "text-[#2f5d4b]" : "text-[#40233f]/70"}`}
+        {/* Pipeline strip — horizontally scrollable on mobile so all seven
+            stages remain legible. Snap so each cell aligns when the user
+            flicks. Auto-fits at sm+. */}
+        <div className="overflow-x-auto border-b border-border/50 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="grid min-w-[40rem] grid-cols-7 gap-px bg-border/40 sm:min-w-0">
+            {stages.map((s) => (
+              <div
+                key={s.id}
+                className="flex snap-start flex-col gap-0.5 bg-card px-3 py-3"
               >
-                {String(s.n).padStart(2, "0")}
-              </span>
-            </div>
-          ))}
+                <span className="text-[9px] font-medium tracking-[0.14em] text-muted-foreground uppercase">
+                  {s.label}
+                </span>
+                <span
+                  className={`font-display text-[22px] leading-none font-semibold tabular-nums ${s.id === "in_exam" ? "text-[#40233f]" : s.id === "policied" ? "text-[#2f5d4b]" : "text-[#40233f]/70"}`}
+                >
+                  {String(s.n).padStart(2, "0")}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center gap-2 border-b border-border/50 px-5 py-3">
+        <div className="flex items-center gap-2 border-b border-border/50 px-4 py-3 sm:px-5">
           <div className="flex flex-1 items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5">
-            <Search className="size-3.5 text-muted-foreground" />
-            <span className="text-[11px] text-muted-foreground">
+            <Search className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[11px] text-muted-foreground">
               Search files, parties, addresses…
             </span>
-            <kbd className="ml-auto rounded border border-border bg-muted px-1 font-mono text-[9px] text-muted-foreground">
+            <kbd className="ml-auto hidden shrink-0 rounded border border-border bg-muted px-1 font-mono text-[9px] text-muted-foreground sm:inline">
               ⌘K
             </kbd>
           </div>
@@ -802,8 +813,8 @@ function LiveRegister() {
           </span>
         </div>
 
-        {/* Header row */}
-        <div className="grid grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 bg-[#fdf6e8]/50 px-5 py-2 text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+        {/* Header row — only the wide grid layout shows it. */}
+        <div className="hidden grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 bg-[#fdf6e8]/50 px-5 py-2 text-[10px] tracking-[0.14em] text-muted-foreground uppercase sm:grid">
           <span className="text-right">№</span>
           <span>File · type</span>
           <span>Opened</span>
@@ -811,16 +822,16 @@ function LiveRegister() {
           <span className="text-right">Status</span>
         </div>
 
-        {/* Rows */}
+        {/* Rows — stacked card layout on mobile, full grid at sm+. */}
         <ol className="divide-y divide-border/50">
           {visibleRows.map((f, i) => {
             const isFlashing = i === flashIndex;
             return (
               <li
                 key={f.n}
-                className={`grid grid-cols-[3rem_1fr_8rem_5rem_5.5rem] items-center gap-4 px-5 py-2.5 transition-colors ${isFlashing ? "bg-[#fdf6e8]/55" : "bg-card"}`}
+                className={`grid grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 transition-colors sm:grid-cols-[3rem_1fr_8rem_5rem_5.5rem] sm:gap-4 sm:px-5 sm:py-2.5 ${isFlashing ? "bg-[#fdf6e8]/55" : "bg-card"}`}
               >
-                <span className="font-numerals text-right text-[10px] text-muted-foreground/70 tabular-nums">
+                <span className="font-numerals hidden text-right text-[10px] text-muted-foreground/70 tabular-nums sm:inline">
                   {String(i + 1).padStart(3, "0")}
                 </span>
                 <div className="min-w-0">
@@ -829,12 +840,16 @@ function LiveRegister() {
                   </div>
                   <div className="text-[10px] text-muted-foreground capitalize">
                     {f.type}
+                    <span className="sm:hidden">
+                      {" · "}
+                      {f.cnty} · {f.open}
+                    </span>
                   </div>
                 </div>
-                <div className="font-numerals text-[10px] text-muted-foreground tabular-nums">
+                <div className="font-numerals hidden text-[10px] text-muted-foreground tabular-nums sm:block">
                   {f.open}
                 </div>
-                <div className="font-numerals text-[10px] text-muted-foreground">
+                <div className="font-numerals hidden text-[10px] text-muted-foreground sm:block">
                   {f.cnty}
                 </div>
                 <div className="flex justify-end">
@@ -1699,22 +1714,22 @@ function SealCTA() {
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-[#fdf6e8]/40 to-transparent"
       />
-      <div className="relative mx-auto grid w-full max-w-[1280px] grid-cols-1 items-center gap-12 px-6 py-24 lg:grid-cols-[1fr_auto] lg:py-28">
+      <div className="relative mx-auto grid w-full max-w-[1280px] grid-cols-1 items-center gap-10 px-4 py-16 sm:gap-12 sm:px-6 sm:py-24 lg:grid-cols-[1fr_auto] lg:py-28">
         <div className="max-w-2xl">
-          <span className="font-numerals text-[10px] font-semibold tracking-[0.32em] text-[#b78625] uppercase">
+          <span className="font-numerals text-[10px] font-semibold tracking-[0.28em] text-[#b78625] uppercase sm:tracking-[0.32em]">
             By appointment of every party
           </span>
-          <h2 className="mt-4 font-display text-[2.5rem] leading-[1.02] font-semibold tracking-tight text-[#40233f] md:text-[3.5rem]">
+          <h2 className="mt-4 font-display text-[2rem] leading-[1.02] font-semibold tracking-tight text-[#40233f] sm:text-[2.5rem] md:text-[3.5rem]">
             Press the seal.{" "}
             <span className="italic text-[#593157]">Open the register.</span>
           </h2>
-          <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-foreground/75">
+          <p className="mt-5 max-w-xl text-[14px] leading-relaxed text-foreground/75 sm:text-[15px]">
             Title Hub is in pilot with a small set of agencies. We're adding
             firms a few at a time so we can sit beside the work and keep the
             rough edges to a minimum. If your shop sees the appeal, write us —
             we'll send you in.
           </p>
-          <div className="mt-8 flex flex-wrap items-center gap-3">
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-center">
             <Button
               asChild
               size="lg"
@@ -1747,10 +1762,10 @@ function SealCTA() {
 
         <Link
           to="/request-invite"
-          className="tk-letterpress group/seal relative grid place-items-center"
+          className="tk-letterpress group/seal relative mx-auto grid place-items-center lg:mx-0"
           aria-label="Press the seal — request access"
         >
-          <div className="relative isolate" style={{ width: 220, height: 220 }}>
+          <div className="relative isolate aspect-square w-44 sm:w-[13rem] lg:w-[14rem]">
             {/* The whole seal — rings, curved legend, ornaments, ticks —
                 spins as a unit, like an embossed dial finding the page. */}
             <svg
@@ -1916,28 +1931,28 @@ function SealCTA() {
 function MarketingFooter() {
   return (
     <footer className="relative border-t border-border/60 bg-[#fdf6e8]/40">
-      <div className="mx-auto w-full max-w-[1280px] px-6 py-10">
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-8 sm:px-6 sm:py-10">
         {/* Masthead row */}
-        <div className="flex flex-wrap items-end justify-between gap-6 border-b border-[#40233f]/15 pb-6">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-end justify-between gap-4 border-b border-[#40233f]/15 pb-5 sm:gap-6 sm:pb-6">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <BrandMark size="md" />
-            <div>
-              <div className="font-display text-xl font-semibold tracking-tight text-[#40233f]">
+            <div className="min-w-0">
+              <div className="font-display truncate text-lg font-semibold tracking-tight text-[#40233f] sm:text-xl">
                 Title Hub
               </div>
-              <div className="font-numerals text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+              <div className="font-numerals truncate text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
                 A file-of-record for the title trade
               </div>
             </div>
           </div>
-          <div className="font-numerals flex flex-col items-end gap-0.5 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
+          <div className="font-numerals flex shrink-0 flex-col items-end gap-0.5 text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
             <span>Vol. I · No. 1</span>
             <span>Spring · MMXXVI</span>
           </div>
         </div>
 
         {/* Link grid */}
-        <div className="grid grid-cols-2 gap-8 py-8 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-7 py-7 sm:gap-8 sm:py-8 sm:grid-cols-4">
           <FooterCol heading="The product">
             <a href="#register">The register</a>
             <a href="#reconcile">Reconcile</a>
@@ -1962,7 +1977,7 @@ function MarketingFooter() {
         </div>
 
         {/* Closing strip */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#40233f]/15 pt-5 text-[11px] text-muted-foreground">
+        <div className="flex flex-col items-start gap-2 border-t border-[#40233f]/15 pt-5 text-[11px] text-muted-foreground sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
           <span>© {new Date().getFullYear()} Title Hub. Pilot environment.</span>
           <span className="font-numerals tracking-[0.14em] uppercase">
             ❦ Stet · all things in order ❦
